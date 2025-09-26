@@ -1,0 +1,20 @@
+<svg width="200" height="60" viewBox="0 0 200 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="200" height="60" rx="8" fill="#0f1419"/>
+  
+  <!-- Icon -->
+  <g transform="translate(12, 12)">
+    <rect x="2" y="2" width="32" height="32" rx="6" fill="#4285f4" fill-opacity="0.2"/>
+    <path d="M12 8L20 16L12 24M20 16H8" stroke="#4285f4" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  
+  <!-- Text -->
+  <text x="56" y="38" font-family="Inter, sans-serif" font-size="24" font-weight="700" fill="#ffffff">
+    Insighter
+  </text>
+  
+  <!-- Tagline -->
+  <text x="56" y="50" font-family="Inter, sans-serif" font-size="10" font-weight="400" fill="#9aa0a6">
+    AI-Powered Analytics
+  </text>
+</svg>

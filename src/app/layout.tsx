@@ -1,0 +1,76 @@
+import type { Metadata } from "next";
+import { Inter, Poppins } from "next/font/google";
+import "./globals.css";
+import Navigation from "@/components/Navigation";
+import { ClientProviders } from "@/components/providers/ClientProviders";
+
+const inter = Inter({
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700"],
+  variable: "--font-inter",
+});
+
+const poppins = Poppins({
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700"],
+  variable: "--font-poppins",
+});
+
+export const metadata: Metadata = {
+  title: "Insighter - AI-Powered Data Analytics Platform",
+  description:
+    "A comprehensive data analysis platform that connects databases, processes files, and provides AI-powered insights through natural language conversations.",
+  keywords: [
+    "AI",
+    "data analytics",
+    "database",
+    "insights",
+    "chat",
+    "analytics platform",
+  ],
+  authors: [{ name: "Insighter Team" }],
+  robots: "index, follow",
+  openGraph: {
+    title: "Insighter - AI-Powered Data Analytics Platform",
+    description:
+      "Connect databases, process files, and get AI-powered insights through natural language conversations.",
+    type: "website",
+    locale: "en_US",
+  },
+};
+
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+};
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="en">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link
+          rel="preconnect"
+          href="https://fonts.gstatic.com"
+          crossOrigin="anonymous"
+        />
+        <link rel="dns-prefetch" href="//fonts.googleapis.com" />
+        <link rel="dns-prefetch" href="//fonts.gstatic.com" />
+      </head>
+      <body
+        className={`${inter.variable} ${poppins.variable} antialiased bg-background text-foreground`}
+      >
+        <ClientProviders>
+          <div className="min-h-screen bg-background">
+            <Navigation />
+            <main className="flex-1 pt-24">{children}</main>
+          </div>
+        </ClientProviders>
+      </body>
+    </html>
+  );
+}
