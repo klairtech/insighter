@@ -1,17 +1,22 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Image from "next/image";
 import { useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
 import {
   DatabaseSchema,
   DatabaseTable,
   SelectedTable,
 } from "@/types/database-schema";
+import DatabaseSetupProgressModal from "./DatabaseSetupProgressModal";
 
 interface DatabaseConnectionModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConnectionSuccess: () => void;
+  onConnectionSuccess: (data: {
+    connectionName: string;
+    tablesProcessed: number;
+  }) => void;
   workspaceId: string;
 }
 
@@ -27,54 +32,352 @@ interface DatabaseConfig {
   connectionString?: string;
 }
 
-const DATABASE_TYPES = [
+// Data source categories and types
+const DATA_SOURCE_CATEGORIES = [
+  {
+    id: "all",
+    name: "All",
+    icon: (
+      <svg
+        className="w-4 h-4"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"
+        />
+      </svg>
+    ),
+  },
+  {
+    id: "sql",
+    name: "SQL",
+    icon: (
+      <svg
+        className="w-4 h-4"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+        />
+      </svg>
+    ),
+  },
+  {
+    id: "nosql",
+    name: "NoSQL",
+    icon: (
+      <svg
+        className="w-4 h-4"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+        />
+      </svg>
+    ),
+  },
+  {
+    id: "others",
+    name: "Others",
+    icon: (
+      <svg
+        className="w-4 h-4"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
+        />
+      </svg>
+    ),
+  },
+];
+
+const DATA_SOURCE_TYPES = [
+  // SQL Databases
   {
     id: "postgresql",
     name: "PostgreSQL",
-    icon: "P",
-    color: "bg-blue-500",
+    category: "sql",
+    icon: "https://upload.wikimedia.org/wikipedia/commons/2/29/Postgresql_elephant.svg",
+    color: "bg-blue-600",
     defaultPort: "5432",
     description: "Advanced open source relational database",
   },
   {
     id: "mysql",
     name: "MySQL",
-    icon: "M",
+    category: "sql",
+    icon: "https://upload.wikimedia.org/wikipedia/commons/0/0a/MySQL_textlogo.svg",
     color: "bg-orange-500",
     defaultPort: "3306",
     description: "Popular open source relational database",
   },
   {
-    id: "mongodb",
-    name: "MongoDB",
-    icon: "M",
-    color: "bg-green-500",
-    defaultPort: "27017",
-    description: "NoSQL document database",
-  },
-  {
-    id: "redis",
-    name: "Redis",
-    icon: "R",
-    color: "bg-red-500",
-    defaultPort: "6379",
-    description: "In-memory data structure store",
-  },
-  {
     id: "sqlite",
     name: "SQLite",
-    icon: "S",
-    color: "bg-purple-500",
+    category: "sql",
+    icon: "https://upload.wikimedia.org/wikipedia/commons/3/38/SQLite370.svg",
+    color: "bg-purple-600",
     defaultPort: "",
     description: "Lightweight embedded database",
   },
   {
     id: "bigquery",
     name: "BigQuery",
-    icon: "B",
-    color: "bg-yellow-500",
+    category: "sql",
+    icon: "https://upload.wikimedia.org/wikipedia/commons/5/51/Google_Cloud_logo.svg",
+    color: "bg-blue-500",
     defaultPort: "",
     description: "Google's cloud data warehouse",
+  },
+  {
+    id: "redshift",
+    name: "Amazon Redshift",
+    category: "sql",
+    icon: "https://upload.wikimedia.org/wikipedia/commons/b/bc/Amazon-S3-Logo.svg",
+    color: "bg-orange-600",
+    defaultPort: "5439",
+    description: "AWS cloud data warehouse",
+  },
+  {
+    id: "azure-sql",
+    name: "Azure SQL Database",
+    category: "sql",
+    icon: "https://upload.wikimedia.org/wikipedia/commons/f/fa/Microsoft_Azure.svg",
+    color: "bg-blue-600",
+    defaultPort: "1433",
+    description: "Microsoft Azure managed SQL database",
+  },
+  {
+    id: "snowflake",
+    name: "Snowflake",
+    category: "sql",
+    icon: "https://upload.wikimedia.org/wikipedia/commons/f/ff/Snowflake_Logo.svg",
+    color: "bg-blue-500",
+    defaultPort: "443",
+    description: "Cloud data platform for data warehousing",
+  },
+  {
+    id: "oracle",
+    name: "Oracle Database",
+    category: "sql",
+    icon: "https://upload.wikimedia.org/wikipedia/commons/5/50/Oracle_logo.svg",
+    color: "bg-red-600",
+    defaultPort: "1521",
+    description: "Enterprise relational database system",
+  },
+  {
+    id: "mssql",
+    name: "SQL Server",
+    category: "sql",
+    icon: "https://upload.wikimedia.org/wikipedia/commons/8/87/Sql_server_logo.png",
+    color: "bg-blue-700",
+    defaultPort: "1433",
+    description: "Microsoft SQL Server database",
+  },
+
+  // NoSQL Databases
+  {
+    id: "mongodb",
+    name: "MongoDB",
+    category: "nosql",
+    icon: "https://upload.wikimedia.org/wikipedia/commons/9/93/MongoDB_Logo.svg",
+    color: "bg-green-600",
+    defaultPort: "27017",
+    description: "NoSQL document database",
+  },
+  {
+    id: "redis",
+    name: "Redis",
+    category: "nosql",
+    icon: "https://upload.wikimedia.org/wikipedia/commons/6/6f/Redis_Logo.svg",
+    color: "bg-red-600",
+    defaultPort: "6379",
+    description: "In-memory data structure store",
+  },
+
+  // Other Connectors
+  {
+    id: "google-sheets",
+    name: "Google Sheets",
+    category: "others",
+    icon: "https://upload.wikimedia.org/wikipedia/commons/3/3c/Google_Sheets_2020_Logo.svg",
+    color: "bg-green-500",
+    defaultPort: "",
+    description: "Connect to Google Sheets for spreadsheet data",
+  },
+  {
+    id: "google-docs",
+    name: "Google Docs",
+    category: "others",
+    icon: "https://upload.wikimedia.org/wikipedia/commons/0/01/Google_Docs_logo_%282014-2020%29.svg",
+    color: "bg-blue-500",
+    defaultPort: "",
+    description: "Connect to Google Docs for document content",
+  },
+  {
+    id: "notion",
+    name: "Notion",
+    category: "others",
+    icon: "https://upload.wikimedia.org/wikipedia/commons/4/45/Notion_app_logo.png",
+    color: "bg-gray-800",
+    defaultPort: "",
+    description: "Connect to Notion workspaces and pages",
+  },
+  {
+    id: "airtable",
+    name: "Airtable",
+    category: "others",
+    icon: "https://upload.wikimedia.org/wikipedia/commons/8/8d/Airtable_Logo.svg",
+    color: "bg-purple-600",
+    defaultPort: "",
+    description: "Connect to Airtable bases and tables",
+  },
+  {
+    id: "slack",
+    name: "Slack",
+    category: "others",
+    icon: "https://upload.wikimedia.org/wikipedia/commons/b/b9/Slack_Technologies_Logo.svg",
+    color: "bg-purple-500",
+    defaultPort: "",
+    description: "Connect to Slack workspaces and channels",
+  },
+  {
+    id: "discord",
+    name: "Discord",
+    category: "others",
+    icon: "https://upload.wikimedia.org/wikipedia/commons/9/98/Discord_logo.svg",
+    color: "bg-indigo-600",
+    defaultPort: "",
+    description: "Connect to Discord servers and channels",
+  },
+  {
+    id: "github",
+    name: "GitHub",
+    category: "others",
+    icon: "https://upload.wikimedia.org/wikipedia/commons/9/91/Octicons-mark-github.svg",
+    color: "bg-gray-800",
+    defaultPort: "",
+    description: "Connect to GitHub repositories and issues",
+  },
+  {
+    id: "gitlab",
+    name: "GitLab",
+    category: "others",
+    icon: "https://upload.wikimedia.org/wikipedia/commons/1/18/GitLab_Logo.svg",
+    color: "bg-orange-600",
+    defaultPort: "",
+    description: "Connect to GitLab repositories and issues",
+  },
+  {
+    id: "jira",
+    name: "Jira",
+    category: "others",
+    icon: "https://upload.wikimedia.org/wikipedia/commons/4/4a/Jira_Software_%28Atlassian%29_logo.svg",
+    color: "bg-blue-600",
+    defaultPort: "",
+    description: "Connect to Jira projects and issues",
+  },
+  {
+    id: "trello",
+    name: "Trello",
+    category: "others",
+    icon: "https://upload.wikimedia.org/wikipedia/commons/0/07/Trello_logo.svg",
+    color: "bg-blue-500",
+    defaultPort: "",
+    description: "Connect to Trello boards and cards",
+  },
+  {
+    id: "asana",
+    name: "Asana",
+    category: "others",
+    icon: "https://upload.wikimedia.org/wikipedia/commons/1/1b/Asana_Logo.svg",
+    color: "bg-red-500",
+    defaultPort: "",
+    description: "Connect to Asana projects and tasks",
+  },
+  {
+    id: "confluence",
+    name: "Confluence",
+    category: "others",
+    icon: "https://upload.wikimedia.org/wikipedia/commons/4/4a/Confluence_%28Atlassian%29_logo.svg",
+    color: "bg-blue-700",
+    defaultPort: "",
+    description: "Connect to Confluence pages and documentation",
+  },
+  {
+    id: "sharepoint",
+    name: "SharePoint",
+    category: "others",
+    icon: "https://upload.wikimedia.org/wikipedia/commons/6/67/Microsoft_SharePoint_%282019%E2%80%93present%29.svg",
+    color: "bg-blue-600",
+    defaultPort: "",
+    description: "Connect to SharePoint sites and documents",
+  },
+  {
+    id: "onedrive",
+    name: "OneDrive",
+    category: "others",
+    icon: "https://upload.wikimedia.org/wikipedia/commons/7/7e/Microsoft_OneDrive_%282019%E2%80%93present%29.svg",
+    color: "bg-blue-500",
+    defaultPort: "",
+    description: "Connect to OneDrive files and folders",
+  },
+  {
+    id: "dropbox",
+    name: "Dropbox",
+    category: "others",
+    icon: "https://upload.wikimedia.org/wikipedia/commons/7/78/Dropbox_Icon.svg",
+    color: "bg-blue-400",
+    defaultPort: "",
+    description: "Connect to Dropbox files and folders",
+  },
+  {
+    id: "website-url",
+    name: "Website URL",
+    category: "others",
+    icon: "https://upload.wikimedia.org/wikipedia/commons/6/61/HTML5_logo_and_wordmark.svg",
+    color: "bg-orange-500",
+    defaultPort: "",
+    description: "Connect to any website for content extraction",
+  },
+  {
+    id: "rss-feed",
+    name: "RSS Feed",
+    category: "others",
+    icon: "https://upload.wikimedia.org/wikipedia/commons/4/43/Feed-icon.svg",
+    color: "bg-orange-600",
+    defaultPort: "",
+    description: "Connect to RSS feeds for news and updates",
+  },
+  {
+    id: "api-endpoint",
+    name: "API Endpoint",
+    category: "others",
+    icon: "https://upload.wikimedia.org/wikipedia/commons/6/6a/JavaScript-logo.png",
+    color: "bg-yellow-500",
+    defaultPort: "",
+    description: "Connect to REST APIs and web services",
   },
 ];
 
@@ -86,12 +389,15 @@ export default function DatabaseConnectionModal({
 }: DatabaseConnectionModalProps) {
   const { session } = useSupabaseAuth();
   const [selectedDbType, setSelectedDbType] = useState<string>("");
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
 
   // Reset modal state when opened
   useEffect(() => {
     if (isOpen) {
       setStatusMessage("");
       setStatusType("info");
+      setSelectedCategory("all");
+      setSelectedDbType("");
     }
   }, [isOpen]);
   const [connectionConfig, setConnectionConfig] = useState<DatabaseConfig>({
@@ -132,12 +438,55 @@ export default function DatabaseConnectionModal({
     tablesFound: 0,
   });
 
+  // Progress modal state
+  const [showProgressModal, setShowProgressModal] = useState(false);
+  const [progressSteps, setProgressSteps] = useState<
+    Array<{
+      id: string;
+      title: string;
+      description: string;
+      status: "pending" | "in_progress" | "completed" | "error";
+      estimatedTime?: number;
+      actualTime?: number;
+    }>
+  >([]);
+  const [overallProgress, setOverallProgress] = useState(0);
+  const [estimatedTotalTime, setEstimatedTotalTime] = useState(0);
+
   const [statusMessage, setStatusMessage] = useState<string>("");
   const [statusType, setStatusType] = useState<
     "info" | "success" | "error" | "warning"
   >("info");
 
-  const selectedDb = DATABASE_TYPES.find((db) => db.id === selectedDbType);
+  const selectedDb = DATA_SOURCE_TYPES.find((db) => db.id === selectedDbType);
+
+  // Helper function to get filtered data sources based on selected category
+  const getFilteredDataSources = () => {
+    if (selectedCategory === "all") {
+      return DATA_SOURCE_TYPES;
+    }
+    return DATA_SOURCE_TYPES.filter(
+      (source) => source.category === selectedCategory
+    );
+  };
+
+  // Helper function to check if a data source is a traditional database
+  const isDatabaseType = (typeId: string) => {
+    const dbTypes = [
+      "postgresql",
+      "mysql",
+      "mongodb",
+      "redis",
+      "sqlite",
+      "bigquery",
+      "redshift",
+      "azure-sql",
+      "snowflake",
+      "oracle",
+      "mssql",
+    ];
+    return dbTypes.includes(typeId);
+  };
 
   /**
    * Helper function to update status messages in the modal
@@ -151,18 +500,26 @@ export default function DatabaseConnectionModal({
   };
 
   /**
-   * Step 1: User clicks on database type
-   * Sets the selected database type and moves to configuration step
+   * Step 1: User clicks on data source type
+   * Sets the selected data source type and moves to configuration step
    */
   const handleDbTypeSelect = (dbType: string) => {
     setSelectedDbType(dbType);
+    const sourceType = DATA_SOURCE_TYPES.find((db) => db.id === dbType);
     setConnectionConfig((prev) => ({
       ...prev,
       type: dbType,
-      name: DATABASE_TYPES.find((db) => db.id === dbType)?.name || "",
-      port: DATABASE_TYPES.find((db) => db.id === dbType)?.defaultPort || "",
+      name: sourceType?.name || "",
+      port: sourceType?.defaultPort || "",
     }));
-    setStep("configure");
+
+    // For non-database types, we might want to handle them differently
+    if (isDatabaseType(dbType)) {
+      setStep("configure");
+    } else {
+      // For other connectors like Google Sheets, etc., we might have a different flow
+      setStep("configure");
+    }
   };
 
   /**
@@ -215,6 +572,47 @@ export default function DatabaseConnectionModal({
    */
   const isTableSelected = (tableName: string) => {
     return selectedTables.some((t) => t.table_name === tableName);
+  };
+
+  /**
+   * Helper function to check if all tables are selected
+   */
+  const areAllTablesSelected = () => {
+    if (!databaseSchema || !databaseSchema.tables || !databaseSchema.views)
+      return false;
+    const allTables = [...databaseSchema.tables, ...databaseSchema.views];
+    return (
+      allTables.length > 0 &&
+      allTables.every((table) => isTableSelected(table.name))
+    );
+  };
+
+  /**
+   * Helper function to select or deselect all tables
+   */
+  const toggleSelectAllTables = () => {
+    if (!databaseSchema || !databaseSchema.tables || !databaseSchema.views)
+      return;
+
+    const allTables = [...databaseSchema.tables, ...databaseSchema.views];
+
+    if (areAllTablesSelected()) {
+      // Deselect all tables
+      setSelectedTables([]);
+    } else {
+      // Select all tables
+      const allSelectedTables = allTables.map((table) => ({
+        table_name: table.name,
+        schema_name: table.schema,
+        selected_columns:
+          table.columns && table.columns.length > 0
+            ? table.columns.map((col) => col.name)
+            : ["*"], // Select all columns if not loaded yet
+        include_sample_data: true,
+        sample_size: 100,
+      }));
+      setSelectedTables(allSelectedTables);
+    }
   };
 
   /**
@@ -428,11 +826,102 @@ export default function DatabaseConnectionModal({
       return;
     }
 
-    setStep("processing"); // Move to processing step
+    // Initialize progress steps
+    const steps = [
+      {
+        id: "validate",
+        title: "Validating Connection",
+        description: "Testing database connectivity and permissions",
+        status: "pending" as const,
+        estimatedTime: 10,
+      },
+      {
+        id: "fetch_schema",
+        title: "Fetching Schema",
+        description: "Retrieving table structures and column information",
+        status: "pending" as const,
+        estimatedTime: 15,
+      },
+      {
+        id: "generate_ai",
+        title: "Generating Smart Definitions",
+        description: `Creating intelligent descriptions for ${selectedTables.length} tables`,
+        status: "pending" as const,
+        estimatedTime: selectedTables.length * 20,
+      },
+      {
+        id: "save_connection",
+        title: "Saving Connection",
+        description: "Storing connection details and AI definitions",
+        status: "pending" as const,
+        estimatedTime: 5,
+      },
+    ];
+
+    setProgressSteps(steps);
+    setOverallProgress(0);
+    setEstimatedTotalTime(
+      steps.reduce((total, step) => total + (step.estimatedTime || 0), 0)
+    );
+    console.log("🚀 Setting up progress modal with steps:", steps);
+    setShowProgressModal(true);
+    setStep("processing");
     setIsConnecting(true);
-    updateStatus("Setting up database connection...", "info");
+    console.log("✅ Progress modal should now be visible");
 
     try {
+      // Step 1: Validating Connection
+      setProgressSteps((prev) =>
+        prev.map((step) =>
+          step.id === "validate"
+            ? { ...step, status: "in_progress" as const }
+            : step
+        )
+      );
+      setOverallProgress(10);
+
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      setProgressSteps((prev) =>
+        prev.map((step) =>
+          step.id === "validate"
+            ? { ...step, status: "completed" as const }
+            : step
+        )
+      );
+      setOverallProgress(25);
+
+      // Step 2: Fetching Schema
+      setProgressSteps((prev) =>
+        prev.map((step) =>
+          step.id === "fetch_schema"
+            ? { ...step, status: "in_progress" as const }
+            : step
+        )
+      );
+      setOverallProgress(35);
+
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      setProgressSteps((prev) =>
+        prev.map((step) =>
+          step.id === "fetch_schema"
+            ? { ...step, status: "completed" as const }
+            : step
+        )
+      );
+      setOverallProgress(50);
+
+      // Step 3: Generating AI Definitions
+      setProgressSteps((prev) =>
+        prev.map((step) =>
+          step.id === "generate_ai"
+            ? { ...step, status: "in_progress" as const }
+            : step
+        )
+      );
+      setOverallProgress(60);
+
       // Single API call that does everything: save connection, fetch columns, generate AI definitions
       const response = await fetch("/api/database-connections", {
         method: "POST",
@@ -452,19 +941,42 @@ export default function DatabaseConnectionModal({
       const result = await response.json();
 
       if (result.success) {
+        // Step 4: Saving Connection
+        setProgressSteps((prev) =>
+          prev.map((step) =>
+            step.id === "save_connection"
+              ? { ...step, status: "in_progress" as const }
+              : step
+          )
+        );
+        setOverallProgress(80);
+
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+
+        // Update all steps to completed
+        setProgressSteps((prev) =>
+          prev.map((step) => ({ ...step, status: "completed" as const }))
+        );
+        setOverallProgress(100);
+
         updateStatus(
           `Database connection completed successfully! ${result.tables_processed} tables processed with AI definitions.`,
           "success"
         );
 
-        // Close modal and refresh workspace
+        // Close progress modal and main modal after a delay
         setTimeout(() => {
-          onConnectionSuccess();
+          setShowProgressModal(false);
+          onConnectionSuccess({
+            connectionName: connectionConfig.name,
+            tablesProcessed: result.tables_processed || selectedTables.length,
+          });
           onClose();
-        }, 1000);
+        }, 2000);
 
         // Reset form for next connection
         setSelectedDbType("");
+        setSelectedCategory("all");
         setConnectionConfig({
           type: "",
           name: "",
@@ -478,10 +990,29 @@ export default function DatabaseConnectionModal({
         });
         setStep("select");
       } else {
+        // Update progress to show error
+        setProgressSteps((prev) =>
+          prev.map((step) => ({
+            ...step,
+            status:
+              step.status === "in_progress" ? ("error" as const) : step.status,
+          }))
+        );
+
         updateStatus(`Failed to setup connection: ${result.error}`, "error");
       }
     } catch (error) {
       console.error("Save connection error:", error);
+
+      // Update progress to show error
+      setProgressSteps((prev) =>
+        prev.map((step) => ({
+          ...step,
+          status:
+            step.status === "in_progress" ? ("error" as const) : step.status,
+        }))
+      );
+
       updateStatus("Failed to setup connection. Please try again.", "error");
     } finally {
       setIsConnecting(false);
@@ -531,11 +1062,11 @@ export default function DatabaseConnectionModal({
                 </svg>
               </div>
               <div>
-                <h2 className="text-xl font-semibold text-white">
-                  Connect Database
+                <h2 className="text-lg font-semibold text-white">
+                  Connect Data Source
                 </h2>
-                <p className="text-sm text-gray-400">
-                  Add a new database connection to your workspace
+                <p className="text-xs text-gray-400">
+                  Add a new data source to your workspace
                 </p>
               </div>
             </div>
@@ -654,37 +1185,133 @@ export default function DatabaseConnectionModal({
         {/* Content */}
         <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)]">
           {step === "select" && (
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-4">
-                Choose Database Type
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {DATABASE_TYPES.map((db) => (
-                  <button
-                    key={db.id}
-                    onClick={() => handleDbTypeSelect(db.id)}
-                    className="p-4 bg-gray-700/50 hover:bg-gray-700 border border-gray-600 rounded-lg transition-all duration-200 hover:border-gray-500 group"
-                  >
-                    <div className="flex items-center space-x-3 mb-3">
-                      <div
-                        className={`w-10 h-10 ${db.color} rounded-lg flex items-center justify-center`}
+            <div className="flex h-full">
+              {/* Left Sidebar - Categories */}
+              <div className="w-56 bg-gray-800/50 border-r border-gray-700 p-3">
+                <h3 className="text-xs font-semibold text-gray-300 mb-3 uppercase tracking-wide">
+                  Data Sources
+                </h3>
+                <div className="space-y-1">
+                  {DATA_SOURCE_CATEGORIES.map((category) => (
+                    <button
+                      key={category.id}
+                      onClick={() => setSelectedCategory(category.id)}
+                      className={`w-full flex items-center space-x-2 px-2 py-1.5 rounded text-left transition-colors ${
+                        selectedCategory === category.id
+                          ? "bg-blue-600 text-white"
+                          : "text-gray-300 hover:bg-gray-700/50 hover:text-white"
+                      }`}
+                    >
+                      <div className="flex-shrink-0">{category.icon}</div>
+                      <span className="text-xs font-medium">
+                        {category.name}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Right Content - Data Source Types */}
+              <div className="flex-1 p-4">
+                <div className="mb-3">
+                  <h3 className="text-sm font-semibold text-white mb-1">
+                    {selectedCategory === "all"
+                      ? "All Data Sources"
+                      : `${
+                          DATA_SOURCE_CATEGORIES.find(
+                            (c) => c.id === selectedCategory
+                          )?.name
+                        } Data Sources`}
+                  </h3>
+                  <p className="text-xs text-gray-400">
+                    Select a data source to connect to your workspace
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {getFilteredDataSources().map((source) => (
+                    <button
+                      key={source.id}
+                      onClick={() => handleDbTypeSelect(source.id)}
+                      className="p-3 bg-gray-700/50 hover:bg-gray-700 border border-gray-600 rounded-lg transition-all duration-200 hover:border-gray-500 group text-left"
+                    >
+                      <div className="flex items-center space-x-2 mb-2">
+                        <div
+                          className={`w-8 h-8 ${source.color} rounded flex items-center justify-center flex-shrink-0`}
+                        >
+                          {source.icon.startsWith("http") ? (
+                            <Image
+                              src={source.icon}
+                              alt={source.name}
+                              width={24}
+                              height={24}
+                              className="w-6 h-6 object-contain filter brightness-0 invert"
+                              onError={(e) => {
+                                // Fallback to a simple icon if image fails to load
+                                e.currentTarget.style.display = "none";
+                                const nextElement = e.currentTarget
+                                  .nextElementSibling as HTMLElement;
+                                if (nextElement) {
+                                  nextElement.style.display = "block";
+                                }
+                              }}
+                            />
+                          ) : (
+                            <span className="text-white font-bold text-sm">
+                              {source.icon}
+                            </span>
+                          )}
+                          {/* Fallback icon for failed image loads */}
+                          <span
+                            className="text-white font-bold text-sm hidden"
+                            style={{ display: "none" }}
+                          >
+                            {source.name.charAt(0)}
+                          </span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h4 className="text-white font-medium text-sm">
+                            {source.name}
+                          </h4>
+                          {source.defaultPort && (
+                            <p className="text-gray-400 text-xs">
+                              Port: {source.defaultPort}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <p className="text-gray-300 text-xs">
+                        {source.description}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+
+                {getFilteredDataSources().length === 0 && (
+                  <div className="text-center py-8">
+                    <div className="w-16 h-16 bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <svg
+                        className="w-8 h-8 text-gray-400"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
                       >
-                        <span className="text-white font-bold text-lg">
-                          {db.icon}
-                        </span>
-                      </div>
-                      <div className="text-left">
-                        <h4 className="text-white font-medium">{db.name}</h4>
-                        <p className="text-gray-400 text-sm">
-                          Port: {db.defaultPort || "N/A"}
-                        </p>
-                      </div>
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M9.172 16.172a4 4 0 015.656 0M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                        />
+                      </svg>
                     </div>
-                    <p className="text-gray-300 text-sm text-left">
-                      {db.description}
+                    <h4 className="text-white font-medium mb-2">
+                      No data sources found
+                    </h4>
+                    <p className="text-gray-400 text-sm">
+                      No data sources available in this category.
                     </p>
-                  </button>
-                ))}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -713,8 +1340,34 @@ export default function DatabaseConnectionModal({
                 <div
                   className={`w-10 h-10 ${selectedDb.color} rounded-lg flex items-center justify-center`}
                 >
-                  <span className="text-white font-bold text-lg">
-                    {selectedDb.icon}
+                  {selectedDb.icon.startsWith("http") ? (
+                    <Image
+                      src={selectedDb.icon}
+                      alt={selectedDb.name}
+                      width={32}
+                      height={32}
+                      className="w-8 h-8 object-contain filter brightness-0 invert"
+                      onError={(e) => {
+                        // Fallback to a simple icon if image fails to load
+                        e.currentTarget.style.display = "none";
+                        const nextElement = e.currentTarget
+                          .nextElementSibling as HTMLElement;
+                        if (nextElement) {
+                          nextElement.style.display = "block";
+                        }
+                      }}
+                    />
+                  ) : (
+                    <span className="text-white font-bold text-lg">
+                      {selectedDb.icon}
+                    </span>
+                  )}
+                  {/* Fallback icon for failed image loads */}
+                  <span
+                    className="text-white font-bold text-lg hidden"
+                    style={{ display: "none" }}
+                  >
+                    {selectedDb.name.charAt(0)}
                   </span>
                 </div>
                 <div>
@@ -722,7 +1375,9 @@ export default function DatabaseConnectionModal({
                     Configure {selectedDb.name}
                   </h3>
                   <p className="text-sm text-gray-400">
-                    Enter your database connection details
+                    {isDatabaseType(selectedDbType)
+                      ? "Enter your database connection details"
+                      : "Enter your connection details"}
                   </p>
                 </div>
               </div>
@@ -739,144 +1394,519 @@ export default function DatabaseConnectionModal({
                       onChange={(e) =>
                         handleConfigChange("name", e.target.value)
                       }
-                      placeholder="e.g., Production DB, Analytics DB"
+                      placeholder={
+                        isDatabaseType(selectedDbType)
+                          ? "e.g., Production DB, Analytics DB"
+                          : "e.g., My Google Sheets, Company Docs"
+                      }
                       className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                   </div>
 
-                  {selectedDbType !== "sqlite" && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">
-                        Host *
-                      </label>
-                      <input
-                        type="text"
-                        value={connectionConfig.host}
-                        onChange={(e) =>
-                          handleConfigChange("host", e.target.value)
-                        }
-                        placeholder="localhost, db.example.com"
-                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
-                  )}
-
-                  {selectedDbType !== "sqlite" &&
-                    selectedDbType !== "bigquery" && (
+                  {/* Database-specific fields */}
+                  {isDatabaseType(selectedDbType) &&
+                    selectedDbType !== "sqlite" && (
                       <div>
                         <label className="block text-sm font-medium text-gray-300 mb-2">
-                          Port *
+                          Host *
                         </label>
                         <input
                           type="text"
-                          value={connectionConfig.port}
+                          value={connectionConfig.host}
                           onChange={(e) =>
-                            handleConfigChange("port", e.target.value)
+                            handleConfigChange("host", e.target.value)
                           }
-                          placeholder={selectedDb.defaultPort}
+                          placeholder="localhost, db.example.com"
                           className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         />
                       </div>
                     )}
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Database Name *
-                    </label>
-                    <input
-                      type="text"
-                      value={connectionConfig.database}
-                      onChange={(e) =>
-                        handleConfigChange("database", e.target.value)
-                      }
-                      placeholder="database_name"
-                      className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-
-                  {selectedDbType !== "sqlite" && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">
-                        Username *
-                      </label>
-                      <input
-                        type="text"
-                        value={connectionConfig.username}
-                        onChange={(e) =>
-                          handleConfigChange("username", e.target.value)
-                        }
-                        placeholder="username"
-                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
+                  {/* Non-database specific fields */}
+                  {!isDatabaseType(selectedDbType) && (
+                    <>
+                      {selectedDbType === "google-sheets" && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-300 mb-2">
+                            Google Sheets URL *
+                          </label>
+                          <input
+                            type="url"
+                            value={connectionConfig.host}
+                            onChange={(e) =>
+                              handleConfigChange("host", e.target.value)
+                            }
+                            placeholder="https://docs.google.com/spreadsheets/d/..."
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        </div>
+                      )}
+                      {selectedDbType === "google-docs" && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-300 mb-2">
+                            Google Docs URL *
+                          </label>
+                          <input
+                            type="url"
+                            value={connectionConfig.host}
+                            onChange={(e) =>
+                              handleConfigChange("host", e.target.value)
+                            }
+                            placeholder="https://docs.google.com/document/d/..."
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        </div>
+                      )}
+                      {selectedDbType === "website-url" && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-300 mb-2">
+                            Website URL *
+                          </label>
+                          <input
+                            type="url"
+                            value={connectionConfig.host}
+                            onChange={(e) =>
+                              handleConfigChange("host", e.target.value)
+                            }
+                            placeholder="https://example.com"
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        </div>
+                      )}
+                      {selectedDbType === "confluence" && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-300 mb-2">
+                            Confluence URL *
+                          </label>
+                          <input
+                            type="url"
+                            value={connectionConfig.host}
+                            onChange={(e) =>
+                              handleConfigChange("host", e.target.value)
+                            }
+                            placeholder="https://yourcompany.atlassian.net/wiki"
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        </div>
+                      )}
+                      {selectedDbType === "notion" && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-300 mb-2">
+                            Notion Workspace URL *
+                          </label>
+                          <input
+                            type="url"
+                            value={connectionConfig.host}
+                            onChange={(e) =>
+                              handleConfigChange("host", e.target.value)
+                            }
+                            placeholder="https://notion.so/yourworkspace"
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        </div>
+                      )}
+                      {selectedDbType === "airtable" && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-300 mb-2">
+                            Airtable Base URL *
+                          </label>
+                          <input
+                            type="url"
+                            value={connectionConfig.host}
+                            onChange={(e) =>
+                              handleConfigChange("host", e.target.value)
+                            }
+                            placeholder="https://airtable.com/appXXXXXXXXXXXXXX"
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        </div>
+                      )}
+                      {selectedDbType === "slack" && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-300 mb-2">
+                            Slack Workspace URL *
+                          </label>
+                          <input
+                            type="url"
+                            value={connectionConfig.host}
+                            onChange={(e) =>
+                              handleConfigChange("host", e.target.value)
+                            }
+                            placeholder="https://yourworkspace.slack.com"
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        </div>
+                      )}
+                      {selectedDbType === "discord" && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-300 mb-2">
+                            Discord Server ID *
+                          </label>
+                          <input
+                            type="text"
+                            value={connectionConfig.host}
+                            onChange={(e) =>
+                              handleConfigChange("host", e.target.value)
+                            }
+                            placeholder="123456789012345678"
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        </div>
+                      )}
+                      {selectedDbType === "github" && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-300 mb-2">
+                            GitHub Repository URL *
+                          </label>
+                          <input
+                            type="url"
+                            value={connectionConfig.host}
+                            onChange={(e) =>
+                              handleConfigChange("host", e.target.value)
+                            }
+                            placeholder="https://github.com/username/repository"
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        </div>
+                      )}
+                      {selectedDbType === "gitlab" && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-300 mb-2">
+                            GitLab Project URL *
+                          </label>
+                          <input
+                            type="url"
+                            value={connectionConfig.host}
+                            onChange={(e) =>
+                              handleConfigChange("host", e.target.value)
+                            }
+                            placeholder="https://gitlab.com/username/project"
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        </div>
+                      )}
+                      {selectedDbType === "jira" && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-300 mb-2">
+                            Jira Instance URL *
+                          </label>
+                          <input
+                            type="url"
+                            value={connectionConfig.host}
+                            onChange={(e) =>
+                              handleConfigChange("host", e.target.value)
+                            }
+                            placeholder="https://yourcompany.atlassian.net"
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        </div>
+                      )}
+                      {selectedDbType === "trello" && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-300 mb-2">
+                            Trello Board URL *
+                          </label>
+                          <input
+                            type="url"
+                            value={connectionConfig.host}
+                            onChange={(e) =>
+                              handleConfigChange("host", e.target.value)
+                            }
+                            placeholder="https://trello.com/b/boardid/boardname"
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        </div>
+                      )}
+                      {selectedDbType === "asana" && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-300 mb-2">
+                            Asana Project URL *
+                          </label>
+                          <input
+                            type="url"
+                            value={connectionConfig.host}
+                            onChange={(e) =>
+                              handleConfigChange("host", e.target.value)
+                            }
+                            placeholder="https://app.asana.com/0/projectid"
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        </div>
+                      )}
+                      {selectedDbType === "sharepoint" && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-300 mb-2">
+                            SharePoint Site URL *
+                          </label>
+                          <input
+                            type="url"
+                            value={connectionConfig.host}
+                            onChange={(e) =>
+                              handleConfigChange("host", e.target.value)
+                            }
+                            placeholder="https://yourcompany.sharepoint.com/sites/sitename"
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        </div>
+                      )}
+                      {selectedDbType === "onedrive" && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-300 mb-2">
+                            OneDrive Folder URL *
+                          </label>
+                          <input
+                            type="url"
+                            value={connectionConfig.host}
+                            onChange={(e) =>
+                              handleConfigChange("host", e.target.value)
+                            }
+                            placeholder="https://yourcompany-my.sharepoint.com/personal/..."
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        </div>
+                      )}
+                      {selectedDbType === "dropbox" && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-300 mb-2">
+                            Dropbox Folder URL *
+                          </label>
+                          <input
+                            type="url"
+                            value={connectionConfig.host}
+                            onChange={(e) =>
+                              handleConfigChange("host", e.target.value)
+                            }
+                            placeholder="https://www.dropbox.com/home/foldername"
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        </div>
+                      )}
+                      {selectedDbType === "rss-feed" && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-300 mb-2">
+                            RSS Feed URL *
+                          </label>
+                          <input
+                            type="url"
+                            value={connectionConfig.host}
+                            onChange={(e) =>
+                              handleConfigChange("host", e.target.value)
+                            }
+                            placeholder="https://example.com/feed.xml"
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        </div>
+                      )}
+                      {selectedDbType === "api-endpoint" && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-300 mb-2">
+                            API Endpoint URL *
+                          </label>
+                          <input
+                            type="url"
+                            value={connectionConfig.host}
+                            onChange={(e) =>
+                              handleConfigChange("host", e.target.value)
+                            }
+                            placeholder="https://api.example.com/v1/endpoint"
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        </div>
+                      )}
+                    </>
                   )}
 
-                  {selectedDbType !== "sqlite" && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">
-                        Password *
-                      </label>
-                      <input
-                        type="password"
-                        value={connectionConfig.password}
-                        onChange={(e) =>
-                          handleConfigChange("password", e.target.value)
-                        }
-                        placeholder="password"
-                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
+                  {/* Database-specific fields - only show for database types */}
+                  {isDatabaseType(selectedDbType) && (
+                    <>
+                      {selectedDbType !== "sqlite" &&
+                        selectedDbType !== "bigquery" && (
+                          <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-2">
+                              Port *
+                            </label>
+                            <input
+                              type="text"
+                              value={connectionConfig.port}
+                              onChange={(e) =>
+                                handleConfigChange("port", e.target.value)
+                              }
+                              placeholder={selectedDb.defaultPort}
+                              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            />
+                          </div>
+                        )}
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">
+                          Database Name *
+                        </label>
+                        <input
+                          type="text"
+                          value={connectionConfig.database}
+                          onChange={(e) =>
+                            handleConfigChange("database", e.target.value)
+                          }
+                          placeholder="database_name"
+                          className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        />
+                      </div>
+
+                      {selectedDbType !== "sqlite" && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-300 mb-2">
+                            Username *
+                          </label>
+                          <input
+                            type="text"
+                            value={connectionConfig.username}
+                            onChange={(e) =>
+                              handleConfigChange("username", e.target.value)
+                            }
+                            placeholder="username"
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        </div>
+                      )}
+
+                      {selectedDbType !== "sqlite" && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-300 mb-2">
+                            Password *
+                          </label>
+                          <input
+                            type="password"
+                            value={connectionConfig.password}
+                            onChange={(e) =>
+                              handleConfigChange("password", e.target.value)
+                            }
+                            placeholder="password"
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
 
-                {selectedDbType === "postgresql" && (
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      id="ssl"
-                      checked={connectionConfig.ssl}
-                      onChange={(e) =>
-                        handleConfigChange("ssl", e.target.checked)
-                      }
-                      className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
-                    />
-                    <label htmlFor="ssl" className="text-sm text-gray-300">
-                      Use SSL connection
-                    </label>
-                  </div>
+                {/* Database-specific configuration options */}
+                {isDatabaseType(selectedDbType) && (
+                  <>
+                    {selectedDbType === "postgresql" && (
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id="ssl"
+                          checked={connectionConfig.ssl}
+                          onChange={(e) =>
+                            handleConfigChange("ssl", e.target.checked)
+                          }
+                          className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
+                        />
+                        <label htmlFor="ssl" className="text-sm text-gray-300">
+                          Use SSL connection
+                        </label>
+                      </div>
+                    )}
+
+                    {selectedDbType === "bigquery" && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">
+                          Connection String *
+                        </label>
+                        <textarea
+                          value={connectionConfig.connectionString || ""}
+                          onChange={(e) =>
+                            handleConfigChange(
+                              "connectionString",
+                              e.target.value
+                            )
+                          }
+                          placeholder="bigquery://project.dataset"
+                          rows={3}
+                          className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        />
+                      </div>
+                    )}
+
+                    {selectedDbType === "sqlite" && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">
+                          Database File Path *
+                        </label>
+                        <input
+                          type="text"
+                          value={connectionConfig.host}
+                          onChange={(e) =>
+                            handleConfigChange("host", e.target.value)
+                          }
+                          placeholder="/path/to/database.db"
+                          className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        />
+                      </div>
+                    )}
+                  </>
                 )}
 
-                {selectedDbType === "bigquery" && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Connection String *
-                    </label>
-                    <textarea
-                      value={connectionConfig.connectionString || ""}
-                      onChange={(e) =>
-                        handleConfigChange("connectionString", e.target.value)
-                      }
-                      placeholder="bigquery://project.dataset"
-                      rows={3}
-                      className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-                )}
-
-                {selectedDbType === "sqlite" && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Database File Path *
-                    </label>
-                    <input
-                      type="text"
-                      value={connectionConfig.host}
-                      onChange={(e) =>
-                        handleConfigChange("host", e.target.value)
-                      }
-                      placeholder="/path/to/database.db"
-                      className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
+                {/* Non-database specific configuration options */}
+                {!isDatabaseType(selectedDbType) && (
+                  <div className="bg-blue-900/20 border border-blue-700 rounded-lg p-4">
+                    <div className="flex items-center space-x-2 mb-2">
+                      <svg
+                        className="w-5 h-5 text-blue-400"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                        />
+                      </svg>
+                      <span className="text-blue-400 font-medium">
+                        Connection Information
+                      </span>
+                    </div>
+                    <p className="text-gray-300 text-sm">
+                      {selectedDbType === "google-sheets" &&
+                        "Make sure the Google Sheets document is publicly accessible or shared with the appropriate permissions."}
+                      {selectedDbType === "google-docs" &&
+                        "Make sure the Google Docs document is publicly accessible or shared with the appropriate permissions."}
+                      {selectedDbType === "notion" &&
+                        "You'll need to create an integration token in Notion and share the workspace with the integration."}
+                      {selectedDbType === "airtable" &&
+                        "You'll need to create a personal access token in Airtable and ensure the base is accessible."}
+                      {selectedDbType === "slack" &&
+                        "You'll need to create a Slack app and obtain the necessary OAuth tokens for your workspace."}
+                      {selectedDbType === "discord" &&
+                        "You'll need to create a Discord bot and obtain the server ID for the channels you want to access."}
+                      {selectedDbType === "github" &&
+                        "You'll need to create a GitHub personal access token with appropriate repository permissions."}
+                      {selectedDbType === "gitlab" &&
+                        "You'll need to create a GitLab personal access token with appropriate project permissions."}
+                      {selectedDbType === "jira" &&
+                        "You'll need to create an API token in Jira and ensure you have access to the projects."}
+                      {selectedDbType === "trello" &&
+                        "You'll need to create a Trello API key and token to access the board data."}
+                      {selectedDbType === "asana" &&
+                        "You'll need to create a personal access token in Asana to access the project data."}
+                      {selectedDbType === "confluence" &&
+                        "You may need to provide authentication credentials or API tokens for private Confluence instances."}
+                      {selectedDbType === "sharepoint" &&
+                        "You'll need to authenticate with Microsoft Graph API to access SharePoint sites and documents."}
+                      {selectedDbType === "onedrive" &&
+                        "You'll need to authenticate with Microsoft Graph API to access OneDrive files and folders."}
+                      {selectedDbType === "dropbox" &&
+                        "You'll need to create a Dropbox app and obtain access tokens to access files and folders."}
+                      {selectedDbType === "website-url" &&
+                        "The website should be publicly accessible. Some websites may require authentication or have rate limits."}
+                      {selectedDbType === "rss-feed" &&
+                        "The RSS feed should be publicly accessible. Most news sites and blogs provide RSS feeds."}
+                      {selectedDbType === "api-endpoint" &&
+                        "The API endpoint should be accessible and may require authentication tokens or API keys."}
+                    </p>
                   </div>
                 )}
               </div>
@@ -1350,6 +2380,32 @@ export default function DatabaseConnectionModal({
               </div>
 
               <div className="space-y-4">
+                {/* Select All Section - Only show if there are tables or views */}
+                {(databaseSchema.tables.length > 0 ||
+                  databaseSchema.views.length > 0) && (
+                  <div className="bg-gray-700/50 border border-gray-600 rounded-lg p-4">
+                    <div className="flex items-center space-x-3">
+                      <input
+                        type="checkbox"
+                        checked={areAllTablesSelected()}
+                        onChange={toggleSelectAllTables}
+                        className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
+                      />
+                      <div>
+                        <h4 className="text-white font-medium">
+                          Select All Tables & Views
+                        </h4>
+                        <p className="text-gray-400 text-sm">
+                          Select or deselect all{" "}
+                          {databaseSchema.total_tables +
+                            databaseSchema.total_views}{" "}
+                          tables and views at once
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Step 6: Tables Section - Display tables with checkboxes for selection */}
                 {databaseSchema.tables.length > 0 && (
                   <div>
@@ -1552,7 +2608,9 @@ export default function DatabaseConnectionModal({
                 disabled={
                   isConnecting ||
                   !connectionConfig.name ||
-                  !connectionConfig.database
+                  (isDatabaseType(selectedDbType) &&
+                    !connectionConfig.database) ||
+                  (!isDatabaseType(selectedDbType) && !connectionConfig.host)
                 }
                 className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg transition-colors flex items-center space-x-2"
               >
@@ -1826,6 +2884,21 @@ export default function DatabaseConnectionModal({
           </div>
         </div>
       </div>
+
+      {/* Progress Modal */}
+      <DatabaseSetupProgressModal
+        isOpen={showProgressModal}
+        onClose={() => setShowProgressModal(false)}
+        connectionName={connectionConfig.name}
+        steps={progressSteps}
+        overallProgress={overallProgress}
+        estimatedTotalTime={estimatedTotalTime}
+        onCancel={() => {
+          setShowProgressModal(false);
+          setIsConnecting(false);
+          setStep("table-selection");
+        }}
+      />
     </div>
   );
 }

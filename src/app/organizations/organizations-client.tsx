@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
-import OrganizationSharing from "@/components/OrganizationSharing";
+import OrganizationSharingWrapper from "@/components/OrganizationSharingWrapper";
 import ErrorBoundary from "@/components/ErrorBoundary";
 
 interface Organization {
@@ -557,7 +557,7 @@ export default function OrganizationsClient({
               </div>
             }
           >
-            <OrganizationSharing
+            <OrganizationSharingWrapper
               organizationId={selectedOrganization.id}
               organizationName={selectedOrganization.name}
               userRole={

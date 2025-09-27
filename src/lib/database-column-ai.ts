@@ -78,7 +78,6 @@ Focus on practical, actionable information that helps users understand and work 
         { role: 'user', content: userPrompt }
       ],
       temperature: 0.3,
-      max_tokens: 800,
       response_format: { type: 'json_object' }
     });
 
@@ -191,7 +190,6 @@ Focus on practical, actionable information that helps users understand and work 
         { role: 'user', content: userPrompt }
       ],
       temperature: 0.3,
-      max_tokens: 1000,
       response_format: { type: 'json_object' }
     });
 

@@ -1,7 +1,6 @@
-import { createServerSupabaseClient } from "@/lib/server-utils";
+import { createServerSupabaseClient, supabaseServer } from "@/lib/server-utils";
 import { redirect } from "next/navigation";
 import OrganizationsClient from "./organizations-client";
-import { SupabaseClient } from "@supabase/supabase-js";
 
 interface Organization {
   id: string;
@@ -23,39 +22,10 @@ interface Organization {
   }>;
 }
 
-interface OrganizationMember {
-  organization_id: string;
-  role: string;
-  created_at: string;
-}
-
-interface OrganizationData {
-  id: string;
-  name: string;
-  description: string | null;
-  industry: string | null;
-  size: string | null;
-  website: string | null;
-  location: string | null;
-  created_at: string;
-  updated_at: string;
-  workspaces: Array<{
-    id: string;
-    name: string;
-    description: string | null;
-    created_at: string;
-    updated_at: string;
-    status: string;
-  }>;
-}
-
-async function getOrganizations(
-  userId: string,
-  supabase: SupabaseClient
-): Promise<Organization[]> {
+async function getOrganizations(userId: string): Promise<Organization[]> {
   try {
     // First, get organization memberships
-    const { data: memberData, error: memberError } = await supabase
+    const { data: memberData, error: memberError } = await supabaseServer
       .from("organization_members")
       .select("organization_id, role, created_at")
       .eq("user_id", userId)
@@ -70,12 +40,10 @@ async function getOrganizations(
       return [];
     }
 
-    const orgIds = memberData.map(
-      (member: OrganizationMember) => member.organization_id
-    );
+    const orgIds = memberData.map((member) => member.organization_id);
 
     // Fetch organizations with workspaces
-    const { data: organizations, error: orgError } = await supabase
+    const { data: organizations, error: orgError } = await supabaseServer
       .from("organizations")
       .select(
         `
@@ -100,22 +68,17 @@ async function getOrganizations(
     }
 
     const roleMap = new Map(
-      memberData.map((member: OrganizationMember) => [
-        member.organization_id,
-        member.role,
-      ])
+      memberData.map((member) => [member.organization_id, member.role])
     );
 
     // Transform the data to include user role and filter workspaces
-    const organizationsWithRoles = (organizations || []).map(
-      (org: OrganizationData) => ({
-        ...org,
-        userRole: roleMap.get(org.id) || "member",
-        workspaces: (org.workspaces || []).filter(
-          (workspace: { status: string }) => workspace.status === "active"
-        ),
-      })
-    );
+    const organizationsWithRoles = (organizations || []).map((org) => ({
+      ...org,
+      userRole: roleMap.get(org.id) || "member",
+      workspaces: (org.workspaces || []).filter(
+        (workspace: { status: string }) => workspace.status === "active"
+      ),
+    }));
 
     return organizationsWithRoles;
   } catch (error) {
@@ -139,7 +102,7 @@ export default async function OrganizationsPage() {
   }
 
   // Fetch organizations data on server side
-  const organizations = await getOrganizations(user.id, supabase);
+  const organizations = await getOrganizations(user.id);
 
   return (
     <OrganizationsClient

@@ -67,11 +67,27 @@ export async function GET() {
       updated_at: conv.updated_at,
       last_message_at: conv.last_message_at,
       agent: {
-        agent_id: conv.ai_agents[0].id,
-        agent_name: conv.ai_agents[0].name,
-        agent_description: conv.ai_agents[0].description,
-        workspace_name: conv.ai_agents[0].workspaces[0].name,
-        organization_name: conv.ai_agents[0].workspaces[0].organizations.name,
+        agent_id: (Array.isArray(conv.ai_agents) ? conv.ai_agents[0] : conv.ai_agents).id,
+        agent_name: (Array.isArray(conv.ai_agents) ? conv.ai_agents[0] : conv.ai_agents).name,
+        agent_description: (Array.isArray(conv.ai_agents) ? conv.ai_agents[0] : conv.ai_agents).description,
+        workspace_name: (() => {
+          const agent = Array.isArray(conv.ai_agents) ? conv.ai_agents[0] : conv.ai_agents;
+          const workspaces = agent?.workspaces;
+          if (Array.isArray(workspaces)) {
+            return workspaces[0]?.name;
+          }
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          return (workspaces as any)?.name;
+        })(),
+        organization_name: (() => {
+          const agent = Array.isArray(conv.ai_agents) ? conv.ai_agents[0] : conv.ai_agents;
+          const workspaces = agent?.workspaces;
+          if (Array.isArray(workspaces)) {
+            return workspaces[0]?.organizations?.name;
+          }
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          return (workspaces as any)?.organizations?.name;
+        })(),
         access_level: 'chat', // Default for existing conversations
         last_conversation_at: conv.last_message_at,
         unread_count: 0 // Will be calculated separately if needed
@@ -201,11 +217,27 @@ export async function POST(request: NextRequest) {
         updated_at: existingConversation.updated_at,
         last_message_at: existingConversation.last_message_at,
         agent: {
-        agent_id: existingConversation.ai_agents[0].id,
-        agent_name: existingConversation.ai_agents[0].name,
-        agent_description: existingConversation.ai_agents[0].description,
-        workspace_name: existingConversation.ai_agents[0].workspaces[0].name,
-        organization_name: existingConversation.ai_agents[0].workspaces[0].organizations.name,
+        agent_id: (Array.isArray(existingConversation.ai_agents) ? existingConversation.ai_agents[0] : existingConversation.ai_agents).id,
+        agent_name: (Array.isArray(existingConversation.ai_agents) ? existingConversation.ai_agents[0] : existingConversation.ai_agents).name,
+        agent_description: (Array.isArray(existingConversation.ai_agents) ? existingConversation.ai_agents[0] : existingConversation.ai_agents).description,
+        workspace_name: (() => {
+          const agent = Array.isArray(existingConversation.ai_agents) ? existingConversation.ai_agents[0] : existingConversation.ai_agents;
+          const workspaces = agent?.workspaces;
+          if (Array.isArray(workspaces)) {
+            return workspaces[0]?.name;
+          }
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          return (workspaces as any)?.name;
+        })(),
+        organization_name: (() => {
+          const agent = Array.isArray(existingConversation.ai_agents) ? existingConversation.ai_agents[0] : existingConversation.ai_agents;
+          const workspaces = agent?.workspaces;
+          if (Array.isArray(workspaces)) {
+            return workspaces[0]?.organizations?.name;
+          }
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          return (workspaces as any)?.organizations?.name;
+        })(),
           access_level: 'read',
           last_conversation_at: existingConversation.last_message_at,
           unread_count: 0
@@ -275,11 +307,27 @@ export async function POST(request: NextRequest) {
       updated_at: newConversation.updated_at,
       last_message_at: newConversation.last_message_at,
       agent: {
-        agent_id: newConversation.ai_agents[0].id,
-        agent_name: newConversation.ai_agents[0].name,
-        agent_description: newConversation.ai_agents[0].description,
-        workspace_name: newConversation.ai_agents[0].workspaces[0].name,
-        organization_name: newConversation.ai_agents[0].workspaces[0].organizations.name,
+        agent_id: (Array.isArray(newConversation.ai_agents) ? newConversation.ai_agents[0] : newConversation.ai_agents).id,
+        agent_name: (Array.isArray(newConversation.ai_agents) ? newConversation.ai_agents[0] : newConversation.ai_agents).name,
+        agent_description: (Array.isArray(newConversation.ai_agents) ? newConversation.ai_agents[0] : newConversation.ai_agents).description,
+        workspace_name: (() => {
+          const agent = Array.isArray(newConversation.ai_agents) ? newConversation.ai_agents[0] : newConversation.ai_agents;
+          const workspaces = agent?.workspaces;
+          if (Array.isArray(workspaces)) {
+            return workspaces[0]?.name;
+          }
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          return (workspaces as any)?.name;
+        })(),
+        organization_name: (() => {
+          const agent = Array.isArray(newConversation.ai_agents) ? newConversation.ai_agents[0] : newConversation.ai_agents;
+          const workspaces = agent?.workspaces;
+          if (Array.isArray(workspaces)) {
+            return workspaces[0]?.organizations?.name;
+          }
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          return (workspaces as any)?.organizations?.name;
+        })(),
         access_level: 'read',
         last_conversation_at: newConversation.last_message_at,
         unread_count: 0

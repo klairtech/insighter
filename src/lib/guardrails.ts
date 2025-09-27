@@ -35,8 +35,11 @@ export function checkContentSafety(content: string): GuardrailResult {
     /personal\s+information|pii|ssn|credit\s+card|password|secret/i,
     /hack|exploit|vulnerability|attack|malware/i,
     /illegal|unlawful|criminal|fraud/i,
-    /discrimination|hate\s+speech|harassment/i,
-    /violence|harm|threat/i
+    /discrimination|hate\s+speech|harassment|racist|sexist|homophobic/i,
+    /violence|harm|threat|kill|murder|suicide/i,
+    /abuse|harass|stalk|bully|intimidate/i,
+    /explicit|pornographic|sexual\s+content|nsfw/i,
+    /spam|scam|phishing|malicious/i
   ]
 
   const riskKeywords = [

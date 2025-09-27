@@ -88,35 +88,30 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Check database summaries
-    const { data: summaries, error: summaryError } = await supabaseServer
-      .from('database_summaries')
-      .select('*')
-      .eq('database_connection_id', connectionId)
-      .order('created_at', { ascending: false })
-
-    if (!summaryError && summaries && summaries.length > 0) {
-      debugInfo.summaries = summaries.map((summary: { id: string; created_at: string; encryption_version: string; summary_encrypted: string }) => {
-        try {
-          const decryptedSummary = decryptObject(summary.summary_encrypted) as { summary?: string; key_points?: string[]; tags?: string[] }
-          return {
-            id: summary.id,
-            created_at: summary.created_at,
-            encryption_version: summary.encryption_version,
-            summary_preview: decryptedSummary.summary?.substring(0, 200) + '...',
-            key_points_count: decryptedSummary.key_points?.length || 0,
-            tags: decryptedSummary.tags || []
-          }
-        } catch (decryptError) {
-          return {
-            id: summary.id,
-            created_at: summary.created_at,
-            error: `Error decrypting summary: ${decryptError}`
-          }
+    // Check database summary from connection
+    if (connection.ai_summary_encrypted) {
+      try {
+        const decryptedSummary = decryptObject(connection.ai_summary_encrypted) as { 
+          summary?: string; 
+          key_points?: string[]; 
+          tags?: string[]; 
+          generated_at?: string;
+          generated_by?: string;
+          tokens_used?: number;
         }
-      })
+        debugInfo.summary = {
+          generated_at: decryptedSummary.generated_at,
+          generated_by: decryptedSummary.generated_by,
+          tokens_used: decryptedSummary.tokens_used,
+          summary_preview: decryptedSummary.summary?.substring(0, 200) + '...',
+          key_points_count: decryptedSummary.key_points?.length || 0,
+          tags: decryptedSummary.tags || []
+        }
+      } catch (decryptError) {
+        debugInfo.summary_error = `Error decrypting summary: ${decryptError}`
+      }
     } else {
-      debugInfo.summaries = []
+      debugInfo.summary = null
     }
 
     return NextResponse.json({

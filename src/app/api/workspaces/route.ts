@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseServer, checkRateLimit } from '@/lib/server-utils'
 import { getRandomAgentAvatar } from '@/lib/agent-avatars'
+import { addOrganizationMembersToWorkspace } from '@/lib/workspace-inheritance'
 
 // Helper function to create agent for new workspace
 async function createWorkspaceAgent(workspaceId: string, userId: string, workspaceName: string) {
@@ -243,7 +244,21 @@ export async function POST(request: NextRequest) {
     // Create agent for the new workspace
     await createWorkspaceAgent(data.id, user.id, body.name)
 
-    return NextResponse.json(data, { 
+    // Automatically add all organization members to the new workspace
+    console.log(`🔄 Adding all organization members to new workspace ${data.id}`);
+    const membersResult = await addOrganizationMembersToWorkspace(data.id, body.organization_id);
+    
+    if (!membersResult.success) {
+      console.error('Error adding organization members to workspace:', membersResult.error);
+      // Don't fail the request, just log the error - workspace is still created
+    } else {
+      console.log(`✅ Added ${membersResult.membersAdded || 0} organization members to workspace`);
+    }
+
+    return NextResponse.json({
+      ...data,
+      membersAdded: membersResult.membersAdded || 0
+    }, { 
       status: 201,
       headers: {
         'Cache-Control': 'no-cache',

@@ -211,8 +211,8 @@ export async function POST(
       return NextResponse.json({ error: 'Workspace not found' }, { status: 404 });
     }
 
-    // Check if user is a member of the organization that owns this workspace (same logic as GET method)
-    const { data: membership, error: membershipError } = await supabase
+    // Check if user has organization-level access
+    const { data: orgMembership } = await supabase
       .from('organization_members')
       .select('role')
       .eq('user_id', user.id)
@@ -220,10 +220,28 @@ export async function POST(
       .eq('status', 'active')
       .single();
 
-    console.log('User membership check:', { membership, membershipError, userId: user.id, organizationId: workspace.organization_id });
+    // Check if user has workspace-specific access
+    const { data: workspaceMembership } = await supabase
+      .from('workspace_members')
+      .select('role')
+      .eq('user_id', user.id)
+      .eq('workspace_id', workspaceId)
+      .eq('status', 'active')
+      .single();
 
-    if (membershipError || !membership) {
-      console.log('User is not a member of this workspace organization');
+    // User has access if they have either organization or workspace-specific access
+    const membership = orgMembership || workspaceMembership;
+    console.log('User membership check:', { 
+      orgMembership, 
+      workspaceMembership, 
+      membership, 
+      userId: user.id, 
+      organizationId: workspace.organization_id,
+      workspaceId 
+    });
+
+    if (!membership) {
+      console.log('User is not a member of this workspace organization or workspace');
       return NextResponse.json({ error: 'Access denied - not a member of this workspace' }, { status: 403 });
     }
 

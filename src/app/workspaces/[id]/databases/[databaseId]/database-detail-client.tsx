@@ -3,10 +3,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
-import { toast, ToastContainer } from "react-toastify";
-import "react-toastify/dist/ReactToastify.css";
 import { DatabaseTable, DatabaseSchema } from "@/types/database-schema";
 import ConfirmationModal from "@/components/ConfirmationModal";
+import NotificationModal from "@/components/NotificationModal";
+import { useNotification } from "@/hooks/useNotification";
 
 interface DatabaseConnection {
   id: string;
@@ -51,6 +51,8 @@ export default function DatabaseDetailClient({
 }: DatabaseDetailClientProps) {
   const router = useRouter();
   const { session } = useSupabaseAuth();
+  const { notification, showSuccess, showError, hideNotification } =
+    useNotification();
   const [databaseSchema, setDatabaseSchema] = useState<DatabaseSchema | null>(
     null
   );
@@ -78,8 +80,6 @@ export default function DatabaseDetailClient({
   const [showTableDeleteConfirm, setShowTableDeleteConfirm] = useState(false);
   const [tableToDelete, setTableToDelete] = useState<string>("");
   const [isDeletingTable, setIsDeletingTable] = useState(false);
-  const [showAddTableModal, setShowAddTableModal] = useState(false);
-  const [newTableName, setNewTableName] = useState<string>("");
 
   // Local state for editing database details
   const [editingDatabaseData, setEditingDatabaseData] =
@@ -240,9 +240,13 @@ export default function DatabaseDetailClient({
       // Database summary is now part of the schema
     } catch (error) {
       console.error("Error fetching database schema:", error);
-      toast.error("Failed to load database schema");
+      showError(
+        "Schema Load Failed",
+        "Failed to load database schema",
+        "Please check your connection and try again."
+      );
     }
-  }, [database?.id, session?.access_token, fetchColumnDetails]);
+  }, [database?.id, session?.access_token, fetchColumnDetails, showError]);
 
   // Check AI status for existing connections
   // AI definitions are now generated during connection setup - no status check needed
@@ -274,18 +278,30 @@ export default function DatabaseDetailClient({
         );
 
         if (response.ok) {
-          toast.success("Column definition updated successfully!");
+          showSuccess(
+            "Column Updated",
+            "Column definition updated successfully!"
+          );
           await fetchDatabaseSchema();
         } else {
           const error = await response.json();
-          toast.error(`Failed to update definition: ${error.error}`);
+          showError(
+            "Update Failed",
+            `Failed to update definition: ${error.error}`
+          );
         }
       } catch (error) {
         console.error("Error updating column definition:", error);
-        toast.error("Failed to update column definition");
+        showError("Update Failed", "Failed to update column definition");
       }
     },
-    [database?.id, session?.access_token, fetchDatabaseSchema]
+    [
+      database?.id,
+      session?.access_token,
+      fetchDatabaseSchema,
+      showError,
+      showSuccess,
+    ]
   );
 
   // Load initial data
@@ -337,6 +353,22 @@ export default function DatabaseDetailClient({
     setExpandedTables(newExpanded);
   };
 
+  // Helper function to safely get column definition
+  const getColumnDefinition = (column: {
+    ai_definition?: string | { description?: string };
+  }) => {
+    if (!column?.ai_definition) return "";
+
+    // Handle both string and object formats
+    if (typeof column.ai_definition === "string") {
+      return column.ai_definition;
+    } else if (column.ai_definition.description) {
+      return column.ai_definition.description;
+    }
+
+    return "";
+  };
+
   const handleEditColumn = (tableName: string, columnName: string) => {
     // Find the current column definition
     let currentDefinition = "";
@@ -345,8 +377,8 @@ export default function DatabaseDetailClient({
     const table = databaseSchema?.tables?.find((t) => t.name === tableName);
     if (table) {
       const column = table.columns?.find((c) => c.name === columnName);
-      if (column?.ai_definition) {
-        currentDefinition = column.ai_definition.description || "";
+      if (column) {
+        currentDefinition = getColumnDefinition(column);
       }
     }
 
@@ -355,8 +387,8 @@ export default function DatabaseDetailClient({
       const view = databaseSchema?.views?.find((v) => v.name === tableName);
       if (view) {
         const column = view.columns?.find((c) => c.name === columnName);
-        if (column?.ai_definition) {
-          currentDefinition = column.ai_definition.description || "";
+        if (column) {
+          currentDefinition = getColumnDefinition(column);
         }
       }
     }
@@ -419,140 +451,6 @@ export default function DatabaseDetailClient({
     }
   };
 
-  const handleAddTable = () => {
-    setNewTableName("");
-    setShowAddTableModal(true);
-  };
-
-  const confirmAddTable = async () => {
-    if (!newTableName.trim()) return;
-
-    if (!session?.access_token || !database?.id) {
-      toast.error("No session or database available");
-      return;
-    }
-
-    try {
-      // Step 1: Add the table to the schema
-      const response = await fetch(
-        `/api/database-connections/${database.id}/tables`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({
-            tableName: newTableName,
-            tableType: "table",
-          }),
-        }
-      );
-
-      if (response.ok) {
-        toast.success(`Table "${newTableName}" added successfully!`);
-
-        // Step 2: Fetch column details with sample data
-        toast.info("Fetching column details and sample data...");
-        try {
-          const columnsResponse = await fetch(
-            `/api/database-connections/${database.id}/fetch-columns`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${session.access_token}`,
-              },
-              body: JSON.stringify({
-                tableNames: [newTableName],
-              }),
-            }
-          );
-
-          const columnsResult = await columnsResponse.json();
-          if (columnsResult.success) {
-            toast.success("Column details fetched successfully!");
-
-            // Step 3: Generate AI definitions for the new table
-            toast.info("Generating AI definitions for the new table...");
-            try {
-              const aiResponse = await fetch(
-                `/api/database-connections/${database.id}/generate-ai-definitions`,
-                {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${session.access_token}`,
-                  },
-                }
-              );
-
-              const aiResult = await aiResponse.json();
-              if (aiResult.success) {
-                toast.success("AI definitions generated successfully!");
-
-                // Step 4: Regenerate database summary
-                toast.info("Updating database summary...");
-                try {
-                  const summaryResponse = await fetch(
-                    `/api/database-connections/${database.id}/generate-summary`,
-                    {
-                      method: "POST",
-                      headers: {
-                        "Content-Type": "application/json",
-                        Authorization: `Bearer ${session.access_token}`,
-                      },
-                      body: JSON.stringify({
-                        schema: databaseSchema,
-                      }),
-                    }
-                  );
-
-                  const summaryResult = await summaryResponse.json();
-                  if (summaryResult.success) {
-                    toast.success("Database summary updated successfully!");
-                  } else {
-                    toast.warning(
-                      "AI definitions generated but summary update failed"
-                    );
-                  }
-                } catch (summaryError) {
-                  console.error("Database summary update error:", summaryError);
-                  toast.warning(
-                    "AI definitions generated but summary update failed"
-                  );
-                }
-              } else {
-                toast.warning(
-                  "Column details fetched but AI definitions generation failed"
-                );
-              }
-            } catch (aiError) {
-              console.error("AI definitions generation error:", aiError);
-              toast.warning(
-                "Column details fetched but AI definitions generation failed"
-              );
-            }
-          } else {
-            toast.warning("Table added but column details fetching failed");
-          }
-        } catch (columnsError) {
-          console.error("Column details fetching error:", columnsError);
-          toast.warning("Table added but column details fetching failed");
-        }
-
-        // Refresh the schema to show the new table
-        await fetchDatabaseSchema();
-      } else {
-        const error = await response.json();
-        toast.error(`Failed to add table: ${error.error}`);
-      }
-    } catch (error) {
-      console.error("Error adding table:", error);
-      toast.error("Failed to add table");
-    }
-  };
-
   const handleEditDatabase = () => {
     setEditingDatabaseData(database);
     setEditingDatabase(true);
@@ -560,7 +458,11 @@ export default function DatabaseDetailClient({
 
   const handleSaveDatabaseEdit = async () => {
     if (!session?.access_token || !database?.id) {
-      toast.error("No session or database available");
+      showError(
+        "Session Error",
+        "No session or database available",
+        "Please refresh the page and try again."
+      );
       return;
     }
 
@@ -582,15 +484,15 @@ export default function DatabaseDetailClient({
       });
 
       if (response.ok) {
-        toast.success("Database updated successfully!");
+        showSuccess("Database Updated", "Database updated successfully!");
         setEditingDatabase(false);
       } else {
         const error = await response.json();
-        toast.error(`Failed to update database: ${error.error}`);
+        showError("Update Failed", `Failed to update database: ${error.error}`);
       }
     } catch (error) {
       console.error("Error updating database:", error);
-      toast.error("Failed to update database");
+      showError("Update Failed", "Failed to update database");
     }
   };
 
@@ -600,7 +502,11 @@ export default function DatabaseDetailClient({
       !database?.id ||
       !databaseSchema?.ai_definition
     ) {
-      toast.error("No session, database, or AI definition available");
+      showError(
+        "Session Error",
+        "No session, database, or AI definition available",
+        "Please refresh the page and try again."
+      );
       return;
     }
 
@@ -629,22 +535,32 @@ export default function DatabaseDetailClient({
       );
 
       if (response.ok) {
-        toast.success("Database AI definition updated successfully!");
+        showSuccess(
+          "AI Definition Updated",
+          "Database AI definition updated successfully!"
+        );
         setEditingDatabaseSummary(false);
         setDatabaseSchema(updatedSchema);
       } else {
         const error = await response.json();
-        toast.error(`Failed to update AI definition: ${error.error}`);
+        showError(
+          "Update Failed",
+          `Failed to update AI definition: ${error.error}`
+        );
       }
     } catch (error) {
       console.error("Error updating database AI definition:", error);
-      toast.error("Failed to update database AI definition");
+      showError("Update Failed", "Failed to update database AI definition");
     }
   };
 
   const handleSaveColumnDefinition = async () => {
     if (!editingColumn || !session?.access_token || !database?.id) {
-      toast.error("No session or database available");
+      showError(
+        "Session Error",
+        "No session or database available",
+        "Please refresh the page and try again."
+      );
       return;
     }
 
@@ -666,18 +582,24 @@ export default function DatabaseDetailClient({
       );
 
       if (response.ok) {
-        toast.success("Column definition updated successfully!");
+        showSuccess(
+          "Column Updated",
+          "Column definition updated successfully!"
+        );
         setEditingColumn(null);
         setEditingColumnDefinition("");
         // Refresh the schema
         await fetchDatabaseSchema();
       } else {
         const error = await response.json();
-        toast.error(`Failed to update column definition: ${error.error}`);
+        showError(
+          "Update Failed",
+          `Failed to update column definition: ${error.error}`
+        );
       }
     } catch (error) {
       console.error("Error updating column definition:", error);
-      toast.error("Failed to update column definition");
+      showError("Update Failed", "Failed to update column definition");
     }
   };
 
@@ -734,17 +656,20 @@ export default function DatabaseDetailClient({
 
   return (
     <div className="min-h-screen bg-gray-900">
-      <ToastContainer
-        position="top-right"
-        autoClose={5000}
-        hideProgressBar={false}
-        newestOnTop={false}
-        closeOnClick
-        rtl={false}
-        pauseOnFocusLoss
-        draggable
-        pauseOnHover
-        theme="dark"
+      {/* Notification Modal */}
+      <NotificationModal
+        isOpen={notification.isOpen}
+        onClose={hideNotification}
+        type={notification.type}
+        title={notification.title}
+        message={notification.message}
+        details={notification.details}
+        onConfirm={notification.onConfirm}
+        confirmText={notification.confirmText}
+        showCancel={notification.showCancel}
+        cancelText={notification.cancelText}
+        autoClose={notification.autoClose}
+        autoCloseDelay={notification.autoCloseDelay}
       />
 
       {/* Header */}
@@ -1074,12 +999,6 @@ export default function DatabaseDetailClient({
                       Fetch Column Details
                     </button>
                   )}
-                <button
-                  onClick={handleAddTable}
-                  className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-sm rounded-lg transition-colors"
-                >
-                  + Add Table
-                </button>
               </div>
             </div>
 
@@ -1305,10 +1224,9 @@ export default function DatabaseDetailClient({
                                         column.name ? (
                                         <div className="space-y-2">
                                           <textarea
-                                            defaultValue={
-                                              column.ai_definition
-                                                ?.description || ""
-                                            }
+                                            defaultValue={getColumnDefinition(
+                                              column
+                                            )}
                                             className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white text-sm"
                                             rows={2}
                                             placeholder="Enter column description..."
@@ -1343,34 +1261,61 @@ export default function DatabaseDetailClient({
                                           {column.ai_definition ? (
                                             <div className="space-y-1">
                                               <p className="text-gray-200 text-sm">
-                                                {
-                                                  column.ai_definition
-                                                    .description
-                                                }
+                                                {getColumnDefinition(column)}
                                               </p>
-                                              <p className="text-gray-300 text-xs">
-                                                <span className="font-medium">
-                                                  Purpose:
-                                                </span>{" "}
-                                                {
-                                                  column.ai_definition
-                                                    .business_purpose
-                                                }
-                                              </p>
-                                              {column.ai_definition
-                                                .data_insights &&
+                                              {typeof column.ai_definition ===
+                                                "object" &&
                                                 column.ai_definition
-                                                  .data_insights.length > 0 && (
+                                                  .business_purpose && (
+                                                  <p className="text-gray-300 text-xs">
+                                                    <span className="font-medium">
+                                                      Purpose:
+                                                    </span>{" "}
+                                                    {
+                                                      column.ai_definition
+                                                        .business_purpose
+                                                    }
+                                                  </p>
+                                                )}
+                                              {typeof column.ai_definition ===
+                                                "object" &&
+                                                column.ai_definition
+                                                  .data_insights &&
+                                                ((Array.isArray(
+                                                  column.ai_definition
+                                                    .data_insights
+                                                ) &&
+                                                  column.ai_definition
+                                                    .data_insights.length >
+                                                    0) ||
+                                                  (!Array.isArray(
+                                                    column.ai_definition
+                                                      .data_insights
+                                                  ) &&
+                                                    column.ai_definition
+                                                      .data_insights)) && (
                                                   <div className="text-xs text-gray-300">
                                                     <span className="font-medium">
                                                       Insights:
                                                     </span>{" "}
-                                                    {column.ai_definition.data_insights
-                                                      .slice(0, 2)
-                                                      .join(", ")}
-                                                    {column.ai_definition
-                                                      .data_insights.length >
-                                                      2 && "..."}
+                                                    {Array.isArray(
+                                                      column.ai_definition
+                                                        .data_insights
+                                                    )
+                                                      ? column.ai_definition.data_insights
+                                                          .slice(0, 2)
+                                                          .join(", ")
+                                                      : column.ai_definition
+                                                          .data_insights ||
+                                                        "No insights available"}
+                                                    {Array.isArray(
+                                                      column.ai_definition
+                                                        .data_insights
+                                                    ) &&
+                                                      column.ai_definition
+                                                        .data_insights.length >
+                                                        2 &&
+                                                      "..."}
                                                   </div>
                                                 )}
                                             </div>
@@ -1623,17 +1568,22 @@ export default function DatabaseDetailClient({
                                       {column.ai_definition ? (
                                         <div className="max-w-xs space-y-1">
                                           <p className="text-sm text-gray-300 line-clamp-2">
-                                            {column.ai_definition.description}
+                                            {getColumnDefinition(column)}
                                           </p>
-                                          <p className="text-xs text-gray-400">
-                                            <span className="font-medium">
-                                              Purpose:
-                                            </span>{" "}
-                                            {
-                                              column.ai_definition
-                                                .business_purpose
-                                            }
-                                          </p>
+                                          {typeof column.ai_definition ===
+                                            "object" &&
+                                            column.ai_definition
+                                              .business_purpose && (
+                                              <p className="text-xs text-gray-400">
+                                                <span className="font-medium">
+                                                  Purpose:
+                                                </span>{" "}
+                                                {
+                                                  column.ai_definition
+                                                    .business_purpose
+                                                }
+                                              </p>
+                                            )}
                                         </div>
                                       ) : (
                                         <span className="text-gray-500 text-xs">
@@ -1695,7 +1645,8 @@ export default function DatabaseDetailClient({
                   </svg>
                   <p className="text-sm">No tables found</p>
                   <p className="text-xs text-gray-500 mt-1">
-                    Add tables to see their structure and descriptions
+                    Tables will appear here once your database connection is
+                    established
                   </p>
                 </div>
               </div>
@@ -1936,54 +1887,6 @@ export default function DatabaseDetailClient({
         type="danger"
         isLoading={isDeletingTable}
       />
-
-      {/* Add Table Modal */}
-      {showAddTableModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-800 rounded-xl shadow-2xl w-full max-w-md border border-gray-700">
-            <div className="px-6 py-4 border-b border-gray-700">
-              <h3 className="text-lg font-semibold text-white">
-                Add New Table
-              </h3>
-            </div>
-            <div className="px-6 py-4">
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Table Name
-              </label>
-              <input
-                type="text"
-                value={newTableName}
-                onChange={(e) => setNewTableName(e.target.value)}
-                placeholder="Enter table name"
-                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                autoFocus
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && newTableName.trim()) {
-                    confirmAddTable();
-                  } else if (e.key === "Escape") {
-                    setShowAddTableModal(false);
-                  }
-                }}
-              />
-            </div>
-            <div className="px-6 py-4 border-t border-gray-700 flex items-center justify-end space-x-3">
-              <button
-                onClick={() => setShowAddTableModal(false)}
-                className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmAddTable}
-                disabled={!newTableName.trim()}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
-              >
-                Add Table
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

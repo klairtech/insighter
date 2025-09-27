@@ -34,9 +34,9 @@ async function checkWorkspaceAccess(userId: string, workspaceId: string) {
     if (workspaceError || !workspace) {
       // Check if the error is because workspace doesn't exist (PGRST116) or other reasons
       if (workspaceError?.code === 'PGRST116') {
-        return { hasAccess: false, role: null, workspaceExists: false }
+        return { hasAccess: false, role: null, workspaceExists: false, roleSource: null }
       }
-      return { hasAccess: false, role: null, workspaceExists: true }
+      return { hasAccess: false, role: null, workspaceExists: true, roleSource: null }
     }
 
     // Check if user has organization-level access
@@ -57,16 +57,29 @@ async function checkWorkspaceAccess(userId: string, workspaceId: string) {
       .eq('status', 'active')
       .single()
 
-    // User has access if they have either organization or workspace-specific access
-    const membership = orgMembership || workspaceMembership
-    if (!membership) {
-      return { hasAccess: false, role: null, workspaceExists: true }
+    // Prioritize organization-level access over workspace-specific access
+    if (orgMembership) {
+      return { 
+        hasAccess: true, 
+        role: orgMembership.role, 
+        workspaceExists: true, 
+        roleSource: 'organization' 
+      }
     }
 
-    return { hasAccess: true, role: membership.role, workspaceExists: true }
+    if (workspaceMembership) {
+      return { 
+        hasAccess: true, 
+        role: workspaceMembership.role, 
+        workspaceExists: true, 
+        roleSource: 'workspace' 
+      }
+    }
+
+    return { hasAccess: false, role: null, workspaceExists: true, roleSource: null }
   } catch (err) {
     console.error('Error checking workspace access:', err)
-    return { hasAccess: false, role: null, workspaceExists: true }
+    return { hasAccess: false, role: null, workspaceExists: true, roleSource: null }
   }
 }
 
@@ -264,7 +277,8 @@ export async function DELETE(
     const { id: workspaceId } = await params
 
     // Check if user has access and appropriate role
-    const { hasAccess, role, workspaceExists } = await checkWorkspaceAccess(user.id, workspaceId)
+    const { hasAccess, role, workspaceExists, roleSource } = await checkWorkspaceAccess(user.id, workspaceId)
+    
     if (!hasAccess) {
       if (!workspaceExists) {
         return NextResponse.json(
@@ -278,10 +292,19 @@ export async function DELETE(
       )
     }
 
-    // Only admins and owners can delete workspaces
-    if (role !== 'admin' && role !== 'owner') {
+    // Check if user can delete workspace based on role hierarchy
+    let canDelete = false
+    if (roleSource === 'organization') {
+      // Organization-level access: only owners can delete workspaces
+      canDelete = role === 'owner'
+    } else if (roleSource === 'workspace') {
+      // Workspace-level access: only admins can delete workspaces (workspace_members table doesn't have 'owner' role)
+      canDelete = role === 'admin'
+    }
+
+    if (!canDelete) {
       return NextResponse.json(
-        { error: 'Only workspace admins and organization owners can delete workspaces' },
+        { error: 'Only organization owners and workspace admins can delete workspaces' },
         { status: 403 }
       )
     }
@@ -308,11 +331,13 @@ export async function DELETE(
     console.log(`🗑️ Soft deleting workspace "${workspaceId}" by user: ${user.email} (${user.id})`)
 
     // First, get workspace name for logging
-    await supabaseServer
+    const { data: workspaceData } = await supabaseServer
       .from('workspaces')
       .select('name')
       .eq('id', workspaceId)
       .single()
+    
+    console.log(`🗑️ Workspace name: ${workspaceData?.name || 'Unknown'}`)
 
     // Soft delete workspace (set status to inactive)
     const { error: updateError } = await supabaseServer

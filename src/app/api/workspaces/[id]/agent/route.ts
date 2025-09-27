@@ -34,15 +34,27 @@ async function checkWorkspaceAccess(userId: string, workspaceId: string) {
       return { hasAccess: false, role: null, workspaceExists: false }
     }
 
-    // Check if user is a member of the organization
-    const { data: membership, error: membershipError } = await supabaseServer
+    // Check if user has organization-level access
+    const { data: orgMembership } = await supabaseServer
       .from('organization_members')
       .select('role')
       .eq('user_id', userId)
       .eq('organization_id', workspace.organization_id)
+      .eq('status', 'active')
       .single()
 
-    if (membershipError || !membership) {
+    // Check if user has workspace-specific access
+    const { data: workspaceMembership } = await supabaseServer
+      .from('workspace_members')
+      .select('role')
+      .eq('user_id', userId)
+      .eq('workspace_id', workspaceId)
+      .eq('status', 'active')
+      .single()
+
+    // User has access if they have either organization or workspace-specific access
+    const membership = orgMembership || workspaceMembership
+    if (!membership) {
       return { hasAccess: false, role: null, workspaceExists: true }
     }
 

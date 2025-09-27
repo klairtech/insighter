@@ -45,9 +45,10 @@ const nextConfig = {
   },
 
   // Webpack configuration for bundle optimization
-  webpack: (config, { buildId, dev, isServer, defaultLoaders, webpack }) => {
+  webpack: (config, { isServer }) => {
     // Bundle Analyzer (when ANALYZE env var is set)
     if (process.env.ANALYZE === "true" && !isServer) {
+      // eslint-disable-next-line
       const { BundleAnalyzerPlugin } = require("webpack-bundle-analyzer");
       config.plugins.push(
         new BundleAnalyzerPlugin({
@@ -145,7 +146,7 @@ const nextConfig = {
           },
           {
             key: "Cache-Control",
-            value: "public, max-age=300, s-maxage=300",
+            value: "no-cache, no-store, must-revalidate",
           },
         ],
       },

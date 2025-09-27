@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, verifyUserSession } from '@/lib/server-utils';
+import { addOrganizationMemberToWorkspaces } from '@/lib/workspace-inheritance';
 
 export async function POST(request: NextRequest) {
   try {
@@ -104,10 +105,26 @@ export async function POST(request: NextRequest) {
       // Don't fail the request, just log the error
     }
 
+    // Automatically add user to all existing workspaces in the organization
+    console.log(`🔄 Adding user to all workspaces in organization ${invitation.organization_id}`);
+    const workspaceResult = await addOrganizationMemberToWorkspaces(
+      invitation.organization_id,
+      decoded.userId,
+      invitation.role
+    );
+
+    if (!workspaceResult.success) {
+      console.error('Error adding user to workspaces:', workspaceResult.error);
+      // Don't fail the request, just log the error - user is still added to organization
+    } else {
+      console.log(`✅ User added to ${workspaceResult.workspacesAdded || 0} workspaces`);
+    }
+
     return NextResponse.json({
       message: 'Successfully joined organization',
       organization: invitation.organizations,
-      membership: membership
+      membership: membership,
+      workspacesAdded: workspaceResult.workspacesAdded || 0
     }, { status: 200 });
 
   } catch (error) {

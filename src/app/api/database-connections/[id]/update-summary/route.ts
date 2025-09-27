@@ -54,52 +54,29 @@ export async function POST(
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
-    // Check if summary already exists
-    const { data: existingSummary } = await supabaseServer
-      .from('database_summaries')
-      .select('id')
-      .eq('database_connection_id', connectionId)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single()
-
+    // Create summary data
     const summaryData = {
       summary: summary,
       key_points: [], // Keep existing key points
-      tags: [] // Keep existing tags
+      tags: [], // Keep existing tags
+      updated_at: new Date().toISOString(),
+      updated_by: session.userId
     }
 
     const encryptedSummary = encryptObject(summaryData)
 
-    if (existingSummary) {
-      // Update existing summary
-      const { error: updateError } = await supabaseServer
-        .from('database_summaries')
-        .update({
-          summary_encrypted: encryptedSummary,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', existingSummary.id)
+    // Update the database connection with the new summary
+    const { error: updateError } = await supabaseServer
+      .from('database_connections')
+      .update({
+        ai_summary_encrypted: encryptedSummary,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', connectionId)
 
-      if (updateError) {
-        console.error('Error updating database summary:', updateError)
-        return NextResponse.json({ error: 'Failed to update database summary' }, { status: 500 })
-      }
-    } else {
-      // Create new summary
-      const { error: insertError } = await supabaseServer
-        .from('database_summaries')
-        .insert({
-          database_connection_id: connectionId,
-          summary_encrypted: encryptedSummary,
-          created_by: session.userId,
-          encryption_version: 'v1'
-        })
-
-      if (insertError) {
-        console.error('Error creating database summary:', insertError)
-        return NextResponse.json({ error: 'Failed to create database summary' }, { status: 500 })
-      }
+    if (updateError) {
+      console.error('Error updating database summary:', updateError)
+      return NextResponse.json({ error: 'Failed to update database summary' }, { status: 500 })
     }
 
     return NextResponse.json({

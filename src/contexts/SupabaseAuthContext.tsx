@@ -14,6 +14,7 @@ let supabaseClient: ReturnType<typeof createBrowserClient> | null = null;
 
 const getSupabaseClient = () => {
   if (!supabaseClient) {
+    // Create browser client with Supabase's built-in cookie handling
     supabaseClient = createBrowserClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -122,11 +123,6 @@ export function SupabaseAuthProvider({
         if (error) {
           console.error("Error getting session:", error);
         } else {
-          // console.log("SupabaseAuthContext - Initial session:", {
-          //   hasSession: !!session,
-          //   hasUser: !!session?.user,
-          //   userEmail: session?.user?.email,
-          // });
           setSession(session);
           setUser(session?.user ?? null);
 
@@ -148,8 +144,6 @@ export function SupabaseAuthProvider({
       data: { subscription },
     } = supabase.auth.onAuthStateChange(
       async (event: AuthChangeEvent, session: Session | null) => {
-        // console.log("Auth state changed:", event, session?.user?.email);
-
         // Don't restore session if we're in the middle of signing out or if user manually signed out
         if (isSigningOut && event === "SIGNED_OUT") {
           // console.log("Ignoring SIGNED_OUT event during manual signout");

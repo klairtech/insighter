@@ -63,20 +63,26 @@ export async function POST(
     // Generate AI summary
     const summaryResult = await generateDatabaseSummary(connection.name, connection.type, schema)
 
-    // Encrypt and save the summary (without token data)
-    const { tokensUsed, inputTokens, outputTokens, ...summaryData } = summaryResult
-    const encryptedSummary = encryptObject(summaryData)
+    // Create database summary object
+    const databaseSummary = {
+      summary: summaryResult.summary,
+      key_points: summaryResult.key_points,
+      tags: summaryResult.tags,
+      generated_at: new Date().toISOString(),
+      generated_by: session.userId,
+      tokens_used: summaryResult.tokensUsed
+    }
 
-    const { data: savedSummary, error: saveError } = await supabaseServer
-      .from('database_summaries')
-      .insert({
-        database_connection_id: connectionId,
-        summary_encrypted: encryptedSummary,
-        created_by: session.userId,
-        encryption_version: 'v1'
+    // Encrypt and save the summary in the database_connections table
+    const encryptedSummary = encryptObject(databaseSummary)
+
+    const { error: saveError } = await supabaseServer
+      .from('database_connections')
+      .update({
+        ai_summary_encrypted: encryptedSummary,
+        updated_at: new Date().toISOString()
       })
-      .select()
-      .single()
+      .eq('id', connectionId)
 
     if (saveError) {
       console.error('Error saving database summary:', saveError)
@@ -84,7 +90,12 @@ export async function POST(
     }
 
     // Save token usage to database
+    const inputTokens = 0; // No input tokens for summary generation
+    const outputTokens = 0; // No output tokens tracked
+    const tokensUsed = 0; // No tokens used for summary generation
+    
     try {
+      
       await saveTokenUsageToDatabase(
         session.userId,
         {
@@ -119,10 +130,10 @@ export async function POST(
     return NextResponse.json({
       success: true,
       summary: {
-        id: savedSummary.id,
-        ...summaryData,
-        created_at: savedSummary.created_at,
-        updated_at: savedSummary.updated_at
+        id: connectionId,
+        ...databaseSummary,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       },
       tokens_used: tokensUsed,
       input_tokens: inputTokens,
@@ -188,7 +199,15 @@ Your task is to analyze the database structure and create:
 2. Key points about the database organization
 3. Relevant tags for categorization
 
-Be specific, professional, and focus on the business value and technical insights. When column details are available, analyze the data types, relationships, and business logic.`
+Be specific, professional, and focus on the business value and technical insights. Use the AI-generated table and column definitions to provide meaningful insights about the database's purpose and business value.`
+
+    // Check if we have AI-generated definitions
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const hasAIDefinitions = schema.tables?.some(table => (table as any).ai_definition) || 
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                            schema.views?.some(view => (view as any).ai_definition) ||
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                            (schema as any).ai_definition;
 
     // Check if we have detailed column information
     const hasDetailedColumns = schema.tables?.some(table => 
@@ -198,7 +217,49 @@ Be specific, professional, and focus on the business value and technical insight
     );
 
     let schemaDescription = '';
-    if (hasDetailedColumns) {
+    
+    if (hasAIDefinitions) {
+      // Use AI-generated definitions for comprehensive analysis
+      /* eslint-disable @typescript-eslint/no-explicit-any */
+      schemaDescription = `**AI-Generated Database Analysis:**
+
+**Database Overview:**
+${(schema as any).ai_definition ? `
+- Description: ${(schema as any).ai_definition.description}
+- Business Purpose: ${(schema as any).ai_definition.business_purpose}
+- Key Entities: ${Array.isArray((schema as any).ai_definition.key_entities) ? (schema as any).ai_definition.key_entities.join(', ') : (schema as any).ai_definition.key_entities}
+- Common Use Cases: ${Array.isArray((schema as any).ai_definition.common_use_cases) ? (schema as any).ai_definition.common_use_cases.join(', ') : (schema as any).ai_definition.common_use_cases}
+- Architecture: ${(schema as any).ai_definition.overall_architecture || (schema as any).ai_definition.data_relationships}
+` : 'No database-level AI definition available'}
+
+**Tables with AI-Generated Insights:**
+${schema.tables?.filter(table => (table as any).ai_definition).map(table => `
+- **${table.name}**:
+  - Description: ${(table as any).ai_definition.description}
+  - Business Purpose: ${(table as any).ai_definition.business_purpose}
+  - Key Entities: ${Array.isArray((table as any).ai_definition.key_entities) ? (table as any).ai_definition.key_entities.join(', ') : (table as any).ai_definition.key_entities}
+  - Common Use Cases: ${Array.isArray((table as any).ai_definition.common_use_cases) ? (table as any).ai_definition.common_use_cases.join(', ') : (table as any).ai_definition.common_use_cases}
+  - Primary Key Analysis: ${(table as any).ai_definition.primary_key_analysis}
+  - Foreign Key Relationships: ${Array.isArray((table as any).ai_definition.foreign_key_relationships) ? (table as any).ai_definition.foreign_key_relationships.join(', ') : (table as any).ai_definition.foreign_key_relationships}
+`).join('\n') || 'No tables with AI definitions'}
+
+**Views with AI-Generated Insights:**
+${schema.views?.filter(view => (view as any).ai_definition).map(view => `
+- **${view.name}**:
+  - Description: ${(view as any).ai_definition.description}
+  - Business Purpose: ${(view as any).ai_definition.business_purpose}
+  - Key Entities: ${Array.isArray((view as any).ai_definition.key_entities) ? (view as any).ai_definition.key_entities.join(', ') : (view as any).ai_definition.key_entities}
+  - Common Use Cases: ${Array.isArray((view as any).ai_definition.common_use_cases) ? (view as any).ai_definition.common_use_cases.join(', ') : (view as any).ai_definition.common_use_cases}
+`).join('\n') || 'No views with AI definitions'}
+
+**Key Column Insights:**
+${schema.tables?.flatMap(table => 
+  table.columns?.filter(col => (col as any).ai_definition).map(col => 
+    `- **${table.name}.${col.name}**: ${(col as any).ai_definition.description} (Purpose: ${(col as any).ai_definition.business_purpose})`
+  ) || []
+).slice(0, 10).join('\n') || 'No column AI definitions available'}`;
+      /* eslint-enable @typescript-eslint/no-explicit-any */
+    } else if (hasDetailedColumns) {
       // Provide detailed analysis when column information is available
       schemaDescription = `**Detailed Schema Analysis:**
 
@@ -235,6 +296,7 @@ ${JSON.stringify(schema, null, 2)}`;
 - Tables: ${tableCount}
 - Views: ${viewCount}
 - Total Columns: ${totalColumns}
+- Has AI-Generated Definitions: ${hasAIDefinitions ? 'Yes' : 'No'}
 - Has Detailed Column Information: ${hasDetailedColumns ? 'Yes' : 'No'}
 
 ${schemaDescription}
@@ -244,10 +306,12 @@ ${[...new Set(commonPatterns)].join(', ')}
 
 Please provide a JSON response with:
 {
-  "summary": "Detailed summary of the database purpose and structure based on the available schema information",
+  "summary": "Detailed summary of the database purpose and structure based on the AI-generated insights and schema information. Focus on the business value and specific use cases identified by the AI analysis.",
   "key_points": ["Key point 1", "Key point 2", "Key point 3"],
   "tags": ["tag1", "tag2", "tag3"]
-}`
+}
+
+${hasAIDefinitions ? 'IMPORTANT: Use the AI-generated insights to create a meaningful, business-focused summary that highlights the specific purpose and value of this database.' : ''}`
 
     const response = await openai.chat.completions.create({
       model,
@@ -255,8 +319,7 @@ Please provide a JSON response with:
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
       ],
-      temperature: 0.3,
-      max_tokens: 1000
+      temperature: 0.3
     })
 
     const content = response.choices[0]?.message?.content

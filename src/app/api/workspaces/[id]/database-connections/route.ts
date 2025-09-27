@@ -24,15 +24,27 @@ export async function GET(
       return NextResponse.json({ error: 'Workspace not found' }, { status: 404 })
     }
 
-    // Check organization membership
-    const { data: membership, error: membershipError } = await supabaseServer
+    // Check if user has organization-level access
+    const { data: orgMembership } = await supabaseServer
       .from('organization_members')
-      .select('id')
-      .eq('organization_id', workspace.organization_id)
+      .select('role')
       .eq('user_id', session.userId)
+      .eq('organization_id', workspace.organization_id)
+      .eq('status', 'active')
       .single()
 
-    if (membershipError || !membership) {
+    // Check if user has workspace-specific access
+    const { data: workspaceMembership } = await supabaseServer
+      .from('workspace_members')
+      .select('role')
+      .eq('user_id', session.userId)
+      .eq('workspace_id', workspaceId)
+      .eq('status', 'active')
+      .single()
+
+    // User has access if they have either organization or workspace-specific access
+    const membership = orgMembership || workspaceMembership
+    if (!membership) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
@@ -56,7 +68,14 @@ export async function GET(
       console.log('📋 Connections:', connections.map(c => ({ id: c.id, name: c.name, type: c.type })))
     }
     
-    return NextResponse.json(connections || [])
+    const response = NextResponse.json(connections || [])
+    
+    // Ensure no caching for real-time data
+    response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate')
+    response.headers.set('Pragma', 'no-cache')
+    response.headers.set('Expires', '0')
+    
+    return response
 
   } catch (error) {
     console.error('Get database connections error:', error)
@@ -93,15 +112,27 @@ export async function POST(
       return NextResponse.json({ error: 'Workspace not found' }, { status: 404 })
     }
 
-    // Check organization membership
-    const { data: membership, error: membershipError } = await supabaseServer
+    // Check if user has organization-level access
+    const { data: orgMembership } = await supabaseServer
       .from('organization_members')
-      .select('id')
-      .eq('organization_id', workspace.organization_id)
+      .select('role')
       .eq('user_id', session.userId)
+      .eq('organization_id', workspace.organization_id)
+      .eq('status', 'active')
       .single()
 
-    if (membershipError || !membership) {
+    // Check if user has workspace-specific access
+    const { data: workspaceMembership } = await supabaseServer
+      .from('workspace_members')
+      .select('role')
+      .eq('user_id', session.userId)
+      .eq('workspace_id', workspaceId)
+      .eq('status', 'active')
+      .single()
+
+    // User has access if they have either organization or workspace-specific access
+    const membership = orgMembership || workspaceMembership
+    if (!membership) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
@@ -129,10 +160,17 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to create database connection' }, { status: 500 })
     }
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       ...connection,
       message: 'Database connection created successfully'
     }, { status: 201 })
+    
+    // Ensure no caching for real-time data
+    response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate')
+    response.headers.set('Pragma', 'no-cache')
+    response.headers.set('Expires', '0')
+    
+    return response
 
   } catch (error) {
     console.error('Create database connection error:', error)

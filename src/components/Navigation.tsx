@@ -337,14 +337,14 @@ const Navigation: React.FC = () => {
                 </div>
 
                 <Link
-                  href="/canvas"
+                  href="/pricing"
                   className={`px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 ${
-                    isActive("/canvas")
+                    isActive("/pricing")
                       ? "text-blue-400 bg-blue-500/10"
                       : "text-gray-300 hover:text-white hover:bg-white/10"
                   }`}
                 >
-                  Canvas
+                  Pricing
                 </Link>
 
                 <Link
@@ -548,15 +548,15 @@ const Navigation: React.FC = () => {
                     Organizations
                   </Link>
                   <Link
-                    href="/canvas"
+                    href="/pricing"
                     className={`block px-3 py-2 rounded-md text-base font-medium ${
-                      isActive("/canvas")
+                      isActive("/pricing")
                         ? "text-blue-400 bg-blue-500/10"
                         : "text-gray-300 hover:text-white hover:bg-white/10"
                     }`}
                     onClick={() => setIsMenuOpen(false)}
                   >
-                    Canvas
+                    Pricing
                   </Link>
                   <Link
                     href="/chat"

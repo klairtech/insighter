@@ -13,6 +13,7 @@ export interface AIGenerationResult<T> {
 }
 
 export interface ColumnAIDefinition {
+  name: string;
   description: string;
   business_purpose: string;
   data_insights: string[];
@@ -106,7 +107,7 @@ Focus on practical, actionable information that helps users understand and work 
         { role: 'user', content: userPrompt }
       ],
       temperature: 0.3,
-      max_tokens: 800,
+      max_tokens: 5000,
       response_format: { type: 'json_object' }
     });
 
@@ -119,6 +120,7 @@ Focus on practical, actionable information that helps users understand and work 
     
     return {
       result: {
+        name: column.name,
         description: parsed.description || `Column ${column.name} of type ${column.type}`,
         business_purpose: parsed.business_purpose || 'Data storage and retrieval',
         data_insights: parsed.data_insights || [],
@@ -138,6 +140,7 @@ Focus on practical, actionable information that helps users understand and work 
     // Fallback definition
     return {
       result: {
+        name: column.name,
         description: `${column.name} is a ${column.type} column${column.is_primary_key ? ' that serves as the primary key' : ''}${column.is_foreign_key ? ` that references ${column.foreign_table}.${column.foreign_column}` : ''}`,
         business_purpose: 'Data storage and retrieval',
         data_insights: ['Contains structured data for analysis'],
@@ -222,7 +225,7 @@ Focus on practical, actionable information that helps users understand and work 
         { role: 'user', content: userPrompt }
       ],
       temperature: 0.3,
-      max_tokens: 1000,
+      max_tokens: 5000,
       response_format: { type: 'json_object' }
     });
 
@@ -339,7 +342,7 @@ Focus on practical, actionable information that helps users understand and work 
         { role: 'user', content: userPrompt }
       ],
       temperature: 0.3,
-      max_tokens: 1200,
+      max_tokens: 5000,
       response_format: { type: 'json_object' }
     });
 
@@ -389,10 +392,330 @@ Focus on practical, actionable information that helps users understand and work 
 }
 
 /**
+ * OPTIMIZED: Generate AI definitions for all columns in a table in a single API call
+ * This is much more efficient than processing columns individually
+ */
+export async function generateTableBatchAIDefinitions(
+  table: DatabaseTable
+): Promise<AIGenerationResult<{
+  tableDefinition: TableAIDefinition;
+  columnDefinitions: ColumnAIDefinition[];
+}>> {
+  try {
+    const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+    
+    const systemPrompt = `You are a database expert specializing in PostgreSQL, MySQL, and SQL Server. Your task is to generate comprehensive AI definitions for database tables and their columns.
+
+CRITICAL: You must ONLY analyze the specific table provided to you. Do NOT make assumptions about other tables, even if you see foreign key references to them.
+
+For each table, provide:
+- A clear description of the table's purpose and business context
+- Key entities and relationships (ONLY within this table's context)
+- Common use cases and data relationships (ONLY based on this table's data)
+- Primary key analysis and foreign key relationships (acknowledge FKs but don't analyze referenced tables)
+
+For each column, provide:
+- Clear description of the column's purpose and business value
+- Data insights and patterns from sample data
+- Common queries and operations
+- Relationships to other tables (acknowledge but don't analyze referenced tables)
+- Data quality considerations and notes
+
+Focus on practical, actionable insights that help users understand and work with the data effectively.`;
+
+    // Prepare column information with sample data
+    const columnInfo = table.columns.map(col => {
+      const sampleData = col.sample_values && col.sample_values.length > 0 
+        ? `Sample values: ${col.sample_values.slice(0, 3).join(', ')}${col.sample_values.length > 3 ? '...' : ''}`
+        : 'No sample data available';
+      
+      return `- **${col.name}** (${col.type}): ${col.is_primary_key ? 'PRIMARY KEY' : ''} ${col.is_foreign_key ? `→ ${col.foreign_table}.${col.foreign_column}` : ''} - ${sampleData}`;
+    }).join('\n');
+
+    const userPrompt = `Generate comprehensive AI definitions for table "${table.name}" with ${table.columns.length} columns.
+
+**Table Structure:**
+${columnInfo}
+
+**IMPORTANT CONSTRAINTS:**
+- ONLY analyze the table "${table.name}" that is provided above
+- Do NOT make assumptions about other tables not explicitly mentioned
+- If you see foreign key references to other tables (like master_gender, master_blood_group), acknowledge them but do NOT include those tables in your analysis
+- Focus ONLY on the data and structure of "${table.name}" itself
+- Do NOT invent or assume the existence of other tables
+
+**Requirements:**
+- Provide detailed, meaningful descriptions for each column
+- Include business context and use cases based ONLY on this table's data
+- Analyze sample data patterns from the provided data
+- Identify relationships only within this table's context
+- Make descriptions specific and actionable based on actual data
+
+Return a JSON object with this EXACT structure:
+{
+  "tableDefinition": {
+    "description": "string",
+    "business_purpose": "string", 
+    "key_entities": ["array of strings"],
+    "common_use_cases": ["array of strings"],
+    "data_relationships": ["array of strings"],
+    "column_summary": "string",
+    "primary_key_analysis": "string",
+    "foreign_key_relationships": ["array of strings"]
+  },
+  "columnDefinitions": [
+    {
+      "name": "string",
+      "description": "string",
+      "business_purpose": "string",
+      "data_insights": ["array of strings"],
+      "common_queries": ["array of strings"],
+      "relationships": ["array of strings"],
+      "data_quality_notes": ["array of strings"],
+      "sample_data_analysis": "string"
+    }
+  ]
+}
+
+CRITICAL: The response must be valid JSON with the exact structure above. Do not include any text outside the JSON object.`;
+
+    const response = await openai.chat.completions.create({
+      model,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt }
+      ],
+      temperature: 0.3,
+      response_format: { type: 'json_object' }
+    });
+
+    const content = response.choices[0]?.message?.content;
+    if (!content) {
+      throw new Error("No response content from OpenAI");
+    }
+
+    // Clean and validate JSON response
+    let cleanedContent = content.trim();
+    
+    // Remove any markdown code blocks if present
+    if (cleanedContent.startsWith('```json')) {
+      cleanedContent = cleanedContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+    } else if (cleanedContent.startsWith('```')) {
+      cleanedContent = cleanedContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
+    }
+    
+    // Try to find the JSON object if there's extra text
+    const jsonMatch = cleanedContent.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      cleanedContent = jsonMatch[0];
+    }
+
+    console.log(`🔍 Raw AI response for table ${table.name}:`, content.substring(0, 200) + '...');
+    console.log(`🧹 Cleaned content:`, cleanedContent.substring(0, 200) + '...');
+    console.log(`📊 Response length: ${content.length} chars, cleaned: ${cleanedContent.length} chars`);
+
+    // Parse the JSON response with better error handling
+    let parsedResponse;
+    try {
+      parsedResponse = JSON.parse(cleanedContent);
+    } catch (parseError) {
+      console.error(`❌ JSON parse error for table ${table.name}:`, parseError);
+      console.error(`📄 Problematic content:`, cleanedContent);
+      
+      // Try to fix common JSON truncation issues
+      let fixedContent = cleanedContent;
+      
+      // If the JSON is truncated, try to close it properly
+      if (cleanedContent.includes('"columnDefinitions": [') && !cleanedContent.includes('}]')) {
+        // Find the last complete column definition and close the array
+        const lastCompleteDef = cleanedContent.lastIndexOf('}');
+        if (lastCompleteDef > 0) {
+          fixedContent = cleanedContent.substring(0, lastCompleteDef + 1) + ']}';
+          console.log(`🔧 Attempting to fix truncated JSON for table ${table.name}`);
+        }
+      }
+      
+      try {
+        parsedResponse = JSON.parse(fixedContent);
+        console.log(`✅ Successfully parsed fixed JSON for table ${table.name}`);
+      } catch {
+        const errorMessage = parseError instanceof Error ? parseError.message : 'Unknown parse error';
+        throw new Error(`Invalid JSON response from AI: ${errorMessage}`);
+      }
+    }
+    
+    // Validate the response structure with better debugging
+    console.log(`🔍 Parsed response keys:`, Object.keys(parsedResponse));
+    console.log(`🔍 Has tableDefinition:`, !!parsedResponse.tableDefinition);
+    console.log(`🔍 Has columnDefinitions:`, !!parsedResponse.columnDefinitions);
+    
+    if (!parsedResponse.tableDefinition || !parsedResponse.columnDefinitions) {
+      console.error(`❌ Invalid response structure for table ${table.name}:`, {
+        hasTableDefinition: !!parsedResponse.tableDefinition,
+        hasColumnDefinitions: !!parsedResponse.columnDefinitions,
+        responseKeys: Object.keys(parsedResponse),
+        sampleResponse: JSON.stringify(parsedResponse, null, 2).substring(0, 500)
+      });
+      
+      // Try to extract data from alternative structures
+      let tableDefinition = parsedResponse.tableDefinition;
+      let columnDefinitions = parsedResponse.columnDefinitions;
+      
+      // Check for alternative key names
+      if (!tableDefinition && parsedResponse.table) {
+        tableDefinition = parsedResponse.table;
+      }
+      if (!columnDefinitions && parsedResponse.columns) {
+        columnDefinitions = parsedResponse.columns;
+      }
+      if (!columnDefinitions && parsedResponse.columnDefinitions) {
+        columnDefinitions = parsedResponse.columnDefinitions;
+      }
+      
+      if (!tableDefinition || !columnDefinitions) {
+        throw new Error("Invalid response structure from OpenAI - could not extract table or column definitions");
+      }
+      
+      // Use the extracted data
+      parsedResponse.tableDefinition = tableDefinition;
+      parsedResponse.columnDefinitions = columnDefinitions;
+    }
+
+    // Ensure column definitions match the actual columns
+    const columnDefinitions = table.columns.map(col => {
+      const aiDef = parsedResponse.columnDefinitions.find((cd: ColumnAIDefinition) => cd.name === col.name);
+      if (!aiDef) {
+        console.log(`⚠️ No AI definition found for column ${col.name}, using fallback`);
+        // Fallback definition if AI didn't provide one
+        return {
+          name: col.name,
+          description: `${col.name} column of type ${col.type}`,
+          business_purpose: "Data storage and retrieval",
+          data_insights: ["Column contains structured data"],
+          common_queries: ["SELECT queries", "Data filtering"],
+          relationships: col.is_foreign_key ? [`References ${col.foreign_table}.${col.foreign_column}`] : [],
+          data_quality_notes: ["Data quality assessment pending"],
+          sample_data_analysis: "Sample data analysis not available"
+        };
+      }
+      console.log(`✅ AI definition found for column ${col.name}: ${aiDef.description?.substring(0, 50)}...`);
+      
+      // Ensure all array fields are properly formatted
+      const validatedAiDef = {
+        ...aiDef,
+        data_insights: Array.isArray(aiDef.data_insights) ? aiDef.data_insights : [aiDef.data_insights || "No insights available"],
+        common_queries: Array.isArray(aiDef.common_queries) ? aiDef.common_queries : [aiDef.common_queries || "No queries available"],
+        relationships: Array.isArray(aiDef.relationships) ? aiDef.relationships : [aiDef.relationships || "No relationships"],
+        data_quality_notes: Array.isArray(aiDef.data_quality_notes) ? aiDef.data_quality_notes : [aiDef.data_quality_notes || "No quality notes"]
+      };
+      
+      return validatedAiDef;
+    });
+
+    return {
+      result: {
+        tableDefinition: parsedResponse.tableDefinition,
+        columnDefinitions
+      },
+      tokensUsed: response.usage?.total_tokens || 0,
+      inputTokens: response.usage?.prompt_tokens || 0,
+      outputTokens: response.usage?.completion_tokens || 0
+    };
+
+  } catch (error) {
+    console.error(`Error generating batch AI definitions for table ${table.name}:`, error);
+    
+    // Return fallback definitions
+    const fallbackColumnDefinitions = table.columns.map(col => ({
+      name: col.name,
+      description: `${col.name} column of type ${col.type}`,
+      business_purpose: "Data storage and retrieval",
+      data_insights: ["Column contains structured data"],
+      common_queries: ["SELECT queries", "Data filtering"],
+      relationships: col.is_foreign_key ? [`References ${col.foreign_table}.${col.foreign_column}`] : [],
+      data_quality_notes: ["Data quality assessment pending"],
+      sample_data_analysis: "Sample data analysis not available"
+    }));
+
+    const fallbackTableDefinition = {
+      description: `${table.name} table containing ${table.columns.length} columns`,
+      business_purpose: "Data storage and management",
+      key_entities: ["Data records"],
+      common_use_cases: ["Data storage", "Data retrieval", "Data analysis"],
+      data_relationships: ["Connected to other tables via foreign keys"],
+      column_summary: `Table contains ${table.columns.length} columns for data storage`,
+      primary_key_analysis: "Primary key structure analysis pending",
+      foreign_key_relationships: table.columns.filter(col => col.is_foreign_key).map(col => `${col.name} -> ${col.foreign_table}.${col.foreign_column}`)
+    };
+
+    return {
+      result: {
+        tableDefinition: fallbackTableDefinition,
+        columnDefinitions: fallbackColumnDefinitions
+      },
+      tokensUsed: 0,
+      inputTokens: 0,
+      outputTokens: 0
+    };
+  }
+}
+
+/**
+ * OPTIMIZED: Generate AI definitions for multiple tables in parallel
+ */
+export async function generateMultipleTablesBatchAIDefinitions(
+  tables: DatabaseTable[],
+  databaseName: string,
+  databaseType: string,
+  maxConcurrency: number = 3
+): Promise<{
+  results: Map<string, { tableDefinition: TableAIDefinition; columnDefinitions: ColumnAIDefinition[] }>;
+  totalTokensUsed: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+}> {
+  const results = new Map<string, { tableDefinition: TableAIDefinition; columnDefinitions: ColumnAIDefinition[] }>();
+  let totalTokensUsed = 0;
+  let totalInputTokens = 0;
+  let totalOutputTokens = 0;
+
+  // Process tables in batches to avoid rate limits
+  for (let i = 0; i < tables.length; i += maxConcurrency) {
+    const batch = tables.slice(i, i + maxConcurrency);
+    
+    const batchPromises = batch.map(async (table) => {
+      const result = await generateTableBatchAIDefinitions(table);
+      return { tableName: table.name, result };
+    });
+
+    const batchResults = await Promise.all(batchPromises);
+    
+    batchResults.forEach(({ tableName, result }) => {
+      results.set(tableName, result.result);
+      totalTokensUsed += result.tokensUsed;
+      totalInputTokens += result.inputTokens;
+      totalOutputTokens += result.outputTokens;
+    });
+
+    // Add a small delay between batches to be respectful to the API
+    if (i + maxConcurrency < tables.length) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+  }
+
+  return {
+    results,
+    totalTokensUsed,
+    totalInputTokens,
+    totalOutputTokens
+  };
+}
+
+/**
  * Main function to generate hierarchical AI definitions
- * 1. Generate column definitions using sample data
- * 2. Generate table definitions based on column definitions
- * 3. Generate database definition based on table definitions
+ * OPTIMIZED VERSION: Uses batch processing for much better performance
+ * 1. Generate table and column definitions in batches (1 API call per table)
+ * 2. Generate database definition based on table definitions
  */
 export async function generateHierarchicalAIDefinitions(
   schema: DatabaseSchema,
@@ -415,74 +738,44 @@ export async function generateHierarchicalAIDefinitions(
   const columnDefinitions = new Map<string, ColumnAIDefinition>();
   const tableDefinitions = new Map<string, TableAIDefinition>();
 
-  // Step 1: Generate column definitions for all selected columns
-  console.log(`🤖 Starting hierarchical AI generation for ${selectedTables.length} tables`)
+  // OPTIMIZED: Use batch processing for much better performance
+  console.log(`🚀 Starting OPTIMIZED hierarchical AI generation for ${selectedTables.length} tables`)
   
-  for (const selectedTable of selectedTables) {
-    const table = [...(schema.tables || []), ...(schema.views || [])].find(t => t.name === selectedTable.table_name);
-    if (!table) {
-      console.log(`❌ Table not found: ${selectedTable.table_name}`)
-      continue
-    }
+  // Get tables to process
+  const selectedTableNames = selectedTables.map(t => t.table_name);
+  const tablesToProcess = [...(schema.tables || []), ...(schema.views || [])]
+    .filter(table => selectedTableNames.includes(table.name));
 
-    console.log(`📊 Processing table: ${table.name} with ${selectedTable.selected_columns.length} selected columns`)
-    console.log(`  📋 Selected columns: ${selectedTable.selected_columns.join(', ')}`)
-    console.log(`  📊 Available columns: ${table.columns.map(c => c.name).join(', ')}`)
-    
-    for (const column of table.columns) {
-      if (selectedTable.selected_columns.includes(column.name)) {
-        console.log(`  🔍 Generating AI definition for column: ${table.name}.${column.name}`)
-        
-        try {
-          const result = await generateColumnAIDefinition(column, table.name, databaseName);
-          columnDefinitions.set(`${table.name}.${column.name}`, result.result);
-          totalTokensUsed += result.tokensUsed;
-          totalInputTokens += result.inputTokens;
-          totalOutputTokens += result.outputTokens;
-          
-          console.log(`  ✅ Generated AI definition for ${table.name}.${column.name}`)
-        } catch (error) {
-          console.error(`    ❌ Failed to generate definition for ${table.name}.${column.name}:`, error);
-        }
-      } else {
-        console.log(`  ⚠️ Column ${column.name} not in selected columns`)
-      }
-    }
-  }
-
-  // Step 2: Generate table definitions based on column definitions
-  console.log(`📋 Generated ${columnDefinitions.size} column definitions, now generating table definitions`)
+  console.log(`📊 Processing ${tablesToProcess.length} tables with batch AI generation`)
   
-  for (const selectedTable of selectedTables) {
-    const table = [...(schema.tables || []), ...(schema.views || [])].find(t => t.name === selectedTable.table_name);
-    if (!table) continue;
+  // Use optimized batch generation
+  const {
+    results: batchResults,
+    totalTokensUsed: aiTokens,
+    totalInputTokens: aiInputTokens,
+    totalOutputTokens: aiOutputTokens
+  } = await generateMultipleTablesBatchAIDefinitions(
+    tablesToProcess,
+    databaseName,
+    databaseType,
+    3 // Max 3 concurrent requests
+  );
 
-    console.log(`🏗️ Generating table definition for: ${table.name}`)
+  totalTokensUsed = aiTokens;
+  totalInputTokens = aiInputTokens;
+  totalOutputTokens = aiOutputTokens;
+
+  // Process batch results into the expected format
+  for (const [tableName, { tableDefinition, columnDefinitions: tableColumnDefs }] of batchResults) {
+    // Store table definition
+    tableDefinitions.set(tableName, tableDefinition);
     
-    // Get column definitions for this table
-    const tableColumnDefinitions = table.columns
-      .filter(col => selectedTable.selected_columns.includes(col.name))
-      .map(col => columnDefinitions.get(`${table.name}.${col.name}`))
-      .filter(Boolean) as ColumnAIDefinition[];
-
-    console.log(`  📊 Found ${tableColumnDefinitions.length} column definitions for table ${table.name}`)
-
-    if (tableColumnDefinitions.length === 0) {
-      console.log(`  ⚠️ No column definitions found for table ${table.name}, skipping`)
-      continue;
+    // Store column definitions with proper key format
+    for (const columnDef of tableColumnDefs) {
+      columnDefinitions.set(`${tableName}.${columnDef.name}`, columnDef);
     }
-
-    try {
-      const result = await generateTableAIDefinition(table, databaseName, tableColumnDefinitions);
-      tableDefinitions.set(table.name, result.result);
-      totalTokensUsed += result.tokensUsed;
-      totalInputTokens += result.inputTokens;
-      totalOutputTokens += result.outputTokens;
-      
-      console.log(`  ✅ Generated table definition for ${table.name}`)
-    } catch (error) {
-      console.error(`  ❌ Failed to generate definition for table ${table.name}:`, error);
-    }
+    
+    console.log(`✅ Processed table ${tableName} with ${tableColumnDefs.length} columns`)
   }
 
   // Step 3: Generate database definition based on table definitions

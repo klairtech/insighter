@@ -20,6 +20,10 @@ import {
   calculateComprehensiveTokenUsage,
   TokenTrackingData 
 } from './token-utils'
+import { 
+  processWithEnhancedMultiAgentFlow,
+  classifyQueryIntent
+} from './enhanced-multi-agent-flow'
 
 // Type for file summary data
 interface FileSummaryData {
@@ -732,6 +736,68 @@ Provide a concise summary that helps avoid repetition and builds on previous con
 
 
 /**
+ * Enhanced function to process user messages with the new multi-agent flow
+ */
+export async function processWithEnhancedAgent(
+  conversation: ConversationContext,
+  userMessage: string
+): Promise<AgentResponse> {
+  try {
+    console.log('🚀 processWithEnhancedAgent: Starting enhanced multi-agent processing...')
+    
+    // Use the enhanced multi-agent flow directly
+    const enhancedResponse = await processWithEnhancedMultiAgentFlow(
+      userMessage,
+      conversation.workspace_id,
+      conversation.agent_id,
+      conversation.messages
+    )
+    
+    // Convert enhanced response to standard AgentResponse format
+    const standardResponse: AgentResponse = {
+      content: enhancedResponse.content,
+      metadata: {
+        processing_status: enhancedResponse.metadata.processing_status,
+        agent_id: enhancedResponse.metadata.agent_id,
+        workspace_id: enhancedResponse.metadata.workspace_id,
+        files_referenced: enhancedResponse.metadata.data_sources_used,
+        confidence_score: enhancedResponse.metadata.confidence_score,
+        follow_up_questions: enhancedResponse.metadata.follow_up_questions,
+        query_validation: {
+          is_valid: true,
+          query_type: 'data_query',
+          confidence: enhancedResponse.metadata.confidence_score,
+          requires_follow_up: false
+        }
+      },
+      tokens_used: enhancedResponse.tokens_used,
+      processing_time_ms: enhancedResponse.processing_time_ms,
+      token_tracking: enhancedResponse.token_tracking,
+      // CRITICAL: Include SQL queries and graph data from enhanced response
+      sql_queries: enhancedResponse.sql_queries as unknown as SQLQueries,
+      graph_data: enhancedResponse.graph_data as unknown as GraphData,
+      xai_metrics: enhancedResponse.xai_metrics as unknown as XAIMetrics,
+      agent_thinking_notes: enhancedResponse.agent_thinking_notes as unknown as AgentThinkingNotes,
+      reasoning_explanation: enhancedResponse.reasoning_explanation,
+      analysis_depth: enhancedResponse.analysis_depth as "standard" | "quick" | "deep" | "comprehensive",
+      data_quality_score: enhancedResponse.data_quality_score,
+      response_completeness_score: enhancedResponse.response_completeness_score,
+      user_satisfaction_prediction: enhancedResponse.user_satisfaction_prediction
+    }
+    
+    console.log('✅ processWithEnhancedAgent: Enhanced processing completed')
+    return standardResponse
+    
+  } catch (error) {
+    console.error('Enhanced agent processing error:', error)
+    
+    // Fallback to standard processing
+    console.log('🔄 Falling back to standard agent processing...')
+    return await processWithAgent(conversation, userMessage)
+  }
+}
+
+/**
  * Main function to process user messages with AI agents
  */
 export async function processWithAgent(
@@ -1066,110 +1132,7 @@ export async function processWithAgent(
   }
 }
 
-/**
- * Classify query intent for better routing and response generation
- */
-async function classifyQueryIntent(
-  userMessage: string,
-  conversationHistory: Array<{sender_type: string, content: string, created_at: string}>
-): Promise<{
-  intent: 'analytical' | 'comparative' | 'exploratory' | 'specific_lookup' | 'continuation' | 'closing' | 'greeting';
-  confidence: number;
-  entities: string[];
-  context: string;
-}> {
-  try {
-    const model = process.env.OPENAI_MODEL || 'gpt-4o-mini'
-    
-    const recentHistory = conversationHistory.slice(-3).map(msg => 
-      `${msg.sender_type}: ${msg.content}`
-    ).join('\n')
-    
-    const intentPrompt = `Classify the user's query intent and extract key entities.
 
-User Query: "${userMessage}"
-
-Recent Conversation:
-${recentHistory || 'No previous conversation'}
-
-Classify the intent as one of:
-- analytical: Questions about trends, patterns, analysis, insights, comparisons, relationships
-- comparative: Questions comparing different aspects, before/after, vs questions
-- exploratory: General questions about what's available, overview questions
-- specific_lookup: Questions about specific data points, numbers, facts
-- continuation: Responses like "yes", "tell me more", "continue", "please"
-- closing: Goodbyes, thanks, ending conversation
-- greeting: ONLY for clear greetings like "hello", "hi", "hey" at conversation start
-
-IMPORTANT: 
-- Questions about data, analysis, or content should be "analytical" or "specific_lookup", NOT "greeting"
-- Only classify as "greeting" if it's clearly a conversational opener
-- If the user is asking about content, data, or analysis, use "analytical"
-
-Extract key entities (important terms, metrics, time periods, categories).
-
-Respond with JSON:
-{
-  "intent": "analytical",
-  "confidence": 0.9,
-  "entities": ["revenue", "Q1 2023", "growth"],
-  "context": "User is asking for trend analysis of revenue data"
-}`
-
-    const response = await openai.chat.completions.create({
-      model,
-      messages: [
-        { role: 'system', content: 'You are a query intent classifier. Respond with valid JSON only.' },
-        { role: 'user', content: intentPrompt }
-      ],
-      temperature: 0.1,
-      max_tokens: 200,
-      response_format: { type: 'json_object' }
-    })
-
-    const result = JSON.parse(response.choices[0]?.message?.content || '{}')
-    
-    return {
-      intent: result.intent || 'exploratory',
-      confidence: result.confidence || 0.5,
-      entities: result.entities || [],
-      context: result.context || ''
-    }
-    
-  } catch (error) {
-    console.error('Error in query intent classification:', error)
-    
-    // Fallback classification
-    const lowerMessage = userMessage.toLowerCase()
-    
-    if (lowerMessage.includes('bye') || lowerMessage.includes('thanks') || lowerMessage.includes('goodbye')) {
-      return { intent: 'closing', confidence: 0.8, entities: [], context: 'User is ending conversation' }
-    }
-    
-    if (lowerMessage === 'yes' || lowerMessage.includes('tell me more') || lowerMessage.includes('continue')) {
-      return { intent: 'continuation', confidence: 0.8, entities: [], context: 'User wants to continue previous topic' }
-    }
-    
-    // Only classify as greeting if it's clearly a greeting AND no other content
-    if ((lowerMessage === 'hello' || lowerMessage === 'hi' || lowerMessage === 'hey' || 
-         lowerMessage.startsWith('hello ') || lowerMessage.startsWith('hi ') || lowerMessage.startsWith('hey ')) &&
-        lowerMessage.length < 20) {
-      return { intent: 'greeting', confidence: 0.8, entities: [], context: 'User is greeting' }
-    }
-    
-    if (lowerMessage.includes('compare') || lowerMessage.includes('vs') || lowerMessage.includes('versus') ||
-        lowerMessage.includes('between') || lowerMessage.includes('difference')) {
-      return { intent: 'comparative', confidence: 0.7, entities: [], context: 'User wants comparison' }
-    }
-    
-    if (lowerMessage.includes('what') || lowerMessage.includes('how') || lowerMessage.includes('why') ||
-        lowerMessage.includes('is there') || lowerMessage.includes('are there') || lowerMessage.includes('common')) {
-      return { intent: 'analytical', confidence: 0.7, entities: [], context: 'User is asking analytical questions' }
-    }
-    
-    return { intent: 'analytical', confidence: 0.6, entities: [], context: 'General analytical query' }
-  }
-}
 
 /**
  * Calculate semantic similarity scores for files based on user query
@@ -1951,16 +1914,27 @@ ${intelligentContext}
 INSTRUCTIONS:
 1. **CONTINUE THE CONVERSATION** - Don't repeat greetings or information already discussed
 2. **BUILD ON PREVIOUS CONTEXT** - Reference what was already covered and add new insights
-3. **BE CONCISE** - Maximum 1-2 paragraphs, under 400 tokens
+3. **BE COMPREHENSIVE** - Provide detailed analysis when the data warrants it, include relevant examples and insights
 4. **USE REAL DATA** - Reference specific numbers, facts, and examples from the files
 5. **CONTEXTUAL FOLLOW-UPS** - Only suggest follow-up questions if they add value and are relevant to the current topic
+6. **CLARIFICATION DETECTION** - If the query is ambiguous or you're uncertain, ask for clarification instead of guessing
 
 RESPONSE STYLE:
 - Start naturally (no "Hey there!" if continuing a topic)
 - Use **bold** for key numbers/facts, *italic* for emphasis
+- Structure complex data with bullet points or numbered lists when appropriate
+- Format location-based data clearly (e.g., "In Hyderabad: 1,269 donors")
+- Use proper formatting for large numbers (e.g., "1,269" instead of "1269")
 - Reference previous discussion to avoid repetition
 - Be conversational but focused
 - Only end with follow-up questions if they're genuinely helpful and contextual
+
+CLARIFICATION GUIDELINES:
+- Ask for clarification if the query is ambiguous or could have multiple interpretations
+- Ask for clarification if the available data doesn't clearly answer the question
+- Ask for clarification if you need more specific parameters (time period, location, etc.)
+- Use phrases like "Could you clarify..." or "To provide the most accurate answer, I need to know..."
+- Don't guess or make assumptions when uncertain
 
 INTENT-SPECIFIC HANDLING:
 - **analytical**: Focus on trends, patterns, insights, and analysis
@@ -1969,6 +1943,12 @@ INTENT-SPECIFIC HANDLING:
 - **specific_lookup**: Give precise, factual answers with exact data points
 - **continuation**: Build on previous topic without repeating the question
 - **closing**: Provide brief, friendly closing response
+
+CLARIFICATION RESPONSE HANDLING:
+- If the user is providing clarification to a previous question, acknowledge it and use the new context
+- Don't ask for the same clarification again - they've already provided it
+- Use phrases like "Thank you for clarifying" or "Now I understand" when appropriate
+- Focus on answering their original question with the new information they've provided
 
 EXAMPLES:
 - User says "yes please" after asking about success measurement → Continue discussing success measurement strategies
@@ -1987,7 +1967,7 @@ CRITICAL: Don't repeat information already covered. Build on the conversation fl
         messages: [
           {
             role: 'system',
-            content: 'You are a helpful data analysis assistant continuing a conversation. Build on previous context without repeating information. Be conversational but focused. Use **bold** for key facts, *italic* for emphasis. Keep responses under 400 tokens. Only suggest follow-up questions if they add genuine value to the current topic. Avoid repetitive greetings or redundant information.'
+            content: 'You are a helpful data analysis assistant continuing a conversation. Build on previous context without repeating information. Be conversational but comprehensive. Use **bold** for key facts, *italic* for emphasis. Provide detailed analysis when the data warrants it. Only suggest follow-up questions if they add genuine value to the current topic. Avoid repetitive greetings or redundant information.'
           },
           {
             role: 'user',
@@ -1995,7 +1975,7 @@ CRITICAL: Don't repeat information already covered. Build on the conversation fl
           }
         ],
         temperature: 0.1,
-        max_tokens: 300 // Reduced for more concise responses
+        max_tokens: 1000 // Increased for more comprehensive responses
       })
 
       response = openaiResponse.choices[0].message.content || 'I apologize, but I could not generate a response.'
@@ -2022,10 +2002,10 @@ CRITICAL: Don't repeat information already covered. Build on the conversation fl
       }
     }
 
-    // Check response length and truncate if necessary
-    if (response.length > 1500) {
+    // Check response length and truncate if necessary (increased limit)
+    if (response.length > 3000) {
       console.warn('⚠️ Response too long, truncating to prevent token issues')
-      response = response.substring(0, 1500) + '\n\n*[Response truncated for length - please ask a more specific question for detailed analysis]*'
+      response = response.substring(0, 3000) + '\n\n*[Response truncated for length - please ask a more specific question for detailed analysis]*'
     }
 
     // Extract follow-up questions from response

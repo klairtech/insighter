@@ -6,8 +6,9 @@ import { useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
 import WorkspaceSharing from "@/components/WorkspaceSharing";
 import AgentSharing from "@/components/AgentSharing";
 import DatabaseConnectionModal from "@/components/DatabaseConnectionModal";
-import { toast, ToastContainer } from "react-toastify";
-import "react-toastify/dist/ReactToastify.css";
+import DatabaseConnectionSuccessModal from "@/components/DatabaseConnectionSuccessModal";
+import NotificationModal from "@/components/NotificationModal";
+import { useNotification } from "@/hooks/useNotification";
 import { WorkspaceRole } from "@/lib/permissions";
 
 interface Workspace {
@@ -58,6 +59,8 @@ export default function WorkspaceDetailClient({
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, session } = useSupabaseAuth();
+  const { notification, showSuccess, showError, hideNotification } =
+    useNotification();
   const [workspace] = useState<Workspace>(initialWorkspace);
   const [agent] = useState<Agent | null>(initialAgent);
   const [files] = useState<File[]>(initialFiles);
@@ -121,6 +124,13 @@ export default function WorkspaceDetailClient({
     }>
   >([]);
 
+  // Success modal state
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successModalData, setSuccessModalData] = useState<{
+    connectionName: string;
+    tablesProcessed: number;
+  } | null>(null);
+
   // Fetch database connections
   const fetchDatabaseConnections = useCallback(async () => {
     try {
@@ -147,11 +157,16 @@ export default function WorkspaceDetailClient({
       );
 
       if (!response.ok) {
-        console.error(
-          "❌ Failed to fetch database connections:",
-          response.status,
-          response.statusText
-        );
+        if (response.status === 401) {
+          console.error("❌ Authentication failed - session may have expired");
+          // Could trigger a re-authentication flow here if needed
+        } else {
+          console.error(
+            "❌ Failed to fetch database connections:",
+            response.status,
+            response.statusText
+          );
+        }
         return;
       }
 
@@ -173,10 +188,20 @@ export default function WorkspaceDetailClient({
   }, [workspace.id, session?.access_token]);
 
   // Handle database connection success
-  const handleDatabaseConnectionSuccess = () => {
+  const handleDatabaseConnectionSuccess = (data: {
+    connectionName: string;
+    tablesProcessed: number;
+  }) => {
     // Enhanced retry mechanism with exponential backoff
     const fetchWithRetry = async (retries = 5, delay = 500) => {
       try {
+        // Check if we have a valid session and access token
+        if (!session?.access_token) {
+          console.error("❌ No valid session or access token available");
+          setIsRefreshingDatabases(false);
+          return;
+        }
+
         setIsRefreshingDatabases(true);
 
         // Fetch connections directly to check the response
@@ -186,12 +211,20 @@ export default function WorkspaceDetailClient({
             method: "GET",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${session?.access_token}`,
+              Authorization: `Bearer ${session.access_token}`,
             },
           }
         );
 
         if (!response.ok) {
+          if (response.status === 401) {
+            console.error(
+              "❌ Authentication failed - session may have expired"
+            );
+            // Don't retry on 401 errors as they won't succeed
+            setIsRefreshingDatabases(false);
+            return;
+          }
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
 
@@ -201,7 +234,10 @@ export default function WorkspaceDetailClient({
         if (connections && connections.length > 0) {
           setDatabaseConnections(connections);
           setIsRefreshingDatabases(false);
-          toast.success("Database connection added successfully!");
+
+          // Show success modal instead of toast
+          setSuccessModalData(data);
+          setShowSuccessModal(true);
           return;
         } else if (retries > 0) {
           setTimeout(() => fetchWithRetry(retries - 1, delay * 1.5), delay);
@@ -437,14 +473,20 @@ export default function WorkspaceDetailClient({
       const result = await response.json();
 
       if (result.success) {
-        toast.success("API token regenerated successfully!");
+        showSuccess(
+          "API Token Regenerated",
+          "Your API token has been successfully regenerated!"
+        );
         await fetchApiInfo(); // Refresh the API info
       } else {
-        toast.error(result.error || "Failed to regenerate token");
+        showError(
+          "Token Regeneration Failed",
+          result.error || "Failed to regenerate token"
+        );
       }
     } catch (error) {
       console.error("Error regenerating token:", error);
-      toast.error("Failed to regenerate API token");
+      showError("Token Regeneration Failed", "Failed to regenerate API token");
     }
   };
 
@@ -534,18 +576,25 @@ export default function WorkspaceDetailClient({
               <span>Share</span>
             </button>
 
-            <button
-              onClick={() => setShowEditModal(true)}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
-            >
-              Edit
-            </button>
-            <button
-              onClick={() => setShowDeleteModal(true)}
-              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg transition-colors"
-            >
-              Delete
-            </button>
+            {/* Only show edit button if user has owner permissions */}
+            {workspace.userRole === "owner" && (
+              <button
+                onClick={() => setShowEditModal(true)}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
+              >
+                Edit
+              </button>
+            )}
+            {/* Only show delete button if user has owner/admin permissions */}
+            {(workspace.userRole === "owner" ||
+              workspace.userRole === "admin") && (
+              <button
+                onClick={() => setShowDeleteModal(true)}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg transition-colors"
+              >
+                Delete
+              </button>
+            )}
           </div>
         </div>
 
@@ -921,7 +970,7 @@ export default function WorkspaceDetailClient({
                       d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"
                     />
                   </svg>
-                  <span>Databases ({databaseConnections.length})</span>
+                  <span>Data Sources ({databaseConnections.length})</span>
                 </h2>
                 <button
                   onClick={() => setShowDatabaseModal(true)}
@@ -962,13 +1011,13 @@ export default function WorkspaceDetailClient({
                     </svg>
                   </div>
                   <p className="text-gray-400 text-sm mb-3">
-                    No database connections
+                    No data sources connected
                   </p>
                   <button
                     onClick={() => setShowDatabaseModal(true)}
                     className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm rounded-lg transition-colors"
                   >
-                    Connect Database
+                    Connect Data Source
                   </button>
                 </div>
               ) : (
@@ -978,8 +1027,8 @@ export default function WorkspaceDetailClient({
                       <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
                       <span className="ml-2 text-sm text-gray-400">
                         {isRefreshingDatabases
-                          ? "Refreshing databases..."
-                          : "Loading databases..."}
+                          ? "Refreshing data sources..."
+                          : "Loading data sources..."}
                       </span>
                     </div>
                   )}
@@ -1476,6 +1525,29 @@ console.log(data.content);`}
           workspaceId={workspace.id}
         />
 
+        {/* Database Connection Success Modal */}
+        {successModalData && (
+          <DatabaseConnectionSuccessModal
+            isOpen={showSuccessModal}
+            onClose={() => {
+              setShowSuccessModal(false);
+              setSuccessModalData(null);
+            }}
+            connectionName={successModalData.connectionName}
+            tablesProcessed={successModalData.tablesProcessed}
+            onViewDatabase={() => {
+              setShowSuccessModal(false);
+              setSuccessModalData(null);
+              // Navigate to the first database connection
+              if (databaseConnections.length > 0) {
+                router.push(
+                  `/workspaces/${workspace.id}/databases/${databaseConnections[0].id}`
+                );
+              }
+            }}
+          />
+        )}
+
         {/* Edit Workspace Modal */}
         {showEditModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -1665,8 +1737,22 @@ console.log(data.content);`}
         )}
 
         {/* Database Details Modal - REMOVED - Now using dedicated page */}
-        {/* Toast Container */}
-        <ToastContainer />
+
+        {/* Notification Modal */}
+        <NotificationModal
+          isOpen={notification.isOpen}
+          onClose={hideNotification}
+          type={notification.type}
+          title={notification.title}
+          message={notification.message}
+          details={notification.details}
+          onConfirm={notification.onConfirm}
+          confirmText={notification.confirmText}
+          showCancel={notification.showCancel}
+          cancelText={notification.cancelText}
+          autoClose={notification.autoClose}
+          autoCloseDelay={notification.autoCloseDelay}
+        />
       </div>
     </div>
   );

@@ -5,6 +5,7 @@ Thank you for your interest in contributing to Insighter! This document provides
 ## 🚀 Getting Started
 
 ### Prerequisites
+
 - Node.js 18+
 - npm or yarn
 - Git
@@ -13,17 +14,20 @@ Thank you for your interest in contributing to Insighter! This document provides
 ### Development Setup
 
 1. **Fork and Clone**
+
    ```bash
    git clone https://github.com/your-username/insighter.git
    cd insighter
    ```
 
 2. **Install Dependencies**
+
    ```bash
    npm install
    ```
 
 3. **Environment Setup**
+
    ```bash
    cp .env.example .env.local
    # Configure your environment variables
@@ -37,6 +41,7 @@ Thank you for your interest in contributing to Insighter! This document provides
 ## 📋 Development Workflow
 
 ### Branch Strategy
+
 - `main` - Production-ready code
 - `staging` - Integration branch for testing
 - `feature/*` - Feature development branches
@@ -46,16 +51,19 @@ Thank you for your interest in contributing to Insighter! This document provides
 ### Making Changes
 
 1. **Create a Feature Branch**
+
    ```bash
    git checkout -b feature/your-feature-name
    ```
 
 2. **Make Your Changes**
+
    - Write clean, readable code
    - Add tests for new functionality
    - Update documentation as needed
 
 3. **Test Your Changes**
+
    ```bash
    npm run test
    npm run lint
@@ -63,6 +71,7 @@ Thank you for your interest in contributing to Insighter! This document provides
    ```
 
 4. **Commit Your Changes**
+
    ```bash
    git add .
    git commit -m "feat: add your feature description"
@@ -87,6 +96,7 @@ We follow the [Conventional Commits](https://www.conventionalcommits.org/) speci
 ```
 
 ### Types
+
 - `feat`: New feature
 - `fix`: Bug fix
 - `docs`: Documentation changes
@@ -96,6 +106,7 @@ We follow the [Conventional Commits](https://www.conventionalcommits.org/) speci
 - `chore`: Maintenance tasks
 
 ### Examples
+
 ```
 feat(database): add support for MySQL connections
 fix(ui): resolve modal caching issue
@@ -106,6 +117,7 @@ refactor(auth): simplify authentication flow
 ## 🧪 Testing
 
 ### Running Tests
+
 ```bash
 # Run all tests
 npm run test
@@ -118,6 +130,7 @@ npm run test:coverage
 ```
 
 ### Writing Tests
+
 - Write unit tests for utility functions
 - Write integration tests for API endpoints
 - Write component tests for React components
@@ -126,18 +139,21 @@ npm run test:coverage
 ## 🎨 Code Style
 
 ### TypeScript
+
 - Use strict TypeScript configuration
 - Define proper interfaces and types
 - Avoid `any` types
 - Use meaningful variable and function names
 
 ### React Components
+
 - Use functional components with hooks
 - Implement proper error boundaries
 - Use TypeScript for all components
 - Follow React best practices
 
 ### API Routes
+
 - Use proper HTTP status codes
 - Implement error handling
 - Add input validation
@@ -146,12 +162,14 @@ npm run test:coverage
 ## 📚 Documentation
 
 ### Code Documentation
+
 - Add JSDoc comments for functions
 - Document complex algorithms
 - Explain business logic
 - Keep README files updated
 
 ### API Documentation
+
 - Document all API endpoints
 - Include request/response examples
 - Specify error codes and messages
@@ -180,12 +198,14 @@ When requesting features, please include:
 ## 🔒 Security
 
 ### Reporting Security Issues
+
 - **DO NOT** create public GitHub issues for security vulnerabilities
 - Email security issues to: security@klairtech.com
 - Include detailed information about the vulnerability
 - Allow time for response before public disclosure
 
 ### Security Guidelines
+
 - Never commit secrets or API keys
 - Use environment variables for sensitive data
 - Implement proper input validation
@@ -194,12 +214,15 @@ When requesting features, please include:
 ## 🏷️ Release Process
 
 ### Versioning
+
 We follow [Semantic Versioning](https://semver.org/):
+
 - `MAJOR`: Breaking changes
 - `MINOR`: New features (backward compatible)
 - `PATCH`: Bug fixes (backward compatible)
 
 ### Release Workflow
+
 1. Create release branch from `main`
 2. Update version numbers
 3. Update CHANGELOG.md
@@ -210,12 +233,14 @@ We follow [Semantic Versioning](https://semver.org/):
 ## 🤝 Community Guidelines
 
 ### Code of Conduct
+
 - Be respectful and inclusive
 - Welcome newcomers and help them learn
 - Focus on constructive feedback
 - Respect different opinions and approaches
 
 ### Communication
+
 - Use clear and concise language
 - Be patient with questions
 - Provide helpful feedback
@@ -230,6 +255,7 @@ We follow [Semantic Versioning](https://semver.org/):
 ## 🙏 Recognition
 
 Contributors will be recognized in:
+
 - CONTRIBUTORS.md file
 - Release notes
 - Project documentation

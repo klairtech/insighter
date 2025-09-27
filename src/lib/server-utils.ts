@@ -25,21 +25,23 @@ export async function createServerSupabaseClient() {
         return cookieStore.get(name)?.value
       },
       set(name: string, value: string, options: Record<string, unknown>) {
-        // Only set cookies in server actions or route handlers
+        // Check if we're in a server context where cookies can be set
         try {
+          // This will only work in server actions, route handlers, or server components
           cookieStore.set({ name, value, ...options })
-        } catch (error) {
-          // Silently ignore cookie setting errors in client components
-          console.warn('Cookie setting not allowed in this context:', error)
+        } catch {
+          // Silently ignore cookie setting errors - this is expected in client components
+          // Don't log warnings as this is normal behavior
         }
       },
       remove(name: string, options: Record<string, unknown>) {
-        // Only remove cookies in server actions or route handlers
+        // Check if we're in a server context where cookies can be removed
         try {
+          // This will only work in server actions, route handlers, or server components
           cookieStore.set({ name, value: '', ...options })
-        } catch (error) {
-          // Silently ignore cookie removal errors in client components
-          console.warn('Cookie removal not allowed in this context:', error)
+        } catch {
+          // Silently ignore cookie removal errors - this is expected in client components
+          // Don't log warnings as this is normal behavior
         }
       },
     },
@@ -55,6 +57,19 @@ export function createClientSupabaseClient() {
     auth: {
       autoRefreshToken: true,
       persistSession: true
+    }
+  })
+}
+
+// Create a client-side Supabase client that doesn't try to set cookies
+// This should be used in client components to avoid cookie setting errors
+export function createClientOnlySupabaseClient() {
+  return createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      autoRefreshToken: true,
+      persistSession: true,
+      // Don't try to set cookies in client components
+      flowType: 'pkce'
     }
   })
 }

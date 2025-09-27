@@ -2,7 +2,24 @@ import { NextRequest, NextResponse } from 'next/server'
 import { verifyUserSession } from '@/lib/server-utils'
 import { Client } from 'pg'
 import mysql from 'mysql2/promise'
+import sql from 'mssql'
+import snowflake from 'snowflake-sdk'
+import oracledb from 'oracledb'
 import { DatabaseSchema, DatabaseTable } from '@/types/database-schema'
+
+// Snowflake response interfaces
+interface SnowflakeVersionRow {
+  VERSION: string
+  DATABASE: string
+  USER: string
+  WAREHOUSE: string
+}
+
+interface SnowflakeTableRow {
+  name: string
+  kind: string
+  comment: string
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -89,6 +106,16 @@ async function testDatabaseConnection(config: Record<string, unknown>, fetchSche
         return await testSQLiteConnection(config)
       case 'bigquery':
         return await testBigQueryConnection(config)
+      case 'redshift':
+        return await testRedshiftConnection(config, fetchSchema, schemaName)
+      case 'azure-sql':
+        return await testAzureSQLConnection(config, fetchSchema, schemaName)
+      case 'snowflake':
+        return await testSnowflakeConnection(config, fetchSchema, schemaName)
+      case 'oracle':
+        return await testOracleConnection(config, fetchSchema, schemaName)
+      case 'mssql':
+        return await testMSSQLConnection(config, fetchSchema, schemaName)
       default:
         return {
           success: false,
@@ -735,3 +762,577 @@ async function fetchMySQLTableNamesOnly(connection: mysql.Connection, databaseNa
   }
 }
 */
+
+// Amazon Redshift Connection Test
+async function testRedshiftConnection(config: Record<string, unknown>, fetchSchema = false, schemaName = 'public') {
+  try {
+    // Redshift uses PostgreSQL protocol, so we can use the pg client
+    const client = new Client({
+      host: config.host as string,
+      port: parseInt(config.port as string) || 5439,
+      database: config.database as string,
+      user: config.username as string,
+      password: config.password as string,
+      ssl: config.ssl ? { rejectUnauthorized: false } : true, // Redshift requires SSL
+      connectionTimeoutMillis: 10000,
+    })
+
+    await client.connect()
+
+    // Test the connection
+    const result = await client.query('SELECT version() as version, current_database() as database, current_user as user')
+    
+    const response: {
+      success: boolean;
+      details: Record<string, unknown>;
+      schema?: DatabaseSchema;
+    } = {
+      success: true,
+      details: {
+        version: result.rows[0].version,
+        database: result.rows[0].database,
+        user: result.rows[0].user,
+        host: config.host,
+        port: config.port
+      }
+    }
+
+    // Fetch schema information if requested
+    if (fetchSchema) {
+      console.log(`🔍 Fetching table names for Redshift schema: ${schemaName}`)
+      const schema = await fetchTableNamesOnly(client, config.database as string, schemaName)
+      response.schema = schema
+    }
+    
+    await client.end()
+    return response
+  } catch (error) {
+    console.error('Redshift connection error:', error)
+    
+    if (error instanceof Error) {
+      if (error.message.includes('ECONNREFUSED')) {
+        return {
+          success: false,
+          error: 'Connection refused. Please check if the Redshift cluster is running and the host/port are correct.'
+        }
+      } else if (error.message.includes('password authentication failed')) {
+        return {
+          success: false,
+          error: 'Authentication failed. Please check your username and password.'
+        }
+      } else if (error.message.includes('database') && error.message.includes('does not exist')) {
+        return {
+          success: false,
+          error: 'Database does not exist. Please check the database name.'
+        }
+      } else {
+        return {
+          success: false,
+          error: `Connection failed: ${error.message}`
+        }
+      }
+    }
+    
+    return {
+      success: false,
+      error: 'Unknown connection error occurred'
+    }
+  }
+}
+
+// Azure SQL Database Connection Test
+async function testAzureSQLConnection(config: Record<string, unknown>, fetchSchema = false, schemaName = 'dbo') {
+  try {
+    const sqlConfig = {
+      server: config.host as string,
+      port: parseInt(config.port as string) || 1433,
+      database: config.database as string,
+      user: config.username as string,
+      password: config.password as string,
+      options: {
+        encrypt: true, // Azure SQL requires encryption
+        trustServerCertificate: false,
+        enableArithAbort: true,
+        connectionTimeout: 10000,
+        requestTimeout: 10000,
+      }
+    }
+
+    const pool = await sql.connect(sqlConfig)
+    
+    // Test the connection
+    const result = await pool.request().query(`
+      SELECT 
+        @@VERSION as version,
+        DB_NAME() as database,
+        USER_NAME() as user,
+        @@SERVERNAME as server
+    `)
+    
+    const response: {
+      success: boolean;
+      details: Record<string, unknown>;
+      schema?: DatabaseSchema;
+    } = {
+      success: true,
+      details: {
+        version: result.recordset[0].version,
+        database: result.recordset[0].database,
+        user: result.recordset[0].user,
+        server: result.recordset[0].server,
+        host: config.host,
+        port: config.port
+      }
+    }
+
+    // Fetch schema information if requested
+    if (fetchSchema) {
+      console.log(`🔍 Fetching table names for Azure SQL schema: ${schemaName}`)
+      const schema = await fetchMSSQLTableNamesOnly(pool, config.database as string, schemaName)
+      response.schema = schema
+    }
+    
+    await pool.close()
+    return response
+  } catch (error) {
+    console.error('Azure SQL connection error:', error)
+    
+    if (error instanceof Error) {
+      if (error.message.includes('ECONNREFUSED')) {
+        return {
+          success: false,
+          error: 'Connection refused. Please check if the Azure SQL server is accessible and the host/port are correct.'
+        }
+      } else if (error.message.includes('Login failed')) {
+        return {
+          success: false,
+          error: 'Authentication failed. Please check your username and password.'
+        }
+      } else if (error.message.includes('Cannot open database')) {
+        return {
+          success: false,
+          error: 'Database does not exist or access denied. Please check the database name and permissions.'
+        }
+      } else {
+        return {
+          success: false,
+          error: `Connection failed: ${error.message}`
+        }
+      }
+    }
+    
+    return {
+      success: false,
+      error: 'Unknown connection error occurred'
+    }
+  }
+}
+
+// Snowflake Connection Test
+async function testSnowflakeConnection(config: Record<string, unknown>, fetchSchema = false, schemaName = 'PUBLIC') {
+  try {
+    const connectionConfig = {
+      account: config.account as string || config.host as string,
+      username: config.username as string,
+      password: config.password as string,
+      database: config.database as string,
+      schema: schemaName,
+      warehouse: config.warehouse as string,
+      role: config.role as string,
+      clientSessionKeepAlive: true,
+      clientSessionKeepAliveHeartbeatFrequency: 3600,
+      application: 'Insighter',
+      timeout: 10000
+    }
+
+    return new Promise((resolve) => {
+      const connection = snowflake.createConnection(connectionConfig)
+      
+      connection.connect((err: snowflake.SnowflakeError | undefined, conn: snowflake.Connection) => {
+        if (err) {
+          console.error('Snowflake connection error:', err)
+          resolve({
+            success: false,
+            error: `Snowflake connection failed: ${err.message || 'Unknown error'}`
+          })
+          return
+        }
+
+        // Test the connection with a simple query
+        conn.execute({
+          sqlText: 'SELECT CURRENT_VERSION() as version, CURRENT_DATABASE() as database, CURRENT_USER() as user, CURRENT_WAREHOUSE() as warehouse',
+          complete: (err: snowflake.SnowflakeError | undefined, stmt: snowflake.RowStatement, rows: unknown[] | undefined) => {
+            if (err) {
+              console.error('Snowflake query error:', err)
+              resolve({
+                success: false,
+                error: `Snowflake query failed: ${err.message || 'Unknown error'}`
+              })
+              return
+            }
+
+            const response: {
+              success: boolean;
+              details: Record<string, unknown>;
+              schema?: DatabaseSchema;
+            } = {
+              success: true,
+              details: {
+                version: (rows?.[0] as SnowflakeVersionRow)?.VERSION || 'Unknown',
+                database: (rows?.[0] as SnowflakeVersionRow)?.DATABASE || config.database,
+                user: (rows?.[0] as SnowflakeVersionRow)?.USER || config.username,
+                warehouse: (rows?.[0] as SnowflakeVersionRow)?.WAREHOUSE || config.warehouse,
+                account: config.account || config.host,
+                schema: schemaName
+              }
+            }
+
+            // Fetch schema information if requested
+            if (fetchSchema) {
+              console.log(`🔍 Fetching table names for Snowflake schema: ${schemaName}`)
+              conn.execute({
+                sqlText: `SHOW TABLES IN SCHEMA ${schemaName}`,
+                complete: (err: snowflake.SnowflakeError | undefined, stmt: snowflake.RowStatement, rows: unknown[] | undefined) => {
+                  if (err) {
+                    console.error('Error fetching Snowflake schema:', err)
+                    resolve({
+                      success: false,
+                      error: `Failed to fetch schema: ${err.message || 'Unknown error'}`
+                    })
+                    return
+                  }
+
+                  const tables: DatabaseTable[] = []
+                  const views: DatabaseTable[] = []
+
+                  for (const row of rows || []) {
+                    const table: DatabaseTable = {
+                      name: (row as SnowflakeTableRow).name,
+                      type: (row as SnowflakeTableRow).kind === 'VIEW' ? 'view' : 'table',
+                      columns: [],
+                      row_count: 0,
+                      description: (row as SnowflakeTableRow).comment || ''
+                    }
+
+                    if ((row as SnowflakeTableRow).kind === 'VIEW') {
+                      views.push(table)
+                    } else {
+                      tables.push(table)
+                    }
+                  }
+
+                  response.schema = {
+                    database_name: config.database as string,
+                    database_type: 'snowflake',
+                    tables,
+                    views,
+                    total_tables: tables.length,
+                    total_views: views.length
+                  }
+
+                  conn.destroy((err) => {
+                    if (err) console.error('Error destroying Snowflake connection:', err)
+                  })
+                  resolve(response)
+                }
+              })
+            } else {
+              conn.destroy((err) => {
+                if (err) console.error('Error destroying Snowflake connection:', err)
+              })
+              resolve(response)
+            }
+          }
+        })
+      })
+    })
+  } catch (error) {
+    console.error('Snowflake connection error:', error)
+    return {
+      success: false,
+      error: `Snowflake connection failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+    }
+  }
+}
+
+// Oracle Database Connection Test
+async function testOracleConnection(config: Record<string, unknown>, fetchSchema = false, schemaName = 'PUBLIC') {
+  try {
+    // Oracle connection configuration
+    const connectionConfig = {
+      user: config.username as string,
+      password: config.password as string,
+      connectString: config.connectionString as string || `${config.host}:${config.port || 1521}/${config.database}`,
+      // For Oracle Cloud or specific configurations
+      ...(config.serviceName ? { serviceName: config.serviceName as string } : {}),
+      ...(config.sid ? { sid: config.sid as string } : {}),
+      // Connection options
+      poolMin: 0,
+      poolMax: 1,
+      poolIncrement: 1,
+      poolTimeout: 60,
+      stmtCacheSize: 23,
+      externalAuth: false,
+      homogeneous: true,
+      events: false,
+      // SSL configuration
+      ...(config.ssl ? {
+        ssl: true,
+        sslServerCertDN: config.sslServerCertDN as string
+      } : {})
+    }
+
+    const connection = await oracledb.getConnection(connectionConfig)
+    
+    try {
+      // Test the connection with a simple query
+      const result = await connection.execute(`
+        SELECT 
+          BANNER as version,
+          SYS_CONTEXT('USERENV', 'DB_NAME') as database,
+          USER as user,
+          SYS_CONTEXT('USERENV', 'SERVER_HOST') as server
+        FROM V$VERSION 
+        WHERE ROWNUM = 1
+      `)
+      
+      const response: {
+        success: boolean;
+        details: Record<string, unknown>;
+        schema?: DatabaseSchema;
+      } = {
+        success: true,
+        details: {
+          version: (Array.isArray(result.rows) && (result.rows as unknown[][])[0]?.[0]) || 'Unknown',
+          database: (Array.isArray(result.rows) && (result.rows as unknown[][])[0]?.[1]) || config.database,
+          user: (Array.isArray(result.rows) && (result.rows as unknown[][])[0]?.[2]) || config.username,
+          server: (Array.isArray(result.rows) && (result.rows as unknown[][])[0]?.[3]) || config.host,
+          host: config.host,
+          port: config.port
+        }
+      }
+
+      // Fetch schema information if requested
+      if (fetchSchema) {
+        console.log(`🔍 Fetching table names for Oracle schema: ${schemaName}`)
+        const schemaResult = await connection.execute(`
+          SELECT 
+            TABLE_NAME,
+            CASE 
+              WHEN TABLE_TYPE = 'VIEW' THEN 'VIEW'
+              ELSE 'BASE TABLE'
+            END as TABLE_TYPE,
+            COMMENTS
+          FROM USER_TAB_COMMENTS 
+          WHERE TABLE_TYPE IN ('TABLE', 'VIEW')
+          AND TABLE_NAME NOT LIKE 'BIN$%'
+          ORDER BY TABLE_NAME
+        `)
+        
+        const tables: DatabaseTable[] = []
+        const views: DatabaseTable[] = []
+
+        for (const row of schemaResult.rows || []) {
+          const rowArray = row as unknown[];
+          const table: DatabaseTable = {
+            name: rowArray[0] as string,
+            type: (rowArray[1] as string) === 'VIEW' ? 'view' : 'table',
+            columns: [],
+            row_count: 0,
+            description: rowArray[2] as string || ''
+          }
+
+          if (rowArray[1] === 'VIEW') {
+            views.push(table)
+          } else {
+            tables.push(table)
+          }
+        }
+
+        response.schema = {
+          database_name: config.database as string,
+          database_type: 'oracle',
+          tables,
+          views,
+          total_tables: tables.length,
+          total_views: views.length
+        }
+      }
+      
+      await connection.close()
+      return response
+    } catch (queryError) {
+      await connection.close()
+      throw queryError
+    }
+  } catch (error) {
+    console.error('Oracle connection error:', error)
+    
+    if (error instanceof Error) {
+      if (error.message.includes('ORA-12541')) {
+        return {
+          success: false,
+          error: 'Connection refused. Please check if the Oracle database is running and the host/port are correct.'
+        }
+      } else if (error.message.includes('ORA-01017')) {
+        return {
+          success: false,
+          error: 'Authentication failed. Please check your username and password.'
+        }
+      } else if (error.message.includes('ORA-12514')) {
+        return {
+          success: false,
+          error: 'Database service not found. Please check the database name or service name.'
+        }
+      } else if (error.message.includes('ORA-12535')) {
+        return {
+          success: false,
+          error: 'Connection timeout. Please check if the host is reachable and the port is correct.'
+        }
+      } else {
+        return {
+          success: false,
+          error: `Connection failed: ${error.message}`
+        }
+      }
+    }
+    
+    return {
+      success: false,
+      error: 'Unknown connection error occurred'
+    }
+  }
+}
+
+// Microsoft SQL Server Connection Test
+async function testMSSQLConnection(config: Record<string, unknown>, fetchSchema = false, schemaName = 'dbo') {
+  try {
+    const sqlConfig = {
+      server: config.host as string,
+      port: parseInt(config.port as string) || 1433,
+      database: config.database as string,
+      user: config.username as string,
+      password: config.password as string,
+      options: {
+        encrypt: config.ssl ? true : false,
+        trustServerCertificate: config.ssl ? false : true,
+        enableArithAbort: true,
+        connectionTimeout: 10000,
+        requestTimeout: 10000,
+      }
+    }
+
+    const pool = await sql.connect(sqlConfig)
+    
+    // Test the connection
+    const result = await pool.request().query(`
+      SELECT 
+        @@VERSION as version,
+        DB_NAME() as database,
+        USER_NAME() as user,
+        @@SERVERNAME as server
+    `)
+    
+    const response: {
+      success: boolean;
+      details: Record<string, unknown>;
+      schema?: DatabaseSchema;
+    } = {
+      success: true,
+      details: {
+        version: result.recordset[0].version,
+        database: result.recordset[0].database,
+        user: result.recordset[0].user,
+        server: result.recordset[0].server,
+        host: config.host,
+        port: config.port
+      }
+    }
+
+    // Fetch schema information if requested
+    if (fetchSchema) {
+      console.log(`🔍 Fetching table names for SQL Server schema: ${schemaName}`)
+      const schema = await fetchMSSQLTableNamesOnly(pool, config.database as string, schemaName)
+      response.schema = schema
+    }
+    
+    await pool.close()
+    return response
+  } catch (error) {
+    console.error('SQL Server connection error:', error)
+    
+    if (error instanceof Error) {
+      if (error.message.includes('ECONNREFUSED')) {
+        return {
+          success: false,
+          error: 'Connection refused. Please check if the SQL Server is running and the host/port are correct.'
+        }
+      } else if (error.message.includes('Login failed')) {
+        return {
+          success: false,
+          error: 'Authentication failed. Please check your username and password.'
+        }
+      } else if (error.message.includes('Cannot open database')) {
+        return {
+          success: false,
+          error: 'Database does not exist or access denied. Please check the database name and permissions.'
+        }
+      } else {
+        return {
+          success: false,
+          error: `Connection failed: ${error.message}`
+        }
+      }
+    }
+    
+    return {
+      success: false,
+      error: 'Unknown connection error occurred'
+    }
+  }
+}
+
+// Helper function to fetch MSSQL table names only
+async function fetchMSSQLTableNamesOnly(pool: sql.ConnectionPool, databaseName: string, schemaName: string): Promise<DatabaseSchema> {
+  try {
+    const result = await pool.request().query(`
+      SELECT 
+        TABLE_NAME as table_name,
+        TABLE_TYPE as table_type
+      FROM INFORMATION_SCHEMA.TABLES 
+      WHERE TABLE_SCHEMA = '${schemaName}'
+      ORDER BY TABLE_NAME
+    `)
+    
+    const tables: DatabaseTable[] = []
+    const views: DatabaseTable[] = []
+    
+    for (const row of result.recordset) {
+      const table: DatabaseTable = {
+        name: row.table_name,
+        type: row.table_type === 'VIEW' ? 'view' : 'table',
+        columns: [], // We'll fetch columns separately when needed
+        row_count: 0,
+        description: ''
+      }
+      
+      if (row.table_type === 'VIEW') {
+        views.push(table)
+      } else {
+        tables.push(table)
+      }
+    }
+    
+    return {
+      database_name: databaseName,
+      database_type: 'mssql',
+      tables,
+      views,
+      total_tables: tables.length,
+      total_views: views.length
+    }
+  } catch (error) {
+    console.error('Error fetching MSSQL schema:', error)
+    throw new Error(`Failed to fetch schema: ${error instanceof Error ? error.message : 'Unknown error'}`)
+  }
+}

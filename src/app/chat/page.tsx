@@ -1,12 +1,11 @@
-import { createServerSupabaseClient } from "@/lib/server-utils";
+import { createServerSupabaseClient, supabaseServer } from "@/lib/server-utils";
 import { redirect } from "next/navigation";
 import ChatClient from "./chat-client";
-import { SupabaseClient } from "@supabase/supabase-js";
 
 interface Agent {
   id: string;
   name: string;
-  description: string | null;
+  description: string;
   workspace_id: string;
   agent_type: string;
   status: string;
@@ -48,16 +47,13 @@ interface ConversationData {
   ai_agents: Agent[];
 }
 
-async function getChatData(
-  userId: string,
-  supabase: SupabaseClient
-): Promise<{
+async function getChatData(userId: string): Promise<{
   agents: Agent[];
   conversations: Conversation[];
 }> {
   try {
     // Get user's accessible agents through agent_access
-    const { data: agentAccess, error: agentAccessError } = await supabase
+    const { data: agentAccess, error: agentAccessError } = await supabaseServer
       .from("agent_access")
       .select(
         `
@@ -86,7 +82,7 @@ async function getChatData(
 
     // Also get agents from workspaces the user has access to
     // First get user's organizations
-    const { data: userOrgs, error: userOrgsError } = await supabase
+    const { data: userOrgs, error: userOrgsError } = await supabaseServer
       .from("organization_members")
       .select("organization_id")
       .eq("user_id", userId)
@@ -96,7 +92,7 @@ async function getChatData(
     if (!userOrgsError && userOrgs && userOrgs.length > 0) {
       // Get workspaces for these organizations
       const orgIds = userOrgs.map((org) => org.organization_id);
-      const { data: workspaces, error: workspacesError } = await supabase
+      const { data: workspaces, error: workspacesError } = await supabaseServer
         .from("workspaces")
         .select("id")
         .in("organization_id", orgIds)
@@ -105,7 +101,7 @@ async function getChatData(
       if (!workspacesError && workspaces && workspaces.length > 0) {
         // Get agents for these workspaces
         const workspaceIds = workspaces.map((ws) => ws.id);
-        const { data: agents } = await supabase
+        const { data: agents } = await supabaseServer
           .from("ai_agents")
           .select(
             `
@@ -133,16 +129,17 @@ async function getChatData(
     console.log("🔍 Querying conversations for user:", userId);
 
     // Debug: Check if the agent exists
-    const { data: agentCheck, error: agentError } = await supabase
+    const { data: agentCheck, error: agentError } = await supabaseServer
       .from("ai_agents")
       .select("id, name, status")
       .eq("id", "60acb191-c2b5-4abc-8732-e74f3469a985");
     console.log("🔍 Agent check:", { agentCheck, agentError });
     // Try a different approach - get conversations first, then get agents separately
-    const { data: conversations, error: conversationsError } = await supabase
-      .from("conversations")
-      .select(
-        `
+    const { data: conversations, error: conversationsError } =
+      await supabaseServer
+        .from("conversations")
+        .select(
+          `
         id,
         title,
         created_at,
@@ -151,16 +148,16 @@ async function getChatData(
         agent_id,
         user_id
       `
-      )
-      .eq("user_id", userId)
-      .order("last_message_at", { ascending: false })
-      .limit(20);
+        )
+        .eq("user_id", userId)
+        .order("last_message_at", { ascending: false })
+        .limit(20);
 
     // Get agents for these conversations
     let conversationsWithAgents: unknown[] = [];
     if (conversations && conversations.length > 0) {
       const agentIds = conversations.map((c) => c.agent_id);
-      const { data: agents, error: agentsError } = await supabase
+      const { data: agents, error: agentsError } = await supabaseServer
         .from("ai_agents")
         .select("*")
         .in("id", agentIds);
@@ -189,6 +186,7 @@ async function getChatData(
       .filter((agent: Agent) => agent && agent.status === "active")
       .map((agent: Agent) => ({
         ...agent,
+        description: agent.description || "",
         access_level:
           (agentAccess || []).find(
             (access: AgentAccess) => access.agent_id === agent.id
@@ -199,6 +197,7 @@ async function getChatData(
       .filter((agent: Agent) => agent && agent.status === "active")
       .map((agent: Agent) => ({
         ...agent,
+        description: agent.description || "",
         access_level: "chat", // Default access level for workspace agents
       }));
 
@@ -207,6 +206,15 @@ async function getChatData(
     const uniqueAgents = allAgents.filter(
       (agent, index, self) => index === self.findIndex((a) => a.id === agent.id)
     );
+
+    // Debug: Log agent details
+    console.log("🔍 Processed agents:", {
+      accessAgentsCount: accessAgents.length,
+      workspaceAgentsCount: workspaceAgentsList.length,
+      totalAgentsCount: allAgents.length,
+      uniqueAgentsCount: uniqueAgents.length,
+      agentIds: uniqueAgents.map((a) => ({ id: a.id, name: a.name })),
+    });
 
     // Transform conversations data and filter out conversations with null agents
     const transformedConversations = (conversationsWithAgents || [])
@@ -234,7 +242,11 @@ async function getChatData(
   }
 }
 
-export default async function ChatPage() {
+export default async function ChatPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ agentId?: string }>;
+}) {
   // Create server-side Supabase client that can read session cookies
   const supabase = await createServerSupabaseClient();
 
@@ -248,14 +260,30 @@ export default async function ChatPage() {
     redirect("/login");
   }
 
+  // Get search parameters
+  const { agentId } = await searchParams;
+  console.log("🔍 Chat page search params:", {
+    agentId,
+    userEmail: user.email,
+  });
+
   // Fetch chat data on server side
-  const { agents, conversations } = await getChatData(user.id, supabase);
+  const { agents } = await getChatData(user.id);
+
+  // Get user profile information
+  const userProfile = {
+    id: user.id,
+    email: user.email || "",
+    name: user.user_metadata?.name || user.user_metadata?.full_name || "",
+    avatar_url:
+      user.user_metadata?.avatar_url || user.user_metadata?.picture || "",
+  };
 
   return (
     <ChatClient
       initialAgents={agents}
-      initialConversations={conversations}
-      user={{ id: user.id, email: user.email || "" }}
+      user={userProfile}
+      initialAgentId={agentId}
     />
   );
 }

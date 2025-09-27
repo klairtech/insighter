@@ -95,6 +95,21 @@ async function validateSchemaExists(config: Record<string, unknown>, schemaName:
       case 'bigquery':
         // BigQuery uses datasets instead of schemas
         return { success: true, details: { message: 'BigQuery uses datasets instead of schemas' } }
+      case 'redshift':
+        // Redshift uses PostgreSQL-compatible schemas
+        return await validatePostgreSQLSchema(config, schemaName)
+      case 'azure-sql':
+        // Azure SQL uses SQL Server schemas
+        return { success: true, details: { message: 'Azure SQL schema validation - using default schema' } }
+      case 'snowflake':
+        // Snowflake uses schemas
+        return { success: true, details: { message: 'Snowflake schema validation - using default schema' } }
+      case 'oracle':
+        // Oracle uses schemas
+        return { success: true, details: { message: 'Oracle schema validation - using default schema' } }
+      case 'mssql':
+        // SQL Server uses schemas
+        return { success: true, details: { message: 'SQL Server schema validation - using default schema' } }
       default:
         return {
           success: false,

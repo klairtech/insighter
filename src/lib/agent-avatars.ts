@@ -83,7 +83,13 @@ export const AGENT_AVATARS = [
 ];
 
 // Function to get a consistent avatar for an agent based on their ID
-export function getAgentAvatar(agentId: string) {
+export function getAgentAvatar(agentId: string | undefined | null) {
+  // Handle undefined, null, or empty agentId
+  if (!agentId || typeof agentId !== 'string') {
+    // Return a default avatar for invalid agentId
+    return AGENT_AVATARS[0];
+  }
+  
   const hash = agentId.split("").reduce((a, b) => {
     a = (a << 5) - a + b.charCodeAt(0);
     return a & a;

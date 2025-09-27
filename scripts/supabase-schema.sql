@@ -267,7 +267,7 @@ CREATE TABLE public.daily_quota (
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   credits_used integer NOT NULL DEFAULT 0,
-  CONSTRAINT daily_quota_pkey PRIMARY KEY (date, user_id),
+  CONSTRAINT daily_quota_pkey PRIMARY KEY (user_id, date),
   CONSTRAINT daily_quota_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
 );
 CREATE TABLE public.daily_quota_guest (
@@ -278,7 +278,7 @@ CREATE TABLE public.daily_quota_guest (
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   credits_used integer NOT NULL DEFAULT 0,
-  CONSTRAINT daily_quota_guest_pkey PRIMARY KEY (guest_session_id, date),
+  CONSTRAINT daily_quota_guest_pkey PRIMARY KEY (date, guest_session_id),
   CONSTRAINT daily_quota_guest_guest_session_id_fkey FOREIGN KEY (guest_session_id) REFERENCES public.guest_sessions(id)
 );
 CREATE TABLE public.data_access_logs (
@@ -319,17 +319,59 @@ CREATE TABLE public.database_connections (
   CONSTRAINT database_connections_pkey PRIMARY KEY (id),
   CONSTRAINT database_connections_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id)
 );
-CREATE TABLE public.database_summaries (
+CREATE TABLE public.external_connection_auth_tokens (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
-  database_connection_id uuid NOT NULL,
-  summary_encrypted text NOT NULL,
-  created_by uuid NOT NULL,
-  encryption_version text NOT NULL DEFAULT 'v1'::text,
-  created_at timestamp with time zone NOT NULL DEFAULT now(),
-  updated_at timestamp with time zone NOT NULL DEFAULT now(),
-  CONSTRAINT database_summaries_pkey PRIMARY KEY (id),
-  CONSTRAINT database_summaries_database_connection_id_fkey FOREIGN KEY (database_connection_id) REFERENCES public.database_connections(id),
-  CONSTRAINT database_summaries_created_by_fkey FOREIGN KEY (created_by) REFERENCES auth.users(id)
+  connection_id uuid NOT NULL,
+  token_type character varying NOT NULL CHECK (token_type::text = ANY (ARRAY['oauth_access'::text, 'oauth_refresh'::text, 'api_key'::text, 'bearer'::text, 'basic'::text])),
+  token_value_encrypted text NOT NULL,
+  expires_at timestamp with time zone,
+  scope text,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT external_connection_auth_tokens_pkey PRIMARY KEY (id),
+  CONSTRAINT external_connection_auth_tokens_connection_id_fkey FOREIGN KEY (connection_id) REFERENCES public.external_connections(id)
+);
+CREATE TABLE public.external_connection_data_cache (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  connection_id uuid NOT NULL,
+  cache_key character varying NOT NULL,
+  data_encrypted text NOT NULL,
+  data_hash character varying NOT NULL,
+  expires_at timestamp with time zone NOT NULL,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT external_connection_data_cache_pkey PRIMARY KEY (id),
+  CONSTRAINT external_connection_data_cache_connection_id_fkey FOREIGN KEY (connection_id) REFERENCES public.external_connections(id)
+);
+CREATE TABLE public.external_connection_queries (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  connection_id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  query_text text NOT NULL,
+  query_type character varying NOT NULL CHECK (query_type::text = ANY (ARRAY['select'::text, 'filter'::text, 'aggregate'::text, 'search'::text, 'analyze'::text])),
+  query_result jsonb,
+  execution_time_ms integer,
+  records_returned integer DEFAULT 0,
+  status character varying NOT NULL DEFAULT 'success'::character varying CHECK (status::text = ANY (ARRAY['success'::text, 'error'::text, 'timeout'::text])),
+  error_message text,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT external_connection_queries_pkey PRIMARY KEY (id),
+  CONSTRAINT external_connection_queries_connection_id_fkey FOREIGN KEY (connection_id) REFERENCES public.external_connections(id),
+  CONSTRAINT external_connection_queries_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.external_connection_syncs (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  connection_id uuid NOT NULL,
+  sync_type character varying NOT NULL CHECK (sync_type::text = ANY (ARRAY['full'::text, 'incremental'::text, 'manual'::text])),
+  status character varying NOT NULL CHECK (status::text = ANY (ARRAY['success'::text, 'error'::text, 'partial'::text])),
+  records_processed integer DEFAULT 0,
+  error_message text,
+  started_at timestamp with time zone DEFAULT now(),
+  completed_at timestamp with time zone,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT external_connection_syncs_pkey PRIMARY KEY (id),
+  CONSTRAINT external_connection_syncs_connection_id_fkey FOREIGN KEY (connection_id) REFERENCES public.external_connections(id)
 );
 CREATE TABLE public.external_connections (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -337,11 +379,20 @@ CREATE TABLE public.external_connections (
   type text NOT NULL,
   url text,
   api_key_encrypted text,
-  config_json text,
+  config_encrypted text,
   workspace_id uuid NOT NULL,
   is_active boolean DEFAULT true,
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
+  content_type character varying CHECK (content_type::text = ANY (ARRAY['spreadsheet'::text, 'document'::text, 'api'::text, 'website'::text, 'rss'::text, 'notion'::text, 'airtable'::text, 'slack'::text, 'github'::text, 'jira'::text, 'trello'::text, 'asana'::text, 'sharepoint'::text, 'onedrive'::text, 'dropbox'::text])),
+  auth_config_encrypted text,
+  sync_config jsonb DEFAULT '{}'::jsonb,
+  last_sync timestamp with time zone,
+  content_summary text,
+  ai_definitions jsonb DEFAULT '{}'::jsonb,
+  schema_metadata jsonb DEFAULT '{}'::jsonb,
+  data_sample jsonb DEFAULT '{}'::jsonb,
+  connection_status character varying DEFAULT 'active'::character varying CHECK (connection_status::text = ANY (ARRAY['active'::text, 'inactive'::text, 'error'::text, 'syncing'::text])),
   CONSTRAINT external_connections_pkey PRIMARY KEY (id),
   CONSTRAINT external_connections_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id)
 );
@@ -452,6 +503,67 @@ CREATE TABLE public.guest_sessions (
   last_seen_at timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT guest_sessions_pkey PRIMARY KEY (id)
 );
+CREATE TABLE public.insighter_credit_batches (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  batch_code text NOT NULL,
+  credits_added integer NOT NULL,
+  credits_remaining integer NOT NULL,
+  credits_used integer NOT NULL DEFAULT 0,
+  batch_type text NOT NULL CHECK (batch_type = ANY (ARRAY['monthly_free'::text, 'monthly_paid'::text, 'one_time_purchase'::text, 'bonus'::text, 'refund'::text])),
+  plan_type text NOT NULL DEFAULT 'free'::text CHECK (plan_type = ANY (ARRAY['free'::text, 'premium'::text, 'enterprise'::text, 'flexible'::text])),
+  added_date date NOT NULL DEFAULT CURRENT_DATE,
+  expiry_date date NOT NULL,
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT insighter_credit_batches_pkey PRIMARY KEY (id),
+  CONSTRAINT insighter_credit_batches_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.insighter_credit_usage (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  batch_id uuid NOT NULL,
+  credits_used integer NOT NULL,
+  operation_type text NOT NULL CHECK (operation_type = ANY (ARRAY['database_query'::text, 'schema_analysis'::text, 'data_visualization'::text, 'ai_summary'::text, 'file_processing'::text, 'chat_interaction'::text, 'api_call'::text])),
+  operation_id uuid,
+  description text,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT insighter_credit_usage_pkey PRIMARY KEY (id),
+  CONSTRAINT insighter_credit_usage_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
+  CONSTRAINT insighter_credit_usage_batch_id_fkey FOREIGN KEY (batch_id) REFERENCES public.insighter_credit_batches(id)
+);
+CREATE TABLE public.insighter_plans (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  plan_name text NOT NULL UNIQUE,
+  plan_type text NOT NULL CHECK (plan_type = ANY (ARRAY['free'::text, 'premium'::text, 'enterprise'::text, 'flexible'::text])),
+  monthly_credits integer NOT NULL,
+  price_usd integer,
+  price_inr integer,
+  features jsonb DEFAULT '{}'::jsonb,
+  is_active boolean NOT NULL DEFAULT true,
+  display_order integer DEFAULT 0,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT insighter_plans_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.insighter_purchases (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  plan_id uuid NOT NULL,
+  payment_id text,
+  order_id text,
+  amount_paid integer NOT NULL,
+  credits_purchased integer NOT NULL,
+  batch_code text NOT NULL,
+  status text NOT NULL DEFAULT 'pending'::text CHECK (status = ANY (ARRAY['pending'::text, 'completed'::text, 'failed'::text, 'refunded'::text])),
+  purchase_date timestamp with time zone DEFAULT now(),
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT insighter_purchases_pkey PRIMARY KEY (id),
+  CONSTRAINT insighter_purchases_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
+  CONSTRAINT insighter_purchases_plan_id_fkey FOREIGN KEY (plan_id) REFERENCES public.insighter_plans(id)
+);
 CREATE TABLE public.interaction_contexts (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   session_id uuid NOT NULL,
@@ -499,44 +611,12 @@ CREATE TABLE public.messages (
   api_request_id text,
   api_response_metadata jsonb DEFAULT '{}'::jsonb,
   created_at timestamp with time zone DEFAULT now(),
-  xai_metrics_encrypted text,
   confidence_score real CHECK (confidence_score >= 0.0::double precision AND confidence_score <= 1.0::double precision),
-  reasoning_explanation_encrypted text,
-  decision_factors_encrypted text,
-  uncertainty_indicators_encrypted text,
   model_interpretability_score real CHECK (model_interpretability_score >= 0.0::double precision AND model_interpretability_score <= 1.0::double precision),
-  agent_thinking_notes_encrypted text,
-  reasoning_steps_encrypted text,
-  internal_analysis_encrypted text,
-  decision_tree_encrypted text,
-  alternative_approaches_encrypted text,
-  validation_checks_encrypted text,
-  sql_queries_encrypted text,
-  query_execution_plan_encrypted text,
-  database_schema_used_encrypted text,
-  query_performance_metrics_encrypted text,
-  data_sources_accessed_encrypted text,
-  query_optimization_notes_encrypted text,
-  graph_data_encrypted text,
-  visualization_config_encrypted text,
-  chart_metadata_encrypted text,
-  data_transformation_steps_encrypted text,
-  rendering_instructions_encrypted text,
-  interactive_features_encrypted text,
   analysis_depth text CHECK (analysis_depth = ANY (ARRAY['surface'::text, 'moderate'::text, 'deep'::text, 'comprehensive'::text])),
   data_quality_score real CHECK (data_quality_score >= 0.0::double precision AND data_quality_score <= 1.0::double precision),
   response_completeness_score real CHECK (response_completeness_score >= 0.0::double precision AND response_completeness_score <= 1.0::double precision),
   user_satisfaction_prediction real CHECK (user_satisfaction_prediction >= 0.0::double precision AND user_satisfaction_prediction <= 1.0::double precision),
-  compliance_checks_encrypted text,
-  bias_detection_results_encrypted text,
-  ethical_considerations_encrypted text,
-  data_privacy_notes_encrypted text,
-  regulatory_compliance_encrypted text,
-  optimization_suggestions_encrypted text,
-  performance_analysis_encrypted text,
-  resource_usage_metrics_encrypted text,
-  scalability_notes_encrypted text,
-  bottleneck_analysis_encrypted text,
   CONSTRAINT messages_pkey PRIMARY KEY (id),
   CONSTRAINT messages_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.conversations(id)
 );
@@ -831,7 +911,7 @@ CREATE TABLE public.users (
 CREATE TABLE public.workspace_data_sources (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   workspace_id uuid NOT NULL,
-  source_type text NOT NULL CHECK (source_type = ANY (ARRAY['file'::text, 'database'::text, 'api'::text])),
+  source_type text NOT NULL CHECK (source_type = ANY (ARRAY['file'::text, 'database'::text, 'api'::text, 'spreadsheet'::text, 'document'::text, 'website'::text, 'rss'::text, 'notion'::text, 'airtable'::text, 'slack'::text, 'github'::text, 'jira'::text, 'trello'::text, 'asana'::text, 'sharepoint'::text, 'onedrive'::text, 'dropbox'::text])),
   source_id uuid NOT NULL,
   source_name text NOT NULL,
   is_active boolean DEFAULT true,

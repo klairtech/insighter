@@ -5,7 +5,7 @@ import ChatClient from "./chat-client";
 interface Agent {
   id: string;
   name: string;
-  description: string | null;
+  description: string;
   workspace_id: string;
   agent_type: string;
   status: string;
@@ -107,6 +107,7 @@ async function getChatData(userId: string): Promise<{
       .filter((agent) => agent && agent.status === "active")
       .map((agent) => ({
         ...agent,
+        description: agent.description || "",
         access_level:
           (agentAccess || []).find((access) => access.agent_id === agent.id)
             ?.access_level || "read",
@@ -196,7 +197,11 @@ async function getChatData(userId: string): Promise<{
                 (workspace: Record<string, unknown>) =>
                   workspace.ai_agents as Agent[]
               )
-              .filter((agent: Agent) => agent && agent.status === "active");
+              .filter((agent: Agent) => agent && agent.status === "active")
+              .map((agent: Agent) => ({
+                ...agent,
+                description: agent.description || "",
+              }));
 
             allAgents.push(...orgAgents);
 
@@ -221,9 +226,12 @@ async function getChatData(userId: string): Promise<{
             const workspaceAgents = (
               membership.workspaces as unknown as Record<string, unknown>
             ).ai_agents as Agent[];
-            const filteredAgents = workspaceAgents.filter(
-              (agent) => agent && agent.status === "active"
-            );
+            const filteredAgents = workspaceAgents
+              .filter((agent) => agent && agent.status === "active")
+              .map((agent) => ({
+                ...agent,
+                description: agent.description || "",
+              }));
 
             allAgents.push(...filteredAgents);
 
@@ -299,7 +307,7 @@ async function getChatData(userId: string): Promise<{
           )
           .eq("conversation_id", conv.id)
           .order("created_at", { ascending: true })
-          .limit(50); // Limit to last 50 messages
+          .limit(50); // Limit to last 50 messages (oldest first for natural chat flow)
 
         if (messagesError) {
           console.error(
@@ -309,15 +317,34 @@ async function getChatData(userId: string): Promise<{
         }
 
         // Import decryption functions
-        const { decryptText } = await import("@/lib/encryption");
+        const { decryptText, decryptObject } = await import("@/lib/encryption");
 
         // Decrypt and transform messages
         const decryptedMessages = (messages || []).map((msg) => {
           try {
             const decryptedContent = decryptText(msg.content_encrypted);
-            // const decryptedMetadata = msg.metadata_encrypted
-            //   ? decryptObject(msg.metadata_encrypted)
-            //   : {};
+            const decryptedMetadata = msg.metadata_encrypted
+              ? decryptObject(msg.metadata_encrypted)
+              : {};
+
+            // Debug: Log metadata structure for assistant messages
+            if (msg.sender_type === "agent" && decryptedMetadata) {
+              console.log(
+                "🔍 Chat Page Server: Decrypted metadata for agent message:",
+                {
+                  messageId: msg.id,
+                  hasSqlQueries: !!(
+                    decryptedMetadata.sql_queries || decryptedMetadata.sql_query
+                  ),
+                  hasGraphData: !!decryptedMetadata.graph_data,
+                  sqlQueriesValue:
+                    decryptedMetadata.sql_queries ||
+                    decryptedMetadata.sql_query,
+                  graphDataValue: decryptedMetadata.graph_data,
+                  metadataKeys: Object.keys(decryptedMetadata),
+                }
+              );
+            }
 
             return {
               id: msg.id,
@@ -327,6 +354,7 @@ async function getChatData(userId: string): Promise<{
                   ? ("user" as const)
                   : ("assistant" as const),
               created_at: msg.created_at,
+              metadata: decryptedMetadata,
             };
           } catch (decryptError) {
             console.error("Error decrypting message:", decryptError);
@@ -338,6 +366,7 @@ async function getChatData(userId: string): Promise<{
                   ? ("user" as const)
                   : ("assistant" as const),
               created_at: msg.created_at,
+              metadata: {},
             };
           }
         });
@@ -380,13 +409,12 @@ export default async function ChatPage() {
   console.log("✅ Chat Page: User authenticated:", session.user.email);
 
   // Fetch chat data on server side
-  const { agents, conversations } = await getChatData(session.user.id);
+  const { agents } = await getChatData(session.user.id);
 
   return (
     <ChatClient
       initialAgents={agents}
-      initialConversations={conversations}
-      user={{ id: session.user.id, email: session.user.email || "" }}
+      user={{ email: session.user.email || "" }}
     />
   );
 }

@@ -68,8 +68,30 @@ async function getWorkspaceData(
   files: UploadedFile[];
 }> {
   try {
-    // First, check if user has access to this workspace
-    const { data: membership, error: membershipError } = await supabaseServer
+    // First get the workspace to find its organization
+    const { data: workspace, error: workspaceError } = await supabaseServer
+      .from("workspaces")
+      .select("*, organization_id")
+      .eq("id", workspaceId)
+      .eq("status", "active")
+      .single();
+
+    if (workspaceError || !workspace) {
+      console.error("Error fetching workspace:", workspaceError);
+      return { workspace: null, organization: null, agent: null, files: [] };
+    }
+
+    // Check if user has organization-level access
+    const { data: orgMembership } = await supabaseServer
+      .from("organization_members")
+      .select("role")
+      .eq("user_id", userId)
+      .eq("organization_id", workspace.organization_id)
+      .eq("status", "active")
+      .single();
+
+    // Check if user has workspace-specific access
+    const { data: workspaceMembership } = await supabaseServer
       .from("workspace_members")
       .select("role")
       .eq("user_id", userId)
@@ -77,21 +99,10 @@ async function getWorkspaceData(
       .eq("status", "active")
       .single();
 
-    if (membershipError || !membership) {
-      console.error("User not a member of workspace:", membershipError);
-      return { workspace: null, organization: null, agent: null, files: [] };
-    }
-
-    // Get workspace details
-    const { data: workspace, error: workspaceError } = await supabaseServer
-      .from("workspaces")
-      .select("*")
-      .eq("id", workspaceId)
-      .eq("status", "active")
-      .single();
-
-    if (workspaceError || !workspace) {
-      console.error("Error fetching workspace:", workspaceError);
+    // User has access if they have either organization or workspace-specific access
+    const membership = orgMembership || workspaceMembership;
+    if (!membership) {
+      console.error("User not a member of workspace or organization");
       return { workspace: null, organization: null, agent: null, files: [] };
     }
 

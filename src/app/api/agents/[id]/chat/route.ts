@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/server-utils';
 import { verifyAgentApiToken, extractTokenFromHeader } from '@/lib/jwt-utils';
 import { getOrCreateApiConversation, saveApiInteraction } from '@/lib/api-conversations';
+import { TokenTrackingData } from '@/lib/token-utils';
 
 // Rate limiting: 100 requests per minute
 const RATE_LIMIT = 100;
@@ -12,12 +13,55 @@ interface ChatRequest {
   message: string;
 }
 
+interface XAIMetrics {
+  confidence_score: number;
+  reasoning_steps: string[];
+  uncertainty_factors: string[];
+  data_quality_score: number;
+  response_completeness_score: number;
+  user_satisfaction_prediction: number;
+}
+
+interface RAGContext {
+  retrieved_chunks: number;
+  similarity_scores: unknown[];
+  source_documents: string[];
+}
+
+interface Explainability {
+  reasoning_steps: string[];
+  confidence_score: unknown;
+  uncertainty_factors: string[];
+}
+
+interface DataSource {
+  source_id?: string;
+  source_name?: string;
+  relevance_score: unknown;
+  sections_used?: string[];
+}
+
 interface ChatResponse {
   response_text: string;
   response_image_url?: string;
   conversation_id: string;
   tokens_used: number;
   processing_time_ms: number;
+  // XAI and detailed metadata fields
+  xai_metrics?: XAIMetrics;
+  agent_thinking_notes?: string[];
+  sql_queries?: string[];
+  graph_data?: Record<string, unknown>;
+  reasoning_explanation?: string;
+  analysis_depth?: string;
+  data_quality_score?: number;
+  response_completeness_score?: number;
+  user_satisfaction_prediction?: number;
+  token_tracking?: TokenTrackingData;
+  rag_context?: RAGContext;
+  explainability?: Explainability;
+  data_sources?: DataSource[];
+  sql_query?: unknown;
 }
 
 /**
@@ -305,11 +349,35 @@ export async function POST(
         let responseText = '';
         const responseImageUrl: string | null = null;
         let tokensUsed = 0;
-        let agentResponse: { content: string; tokens_used: number; processing_time_ms: number; metadata?: Record<string, unknown> } | null = null;
+        let agentResponse: {
+          content: string;
+          tokens_used: number;
+          processing_time_ms: number;
+          metadata?: Record<string, unknown>;
+          xai_metrics?: XAIMetrics;
+          agent_thinking_notes?: string[];
+          sql_queries?: string[];
+          graph_data?: Record<string, unknown>;
+          reasoning_explanation?: string;
+          analysis_depth?: string;
+          data_quality_score?: number;
+          response_completeness_score?: number;
+          user_satisfaction_prediction?: number;
+          token_tracking?: TokenTrackingData;
+          rag_context?: {
+            retrieved_chunks: number;
+            similarity_scores: unknown[];
+            source_documents: string[];
+          };
+          explainability?: Explainability;
+          data_sources?: DataSource[];
+          sql_query?: unknown;
+          error_details?: string;
+        } | null = null;
 
         try {
-          // Use the actual AI agent processing
-          const { processWithAgent } = await import('@/lib/ai-agents');
+          // Use the enhanced multi-agent flow processing
+          const { processWithEnhancedMultiAgentFlow } = await import('@/lib/enhanced-multi-agent-flow');
           
           // Get conversation history for context
           const { data: conversationHistory, error: historyError } = await supabaseServer
@@ -323,28 +391,39 @@ export async function POST(
             console.error('Error fetching conversation history:', historyError);
           }
 
-          // Create conversation context for the agent
-          const conversationContext = {
-            conversation_id: conversation.id,
-            agent_id: agentId,
-            workspace_id: agent.workspace_id,
-            messages: conversationHistory || [
-              {
-                sender_type: 'user' as const,
-                content: message,
-                created_at: new Date().toISOString()
-              }
-            ]
-          };
+          // Create conversation context for the agent (unused but kept for future use)
+          // const conversationContext = {
+          //   conversation_id: conversation.id,
+          //   agent_id: agentId,
+          //   workspace_id: agent.workspace_id,
+          //   messages: conversationHistory || [
+          //     {
+          //       sender_type: 'user' as const,
+          //       content: message,
+          //       created_at: new Date().toISOString()
+          //     }
+          //   ]
+          // };
 
-          // Process with the AI agent
-          agentResponse = await processWithAgent(
-            conversationContext,
-            message
+          // Process with the enhanced multi-agent flow
+          agentResponse = await processWithEnhancedMultiAgentFlow(
+            message,
+            agent.workspace_id,
+            agentId,
+            conversationHistory || []
           );
 
           responseText = agentResponse.content;
           tokensUsed = agentResponse.tokens_used;
+          
+          // Debug: Log what we received from the enhanced multi-agent flow
+          console.log('🔍 Debug: Agent response keys:', Object.keys(agentResponse));
+          console.log('🔍 Debug: Has xai_metrics:', !!agentResponse.xai_metrics);
+          console.log('🔍 Debug: Has sql_queries:', !!agentResponse.sql_queries);
+          console.log('🔍 Debug: Has graph_data:', !!agentResponse.graph_data);
+          console.log('🔍 Debug: Has agent_thinking_notes:', !!agentResponse.agent_thinking_notes);
+          console.log('🔍 Debug: xai_metrics value:', agentResponse.xai_metrics);
+          console.log('🔍 Debug: sql_queries value:', agentResponse.sql_queries);
           
           console.log('✅ Step 4: AI response generated successfully');
 
@@ -373,7 +452,11 @@ export async function POST(
       });
       
       return NextResponse.json(
-        { error: 'Failed to generate AI response' },
+        { 
+          error: 'Failed to generate AI response',
+          error_details: aiError instanceof Error ? aiError.message : 'Unknown error',
+          conversation_id: conversation.id
+        },
         { status: 500 }
       );
     }
@@ -391,6 +474,8 @@ export async function POST(
 
     // Step 5: Save to messages table with all metrics
     console.log('🔍 Step 5: Saving to messages table...');
+    
+    // Save API interaction (for API tracking)
     await saveApiInteraction({
       agentId,
       userId: tokenPayload.userId,
@@ -411,6 +496,126 @@ export async function POST(
       apiToken: apiToken
     });
 
+    // Also save to messages table for chat interface compatibility
+    console.log('🔍 Step 5b: Saving messages to messages table...');
+    
+    const { encryptText, encryptObject } = await import('@/lib/encryption');
+    
+    // Save user message first
+    const userMessageEncrypted = encryptText(message);
+    const crypto = await import('crypto');
+    const userMessageHash = crypto.createHash('sha256').update(message).digest('hex');
+    
+    const { data: userMessage, error: userMsgError } = await supabaseServer
+      .rpc('insert_message_safe', {
+        p_conversation_id: conversation.id,
+        p_content_encrypted: userMessageEncrypted,
+        p_content_hash: userMessageHash,
+        p_sender_type: 'user',
+        p_message_type: 'text',
+        p_metadata_encrypted: encryptObject({
+          input_tokens: tokensUsed,
+          message_length: message.length
+        }),
+        p_tokens_used: tokensUsed,
+        p_processing_time_ms: 0,
+        p_encryption_version: 'v1'
+      });
+
+    if (userMsgError) {
+      console.error('❌ Failed to save user message to messages table:', userMsgError);
+    } else {
+      const userMessageResult = Array.isArray(userMessage) ? userMessage[0] : userMessage;
+      console.log('✅ Step 5b: Successfully saved user message to messages table:', userMessageResult?.id);
+    }
+    
+    // Save agent response
+    if (agentResponse) {
+      console.log('🔍 Step 5c: Saving agent response to messages table...');
+      
+      // Encrypt agent response content
+      const agentMessageEncrypted = encryptText(agentResponse.content);
+      const crypto = await import('crypto');
+      const agentMessageHash = crypto.createHash('sha256').update(agentResponse.content).digest('hex');
+      
+      // Note: XAI data encryption variables removed as they were not being used
+
+      // Save agent message to messages table using safe function
+      const { data: agentMessage, error: agentMsgError } = await supabaseServer
+        .rpc('insert_message_safe', {
+          p_conversation_id: conversation.id,
+          p_content_encrypted: agentMessageEncrypted,
+          p_content_hash: agentMessageHash,
+          p_sender_type: 'agent',
+          p_message_type: 'text',
+          p_metadata_encrypted: encryptObject({
+            tokens_used: agentResponse.tokens_used,
+            processing_time_ms: agentResponse.processing_time_ms,
+            confidence_score: agentResponse.metadata?.confidence_score,
+            files_referenced: agentResponse.metadata?.files_referenced,
+            sql_query: (agentResponse.metadata as Record<string, unknown>)?.sql_query,
+            sql_queries: agentResponse.sql_queries,
+            graph_data: agentResponse.graph_data,
+            xai_metrics: agentResponse.xai_metrics,
+            agent_thinking_notes: agentResponse.agent_thinking_notes,
+            reasoning_explanation: agentResponse.reasoning_explanation,
+            start_time: (agentResponse.metadata as Record<string, unknown>)?.start_time,
+            end_time: (agentResponse.metadata as Record<string, unknown>)?.end_time,
+            token_tracking: agentResponse.token_tracking
+          }),
+          p_tokens_used: agentResponse.tokens_used || 0,
+          p_processing_time_ms: agentResponse.processing_time_ms || 0,
+          p_encryption_version: 'v1'
+        });
+
+      if (agentMsgError) {
+        console.error('❌ Failed to save agent message to messages table:', agentMsgError);
+      } else {
+        const agentMessageResult = Array.isArray(agentMessage) ? agentMessage[0] : agentMessage;
+        console.log('✅ Step 5c: Successfully saved agent message to messages table:', agentMessageResult?.id);
+      }
+    }
+
+    // Update conversation last_message_at
+    await supabaseServer
+      .from('conversations')
+      .update({ 
+        last_message_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', conversation.id);
+
+    // Deduct credits for the AI processing
+    const { calculateCreditsForTokens, deductCredits, logCreditUsage } = await import('@/lib/credit-utils')
+    const creditsUsed = calculateCreditsForTokens(agentResponse?.tokens_used || 0)
+    
+    if (creditsUsed > 0) {
+      console.log(`💳 Step 6: Deducting ${creditsUsed} credits for ${agentResponse?.tokens_used} tokens used`)
+      
+      const creditResult = await deductCredits(
+        tokenPayload.userId, 
+        creditsUsed, 
+        `API Agent Usage - Agent ${agentId}`
+      )
+      
+      if (!creditResult.success) {
+        console.error('❌ Step 6: Credit deduction failed:', creditResult.error)
+        // Don't fail the request, just log the error
+      } else {
+        console.log(`✅ Step 6: Successfully deducted ${creditsUsed} credits. Remaining: ${creditResult.remainingCredits}`)
+        
+        // Log credit usage for analytics
+        await logCreditUsage(
+          tokenPayload.userId,
+          agentId,
+          conversation.id,
+          agentResponse?.tokens_used || 0,
+          creditsUsed,
+          `API Agent Usage - Agent ${agentId}`
+        )
+      }
+    }
+
     console.log('✅ Step 5: Successfully saved to messages table');
 
     const response: ChatResponse = {
@@ -419,18 +624,30 @@ export async function POST(
       conversation_id, // Return original conversation_id to client
       tokens_used: tokensUsed,
       processing_time_ms: processingTime,
-      // Include agent metadata if available
+      // Include all agent metadata if available
       ...(agentResponse && {
+        // Basic metadata
         sql_query: agentResponse.metadata?.sql_query,
-        data_sources: Array.isArray(agentResponse.metadata?.files_referenced) 
-          ? agentResponse.metadata.files_referenced.map(fileId => ({
-              file_id: fileId,
-              file_name: `File ${fileId}`, // This could be enhanced to get actual file names
-              relevance_score: agentResponse.metadata?.confidence_score || 0.8,
-              sections_used: []
-            }))
-          : [],
-        rag_context: {
+        
+        // Data sources (use enhanced data if available, fallback to basic)
+        data_sources: agentResponse.data_sources || 
+          (Array.isArray(agentResponse.metadata?.files_referenced) 
+            ? agentResponse.metadata.files_referenced.map(fileId => ({
+                file_id: fileId,
+                file_name: `File ${fileId}`,
+                relevance_score: agentResponse.metadata?.confidence_score || 0.8,
+                sections_used: []
+              }))
+            : []),
+        
+        // RAG context (use enhanced data if available, fallback to basic)
+        rag_context: agentResponse.rag_context ? {
+          retrieved_chunks: agentResponse.rag_context.retrieved_chunks,
+          similarity_scores: Array.isArray(agentResponse.rag_context.similarity_scores) 
+            ? agentResponse.rag_context.similarity_scores.map((score: unknown) => typeof score === 'number' ? score : 0)
+            : [],
+          source_documents: agentResponse.rag_context.source_documents
+        } : {
           retrieved_chunks: Array.isArray(agentResponse.metadata?.files_referenced) 
             ? agentResponse.metadata.files_referenced.length 
             : 0,
@@ -445,13 +662,44 @@ export async function POST(
               )
             : []
         },
-        explainability: {
+        
+        // Explainability (use enhanced data if available, fallback to basic)
+        explainability: agentResponse.explainability || {
           reasoning_steps: [`Processed ${Array.isArray(agentResponse.metadata?.files_referenced) ? agentResponse.metadata.files_referenced.length : 0} files`],
           confidence_score: agentResponse.metadata?.confidence_score || 0.8,
           uncertainty_factors: (typeof agentResponse.metadata?.confidence_score === 'number' && agentResponse.metadata.confidence_score < 0.7)
             ? ['Low confidence in analysis'] 
             : []
-        }
+        },
+        
+        // XAI Metrics (only include if available)
+        ...(agentResponse.xai_metrics && { xai_metrics: agentResponse.xai_metrics }),
+        
+        // Agent Thinking Notes (only include if available)
+        ...(agentResponse.agent_thinking_notes && { agent_thinking_notes: agentResponse.agent_thinking_notes }),
+        
+        // SQL Queries (only include if available)
+        ...(agentResponse.sql_queries && { sql_queries: agentResponse.sql_queries }),
+        
+        // Graph Data (only include if available)
+        ...(agentResponse.graph_data && { graph_data: agentResponse.graph_data }),
+        
+        // Error Details (only include if available)
+        ...(agentResponse.error_details && { error_details: agentResponse.error_details }),
+        
+        // Reasoning Explanation
+        reasoning_explanation: agentResponse.reasoning_explanation,
+        
+        // Analysis Depth
+        analysis_depth: agentResponse.analysis_depth,
+        
+        // Data Quality Scores
+        data_quality_score: agentResponse.data_quality_score,
+        response_completeness_score: agentResponse.response_completeness_score,
+        user_satisfaction_prediction: agentResponse.user_satisfaction_prediction,
+        
+        // Token Tracking
+        token_tracking: agentResponse.token_tracking
       })
     };
 
