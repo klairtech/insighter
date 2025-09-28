@@ -1,13 +1,27 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: "standalone",
+  output: process.env.NODE_ENV === "production" ? "standalone" : undefined,
 
   // SSR and Performance Optimizations
   compress: true,
   poweredByHeader: false,
 
   // External packages for server components
-  serverExternalPackages: ["pg", "@supabase/supabase-js"],
+  serverExternalPackages: [
+    "pg",
+    "mysql2",
+    "mssql",
+    "oracledb",
+    "snowflake-sdk",
+    "@aws-sdk/client-s3",
+    "@aws-sdk/client-redshift",
+    "googleapis",
+    "google-auth-library",
+    "jsdom",
+  ],
+
+  // Transpile packages that need to be processed
+  transpilePackages: ["@supabase/supabase-js"],
 
   // Turbopack configuration (moved from experimental)
   turbopack: {
@@ -22,14 +36,28 @@ const nextConfig = {
   // Experimental Features for Performance
   experimental: {
     optimizeCss: true,
-    optimizePackageImports: ["react-icons", "lucide-react"],
+    optimizePackageImports: [
+      "react-icons",
+      "lucide-react",
+      "chart.js",
+      "d3",
+      "@supabase/supabase-js",
+    ],
     serverMinification: true,
     serverSourceMaps: false,
+    // React 19 compatibility
+    reactCompiler: false,
   },
 
   // Image optimization
   images: {
-    domains: ["localhost"],
+    domains: [
+      "localhost",
+      "supabase.co",
+      "*.supabase.co",
+      "*.amazonaws.com",
+      "*.s3.amazonaws.com",
+    ],
     formats: ["image/webp", "image/avif"],
     deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
     imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
@@ -98,6 +126,20 @@ const nextConfig = {
             chunks: "all",
             priority: 40,
           },
+          // Chart.js chunk
+          charts: {
+            name: "charts",
+            test: /[\\/]node_modules[\\/](chart\\.js|d3)[\\/]/,
+            chunks: "all",
+            priority: 35,
+          },
+          // Database drivers chunk
+          database: {
+            name: "database",
+            test: /[\\/]node_modules[\\/](pg|mysql2|mssql|oracledb|snowflake-sdk)[\\/]/,
+            chunks: "all",
+            priority: 25,
+          },
         },
       };
     }
@@ -137,12 +179,17 @@ const nextConfig = {
             value: process.env.CORS_ORIGINS || "http://localhost:3000",
           },
           {
+            key: "Access-Control-Allow-Credentials",
+            value: "true",
+          },
+          {
             key: "Access-Control-Allow-Methods",
             value: "GET, POST, PUT, DELETE, OPTIONS",
           },
           {
             key: "Access-Control-Allow-Headers",
-            value: "Content-Type, Authorization",
+            value:
+              "Content-Type, Authorization, X-Requested-With, Accept, Origin",
           },
           {
             key: "Cache-Control",

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Image from "next/image";
+import { AlertCircle } from "lucide-react";
 import { useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
 import {
   DatabaseSchema,
@@ -9,6 +10,20 @@ import {
   SelectedTable,
 } from "@/types/database-schema";
 import DatabaseSetupProgressModal from "./DatabaseSetupProgressModal";
+import { useDataSourceConfig } from "@/hooks/useDataSourceConfig";
+
+// Union type for data sources (hardcoded or from database)
+type DataSource = {
+  id: string;
+  name: string;
+  category: string;
+  icon: string;
+  color: string;
+  defaultPort: string;
+  description: string;
+  isBeta?: boolean;
+  releaseNotes?: string;
+};
 
 interface DatabaseConnectionModalProps {
   isOpen: boolean;
@@ -218,24 +233,6 @@ const DATA_SOURCE_TYPES = [
 
   // Other Connectors
   {
-    id: "google-sheets",
-    name: "Google Sheets",
-    category: "others",
-    icon: "https://upload.wikimedia.org/wikipedia/commons/3/3c/Google_Sheets_2020_Logo.svg",
-    color: "bg-green-500",
-    defaultPort: "",
-    description: "Connect to Google Sheets for spreadsheet data",
-  },
-  {
-    id: "google-docs",
-    name: "Google Docs",
-    category: "others",
-    icon: "https://upload.wikimedia.org/wikipedia/commons/0/01/Google_Docs_logo_%282014-2020%29.svg",
-    color: "bg-blue-500",
-    defaultPort: "",
-    description: "Connect to Google Docs for document content",
-  },
-  {
     id: "notion",
     name: "Notion",
     category: "others",
@@ -387,6 +384,12 @@ export default function DatabaseConnectionModal({
   onConnectionSuccess,
   workspaceId,
 }: DatabaseConnectionModalProps) {
+  // Fetch data source configurations from database
+  const {
+    dataSources: enabledDataSources,
+    loading: configLoading,
+    error: configError,
+  } = useDataSourceConfig();
   const { session } = useSupabaseAuth();
   const [selectedDbType, setSelectedDbType] = useState<string>("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
@@ -458,14 +461,28 @@ export default function DatabaseConnectionModal({
     "info" | "success" | "error" | "warning"
   >("info");
 
-  const selectedDb = DATA_SOURCE_TYPES.find((db) => db.id === selectedDbType);
+  // Find selected database from either hardcoded or database configuration
+  const selectedDb = (
+    configLoading || configError ? DATA_SOURCE_TYPES : enabledDataSources
+  ).find((db) => db.id === selectedDbType);
 
   // Helper function to get filtered data sources based on selected category
-  const getFilteredDataSources = () => {
-    if (selectedCategory === "all") {
-      return DATA_SOURCE_TYPES;
+  const getFilteredDataSources = (): DataSource[] => {
+    if (configLoading || configError) {
+      // Fallback to hardcoded data sources if config is loading or has error
+      if (selectedCategory === "all") {
+        return DATA_SOURCE_TYPES;
+      }
+      return DATA_SOURCE_TYPES.filter(
+        (source) => source.category === selectedCategory
+      );
     }
-    return DATA_SOURCE_TYPES.filter(
+
+    // Use database configuration
+    if (selectedCategory === "all") {
+      return enabledDataSources;
+    }
+    return enabledDataSources.filter(
       (source) => source.category === selectedCategory
     );
   };
@@ -625,6 +642,42 @@ export default function DatabaseConnectionModal({
       return;
     }
 
+    // Validate required fields before making the request
+    const requiredFields = ["type", "name", "database"];
+    const missingFields = requiredFields.filter((field) => {
+      const value = connectionConfig[field as keyof DatabaseConfig];
+      return !value || value.toString().trim() === "";
+    });
+
+    if (missingFields.length > 0) {
+      updateStatus(
+        `Please fill in the following required fields: ${missingFields.join(
+          ", "
+        )}`,
+        "error"
+      );
+      return;
+    }
+
+    // For non-SQLite databases, validate additional fields
+    if (connectionConfig.type !== "sqlite") {
+      const additionalRequired = ["host", "username", "password"];
+      const missingAdditional = additionalRequired.filter((field) => {
+        const value = connectionConfig[field as keyof DatabaseConfig];
+        return !value || value.toString().trim() === "";
+      });
+
+      if (missingAdditional.length > 0) {
+        updateStatus(
+          `Please fill in the following required fields for ${
+            connectionConfig.type
+          }: ${missingAdditional.join(", ")}`,
+          "error"
+        );
+        return;
+      }
+    }
+
     setIsConnecting(true);
     updateStatus("Testing database connection...", "info");
 
@@ -644,11 +697,15 @@ export default function DatabaseConnectionModal({
 
       const result = await response.json();
 
-      if (result.success) {
+      if (response.ok && result.success) {
         updateStatus("Connection test successful!", "success");
         setStep("schema-input"); // Move to schema input step
       } else {
-        updateStatus(`Connection failed: ${result.error}`, "error");
+        // Handle both API errors and connection failures
+        const errorMessage =
+          result.error || result.message || "Connection test failed";
+        updateStatus(`Connection failed: ${errorMessage}`, "error");
+        console.error("Connection test failed:", result);
       }
     } catch (error) {
       console.error("Connection test error:", error);
@@ -1228,6 +1285,29 @@ export default function DatabaseConnectionModal({
                   </p>
                 </div>
 
+                {/* Loading state */}
+                {configLoading && (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="flex items-center space-x-2 text-gray-400">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
+                      <span>Loading data sources...</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Error state */}
+                {configError && (
+                  <div className="bg-yellow-900/20 border border-yellow-600/50 rounded-lg p-4 mb-4">
+                    <div className="flex items-center space-x-2 text-yellow-400">
+                      <AlertCircle className="w-4 h-4" />
+                      <span className="text-sm">
+                        Using fallback data sources. Some features may not be
+                        available.
+                      </span>
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                   {getFilteredDataSources().map((source) => (
                     <button
@@ -1270,9 +1350,16 @@ export default function DatabaseConnectionModal({
                           </span>
                         </div>
                         <div className="flex-1 min-w-0">
-                          <h4 className="text-white font-medium text-sm">
-                            {source.name}
-                          </h4>
+                          <div className="flex items-center space-x-2">
+                            <h4 className="text-white font-medium text-sm">
+                              {source.name}
+                            </h4>
+                            {source.isBeta && (
+                              <span className="bg-orange-500 text-white text-xs px-2 py-0.5 rounded-full font-medium">
+                                Beta
+                              </span>
+                            )}
+                          </div>
                           {source.defaultPort && (
                             <p className="text-gray-400 text-xs">
                               Port: {source.defaultPort}

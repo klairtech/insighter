@@ -96,8 +96,8 @@ async function validateSchemaExists(config: Record<string, unknown>, schemaName:
         // BigQuery uses datasets instead of schemas
         return { success: true, details: { message: 'BigQuery uses datasets instead of schemas' } }
       case 'redshift':
-        // Redshift uses PostgreSQL-compatible schemas
-        return await validatePostgreSQLSchema(config, schemaName)
+        // Redshift uses PostgreSQL-compatible schemas but with different SSL requirements
+        return await validateRedshiftSchema(config, schemaName)
       case 'azure-sql':
         // Azure SQL uses SQL Server schemas
         return { success: true, details: { message: 'Azure SQL schema validation - using default schema' } }
@@ -165,6 +165,116 @@ async function validatePostgreSQLSchema(config: Record<string, unknown>, schemaN
         schema_name: schemaName,
         schema_owner: result.rows[0].schema_owner,
         message: `Schema '${schemaName}' exists and is accessible`
+      }
+    }
+    
+  } catch (error) {
+    await client.end()
+    throw error
+  }
+}
+
+/**
+ * Validates Redshift schema existence
+ */
+async function validateRedshiftSchema(config: Record<string, unknown>, schemaName: string) {
+  const client = new Client({
+    host: config.host as string,
+    port: parseInt(config.port as string) || 5439, // Redshift default port
+    database: config.database as string,
+    user: config.username as string,
+    password: config.password as string,
+    ssl: config.ssl ? { rejectUnauthorized: false } : true, // Redshift requires SSL
+    connectionTimeoutMillis: 10000,
+  })
+
+  try {
+    await client.connect()
+    
+    // For Redshift, try multiple approaches to validate schema existence
+    let schemaExists = false;
+    let schemaOwner = null;
+    let errorMessage = '';
+
+    try {
+      // Approach 1: Standard information_schema query
+      const schemaQuery = `
+        SELECT schema_name, schema_owner
+        FROM information_schema.schemata 
+        WHERE schema_name = $1
+      `
+      
+      const result = await client.query(schemaQuery, [schemaName])
+      
+      if (result.rows.length > 0) {
+        schemaExists = true;
+        schemaOwner = result.rows[0].schema_owner;
+      }
+    } catch (err) {
+      console.log('Standard schema query failed, trying alternative approach:', err);
+    }
+
+    // Approach 2: If standard query fails, try to list tables in the schema
+    if (!schemaExists) {
+      try {
+        const tablesQuery = `
+          SELECT table_name
+          FROM information_schema.tables 
+          WHERE table_schema = $1
+          LIMIT 1
+        `
+        
+        const tablesResult = await client.query(tablesQuery, [schemaName])
+        
+        if (tablesResult.rows.length > 0) {
+          schemaExists = true;
+          schemaOwner = 'unknown'; // We can't get owner info this way
+        }
+      } catch (err) {
+        console.log('Tables query failed:', err);
+        errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      }
+    }
+
+    // Approach 3: Try Redshift-specific query
+    if (!schemaExists) {
+      try {
+        const redshiftQuery = `
+          SELECT nspname as schema_name, u.usename as schema_owner
+          FROM pg_namespace n
+          LEFT JOIN pg_user u ON n.nspowner = u.usesysid
+          WHERE n.nspname = $1
+        `
+        
+        const redshiftResult = await client.query(redshiftQuery, [schemaName])
+        
+        if (redshiftResult.rows.length > 0) {
+          schemaExists = true;
+          schemaOwner = redshiftResult.rows[0].schema_owner;
+        }
+      } catch (err) {
+        console.log('Redshift-specific query failed:', err);
+        if (!errorMessage) {
+          errorMessage = err instanceof Error ? err.message : 'Unknown error';
+        }
+      }
+    }
+
+    await client.end()
+    
+    if (schemaExists) {
+      return {
+        success: true,
+        details: {
+          schema_name: schemaName,
+          schema_owner: schemaOwner,
+          message: `Schema '${schemaName}' exists and is accessible`
+        }
+      }
+    } else {
+      return {
+        success: false,
+        error: `Schema '${schemaName}' does not exist in the database. ${errorMessage ? `Error: ${errorMessage}` : ''}`
       }
     }
     

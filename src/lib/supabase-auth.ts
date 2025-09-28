@@ -79,3 +79,4 @@ export async function updateUserProfile(userId: string, updates: Record<string, 
 
 // Export supabase client for direct use
 export { supabase }
+export const supabaseServer = supabase

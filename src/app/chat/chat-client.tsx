@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import ReactMarkdown from "react-markdown";
@@ -485,11 +485,8 @@ export default function ChatClient({
 
     // Generate and show live agent activities
     const activities = generateAgentActivities(userMessage.content);
-    console.log("🔍 Setting agent activities:", activities);
     setAgentActivities(activities);
     setShowLiveStatus(true);
-    console.log("🔍 Live status should be visible:", true);
-    console.log("🔍 Activities count:", activities.length);
 
     // Add user message to conversation immediately
     if (currentConversation) {
@@ -576,43 +573,8 @@ export default function ChatClient({
                 !msg.metadata?.isProcessing
             );
 
-            console.log("🔍 Message handling:", {
-              prevMessagesCount: prev.messages.length,
-              apiMessagesCount: data.conversation.messages.length,
-              filteredApiMessagesCount: filteredApiMessages.length,
-              processingMessagesRemoved:
-                data.conversation.messages.length - filteredApiMessages.length,
-              apiMessages: data.conversation.messages.map(
-                (msg: {
-                  id: string;
-                  role: string;
-                  content: string;
-                  metadata?: Record<string, unknown>;
-                }) => ({
-                  id: msg.id,
-                  role: msg.role,
-                  content: msg.content?.substring(0, 50) + "...",
-                  hasMetadata: !!msg.metadata,
-                })
-              ),
-            });
-
             // Final deduplication to be extra safe
             const finalMessages = deduplicateMessages(filteredApiMessages);
-
-            console.log("🔍 Final message deduplication:", {
-              beforeDedup: filteredApiMessages.length,
-              afterDedup: finalMessages.length,
-              duplicatesRemoved:
-                filteredApiMessages.length - finalMessages.length,
-              finalMessages: finalMessages.map(
-                (msg: { id: string; role: string; content: string }) => ({
-                  id: msg.id,
-                  role: msg.role,
-                  content: msg.content?.substring(0, 50) + "...",
-                })
-              ),
-            });
 
             return {
               ...data.conversation,
@@ -627,12 +589,8 @@ export default function ChatClient({
       console.error("Error sending message:", error);
     } finally {
       setIsLoading(false);
-      console.log(
-        "🔍 Finally block executed - hiding live status in 3 seconds"
-      );
       // Keep live status visible for a minimum duration to show agent activities
       setTimeout(() => {
-        console.log("🔍 Hiding live status now");
         setShowLiveStatus(false);
         setAgentActivities([]);
       }, 3000); // Show for at least 3 seconds
@@ -1086,24 +1044,6 @@ export default function ChatClient({
                             };
 
                             // Debug logging
-                            console.log(
-                              "🔍 Chat Client: Checking visualization for message:",
-                              {
-                                messageId: msg.id,
-                                hasGraphData: !!msg.metadata.graph_data,
-                                graphData,
-                                visualizationRequired:
-                                  graphData.visual_decision
-                                    ?.visualization_required,
-                                hasHtmlContent:
-                                  !!graphData.visualization?.html_content,
-                                htmlContent:
-                                  graphData.visualization?.html_content?.substring(
-                                    0,
-                                    100
-                                  ) + "...",
-                              }
-                            );
 
                             if (
                               graphData &&

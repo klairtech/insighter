@@ -37,6 +37,8 @@ export async function deductCredits(
       p_description: description
     })
 
+    console.log('🔍 Credit deduction response:', { data, error })
+
     if (error) {
       console.error('❌ Credit deduction error:', error)
       return { 
@@ -45,7 +47,7 @@ export async function deductCredits(
       }
     }
 
-    if (!data || data.remaining_credits === null) {
+    if (!data) {
       console.error('❌ Credit deduction failed: No data returned')
       return { 
         success: false, 
@@ -53,11 +55,36 @@ export async function deductCredits(
       }
     }
 
-    console.log(`✅ Successfully deducted ${creditsToDeduct} credits. Remaining: ${data.remaining_credits}`)
+    // Handle different possible return structures
+    let remainingCredits: number | undefined
+    
+    if (typeof data === 'object' && data !== null) {
+      // Check for different possible field names
+      remainingCredits = data.remaining_credits || data.remainingCredits || data.total_credits || data.balance
+    } else if (typeof data === 'number') {
+      // If the function returns just a number
+      remainingCredits = data
+    }
+
+    // If we still don't have remaining credits, try to get it from the balance API
+    if (remainingCredits === undefined) {
+      console.log('🔍 No remaining credits from deduction function, fetching from balance API')
+      try {
+        const balanceResult = await checkUserCredits(userId, 0)
+        if (balanceResult.currentCredits !== undefined) {
+          remainingCredits = balanceResult.currentCredits
+          console.log(`✅ Got remaining credits from balance API: ${remainingCredits}`)
+        }
+      } catch (balanceError) {
+        console.warn('⚠️ Failed to get remaining credits from balance API:', balanceError)
+      }
+    }
+
+    console.log(`✅ Successfully deducted ${creditsToDeduct} credits. Remaining: ${remainingCredits}`)
     
     return {
       success: true,
-      remainingCredits: data.remaining_credits
+      remainingCredits: remainingCredits
     }
 
   } catch (error) {
@@ -134,17 +161,54 @@ export async function logCreditUsage(
   try {
     console.log(`📊 Logging credit usage: User ${userId}, Agent ${agentId}, ${tokensUsed} tokens, ${creditsUsed} credits`)
     
-    // This could be stored in a separate analytics table
-    // For now, we'll just log it
-    console.log(`📊 Credit Usage Log:`, {
-      userId,
-      agentId,
-      conversationId,
-      tokensUsed,
-      creditsUsed,
-      description,
-      timestamp: new Date().toISOString()
-    })
+    // Get the active credit batch for this user
+    const { data: activeBatch, error: batchError } = await supabaseServer
+      .from('insighter_credit_batches')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('is_active', true)
+      .gt('credits_remaining', 0)
+      .order('added_date', { ascending: false })
+      .limit(1)
+      .single()
+
+    if (batchError || !activeBatch) {
+      console.error('❌ Error finding active credit batch:', batchError)
+      return
+    }
+
+    // Store in insighter_credit_usage table
+    const { error } = await supabaseServer
+      .from('insighter_credit_usage')
+      .insert({
+        user_id: userId,
+        batch_id: activeBatch.id,
+        credits_used: creditsUsed,
+        operation_type: 'chat_interaction',
+        operation_id: conversationId,
+        description: description
+      })
+
+    if (error) {
+      console.error('❌ Error storing credit usage:', error)
+    } else {
+      console.log(`✅ Credit usage logged: ${creditsUsed} credits for user ${userId}`)
+    }
+
+    // Also store token usage in token_usage table
+    const { error: tokenError } = await supabaseServer
+      .from('token_usage')
+      .insert({
+        user_id: userId,
+        tokens_used: tokensUsed,
+        action: 'chat'
+      })
+
+    if (tokenError) {
+      console.error('❌ Error storing token usage:', tokenError)
+    } else {
+      console.log(`✅ Token usage logged: ${tokensUsed} tokens for user ${userId}`)
+    }
 
   } catch (error) {
     console.error('❌ Error logging credit usage:', error)

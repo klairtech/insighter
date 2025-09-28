@@ -1027,6 +1027,9 @@ async function executeDatabaseQuery(dbConnection: {type: string, connection_conf
       case 'mysql':
         rows = await executeMySQLQuery(connectionConfig, password, query)
         break
+      case 'redshift':
+        rows = await executeRedshiftQuery(connectionConfig, password, query)
+        break
       default:
         throw new Error(`Unsupported database type: ${dbConnection.type}`)
     }
@@ -1088,6 +1091,29 @@ async function executeMySQLQuery(config: Record<string, unknown>, password: stri
     return rows as Array<Record<string, unknown>>
   } finally {
     await connection.end()
+  }
+}
+
+/**
+ * Execute Redshift query (uses PostgreSQL protocol)
+ */
+async function executeRedshiftQuery(config: Record<string, unknown>, password: string, query: string): Promise<Array<Record<string, unknown>>> {
+  const client = new Client({
+    host: config.host as string,
+    port: parseInt(config.port as string) || 5439,
+    database: config.database as string,
+    user: config.username as string,
+    password: password,
+    ssl: config.ssl ? { rejectUnauthorized: false } : true, // Redshift requires SSL
+    connectionTimeoutMillis: 10000,
+  })
+
+  try {
+    await client.connect()
+    const result = await client.query(query)
+    return result.rows
+  } finally {
+    await client.end()
   }
 }
 
@@ -2397,6 +2423,24 @@ export async function multiSourceQAAgent(
       throw new Error('No data sources were successfully processed')
     }
 
+    // Check if all source results have empty data
+    const hasAnyData = sourceResults.some(result => {
+      if (result.success && result.data) {
+        // Check if data is not empty
+        if (Array.isArray(result.data)) {
+          return result.data.length > 0
+        } else if (typeof result.data === 'object') {
+          return Object.keys(result.data).length > 0
+        }
+        return result.data !== null && result.data !== undefined && result.data !== ''
+      }
+      return false
+    })
+
+    if (!hasAnyData) {
+      throw new Error('All data sources returned empty results - no data available to answer the query')
+    }
+
     // Analyze conversation context to detect clarification responses
     const isClarificationResponse = await detectClarificationResponse(userQuery, conversationHistory)
     console.log('🤖 Multi-Source Q&A Agent: Clarification detection:', isClarificationResponse)
@@ -2420,7 +2464,9 @@ export async function multiSourceQAAgent(
       `${msg.sender_type}: ${msg.content}`
     ).join('\n')
 
-    const qaPrompt = `You are a Multi-Source Q&A Agent. Combine results from multiple data sources to provide a comprehensive answer.
+    const qaPrompt = `You are a Multi-Source Q&A Agent. You MUST ONLY use data from the provided sources below. Do NOT use any external knowledge, training data, or make assumptions beyond what is explicitly provided in the source results.
+
+CRITICAL CONSTRAINT: You are strictly limited to the data provided in the "Source Results" section below. If the data doesn't contain information to answer the user's question, you must state that clearly rather than making up or inferring information.
 
 User Query: "${userQuery}"
 
@@ -2441,15 +2487,17 @@ Data: ${JSON.stringify(source.data, null, 2)}
 ${source.error_message ? `Error: ${source.error_message}` : ''}
 `).join('\n')}
 
+IMPORTANT: If the "Data" field above is empty ([] or {} or null), this means no relevant data was found in that source. You MUST NOT make up or infer data that is not explicitly present in the source results above.
+
 Your task:
-1. Analyze all source results and identify key insights
-2. Combine information from multiple sources when relevant
-3. Identify any conflicting information between sources
-4. Provide a comprehensive, well-structured response
-5. Include source attributions for transparency
-6. Suggest relevant follow-up questions based on the data and user's query
-7. Determine if clarification is needed (low confidence, conflicting data, ambiguous query)
-8. Generate contextual follow-up questions that build on the current response
+1. Analyze ONLY the source results provided above - do not use any external knowledge
+2. If the source data doesn't contain enough information to answer the query, clearly state this limitation
+3. Combine information from multiple sources when relevant, but only from the provided data
+4. Identify any conflicting information between sources
+5. Provide a response based STRICTLY on the provided data
+6. Include source attributions for transparency
+7. If data is insufficient, suggest what additional data would be needed
+8. Generate follow-up questions based ONLY on the data presented
 
 ${isClarificationResponse.isClarification ? `
 CLARIFICATION HANDLING:
@@ -2461,17 +2509,19 @@ CLARIFICATION HANDLING:
 ` : ''}
 
 Response Guidelines:
-- Be direct and comprehensive - answer the user's question clearly and completely
-- Focus on the key information requested
-- Use **bold** for important numbers and facts
+- Be direct and comprehensive - answer the user's question clearly and completely, but ONLY using the provided data
+- If the provided data cannot answer the question, clearly state: "Based on the available data, I cannot provide a complete answer to your question because [specific reason]"
+- Focus on the key information requested from the available data
+- Use **bold** for important numbers and facts from the source data
 - Structure complex data with bullet points or numbered lists when appropriate
-- Use *italic* for emphasis on key insights
-- Provide detailed analysis when the data warrants it - don't artificially limit response length
-- Include relevant examples and specific data points from the results
+- Use *italic* for emphasis on key insights from the provided data
+- Provide detailed analysis when the data warrants it - but only from the provided sources
+- Include relevant examples and specific data points ONLY from the source results
 - Avoid mentioning technical details like confidence scores, execution times, or processing metadata
 - Maintain a conversational, helpful tone
-- Format location-based data clearly (e.g., "In Hyderabad: 1,269 donors")
+- Format location-based data clearly (e.g., "In Hyderabad: 1,269 donors") - but only if this data exists in the sources
 - Use proper formatting for large numbers (e.g., "1,269" instead of "1269")
+- NEVER make assumptions or use external knowledge not present in the source data
 
 Follow-up Question Guidelines:
 - Generate 2-3 relevant follow-up questions that build on the current response
@@ -2515,7 +2565,7 @@ Respond with JSON:
     const response = await openai.chat.completions.create({
       model: process.env.OPENAI_MODEL || 'gpt-4',
       messages: [
-        { role: 'system', content: 'You are a Multi-Source Q&A Agent. Provide direct, comprehensive answers to user questions. Avoid technical jargon and metadata. Respond with valid JSON only.' },
+        { role: 'system', content: 'You are a Multi-Source Q&A Agent. You MUST ONLY use data from the provided sources. Do NOT use external knowledge or make assumptions. If the provided data cannot answer the question, clearly state this limitation. Respond with valid JSON only.' },
         { role: 'user', content: qaPrompt }
       ],
       temperature: 0.1,

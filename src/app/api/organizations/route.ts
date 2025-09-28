@@ -225,6 +225,28 @@ export async function POST(request: NextRequest) {
           )
         }
         console.log('User record created successfully')
+        
+        // Allocate welcome credits for new user
+        try {
+          const welcomeResponse = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/credits/allocate-welcome`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              userId: user.id,
+              email: user.email
+            })
+          })
+          
+          if (welcomeResponse.ok) {
+            console.log('Welcome credits allocated successfully')
+          } else {
+            console.error('Failed to allocate welcome credits')
+          }
+        } catch (welcomeError) {
+          console.error('Error allocating welcome credits:', welcomeError)
+        }
       } catch (createUserException) {
         console.error('Exception creating user record:', createUserException)
         return NextResponse.json(

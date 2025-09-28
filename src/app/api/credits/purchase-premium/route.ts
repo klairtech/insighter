@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase-auth";
+import { createServerSupabaseClient } from "@/lib/server-utils";
 import { verifyPaymentSignature } from "@/lib/razorpay";
 
 export async function POST(request: NextRequest) {
   try {
+    
+    // Create server-side Supabase client that can read session cookies
+    const supabase = await createServerSupabaseClient();
     
     // Get the current user
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -60,7 +63,8 @@ export async function POST(request: NextRequest) {
       p_user_id: user.id,
       p_plan_id: planData.id,
       p_payment_id: razorpay_payment_id,
-      p_order_id: razorpay_order_id
+      p_order_id: razorpay_order_id,
+      p_amount_paid: amount_paid
     });
 
     if (error) {

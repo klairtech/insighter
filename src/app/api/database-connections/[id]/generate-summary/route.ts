@@ -127,6 +127,10 @@ export async function POST(
 
     console.log(`📊 Database summary generation token usage: ${tokensUsed} total (${inputTokens} input, ${outputTokens} output)`)
 
+    // Calculate credits used
+    const { calculateCreditsForTokens } = await import('@/lib/credit-utils')
+    const creditsUsed = calculateCreditsForTokens(tokensUsed)
+
     return NextResponse.json({
       success: true,
       summary: {
@@ -135,7 +139,7 @@ export async function POST(
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       },
-      tokens_used: tokensUsed,
+      credits_used: creditsUsed,
       input_tokens: inputTokens,
       output_tokens: outputTokens
     })

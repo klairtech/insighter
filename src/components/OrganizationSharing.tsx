@@ -41,25 +41,14 @@ interface OrganizationSharingProps {
   onClose: () => void;
 }
 
-const OrganizationSharing: React.FC<OrganizationSharingProps> = ({
+function OrganizationSharing({
   organizationId,
   organizationName,
   userRole,
   onClose,
-}) => {
-  // Add defensive programming for the context hook
-  let user, session, authIsLoading;
-  try {
-    const authContext = useSupabaseAuth();
-    user = authContext?.user;
-    session = authContext?.session;
-    authIsLoading = authContext?.isLoading;
-  } catch (error) {
-    console.error("Error accessing SupabaseAuth context:", error);
-    user = null;
-    session = null;
-    authIsLoading = false;
-  }
+}: OrganizationSharingProps) {
+  // Call the hook at the top level - React hooks must be called unconditionally
+  const { user, session, isLoading: authIsLoading } = useSupabaseAuth();
   const [members, setMembers] = useState<OrganizationMember[]>([]);
   const [invitations, setInvitations] = useState<OrganizationInvitation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -595,6 +584,6 @@ const OrganizationSharing: React.FC<OrganizationSharingProps> = ({
       />
     </div>
   );
-};
+}
 
 export default OrganizationSharing;

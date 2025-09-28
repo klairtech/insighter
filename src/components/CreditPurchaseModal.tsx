@@ -2,6 +2,13 @@
 
 import React, { useState } from "react";
 import { X } from "lucide-react";
+import PaymentStatusModal from "./PaymentStatusModal";
+import {
+  parseRazorpayError,
+  parsePaymentVerificationError,
+  logPaymentError,
+  type PaymentError,
+} from "@/lib/payment-error-handler";
 
 // Declare Razorpay types
 interface RazorpayInstance {
@@ -53,6 +60,15 @@ const CreditPurchaseModal: React.FC<CreditPurchaseModalProps> = ({
 }) => {
   const [selectedCredits, setSelectedCredits] = useState(100);
   const [isLoading, setIsLoading] = useState(false);
+  const [paymentStatus, setPaymentStatus] = useState<
+    "idle" | "processing" | "success" | "failed" | "timeout" | "cancelled"
+  >("idle");
+  const [paymentError, setPaymentError] = useState<PaymentError | null>(null);
+  const [paymentDetails, setPaymentDetails] = useState<{
+    credits?: number;
+    amount?: string;
+    currency?: string;
+  }>({});
 
   if (!isOpen) return null;
 
@@ -83,11 +99,20 @@ const CreditPurchaseModal: React.FC<CreditPurchaseModalProps> = ({
     if (!selectedOption) return;
 
     setIsLoading(true);
+    setPaymentStatus("processing");
+    setPaymentError(null);
+
     try {
       // Load Razorpay script
       const res = await loadRazorpayScript();
       if (!res) {
-        throw new Error("Razorpay SDK failed to load");
+        const error = parseRazorpayError({
+          message: "Razorpay SDK failed to load",
+        });
+        setPaymentError(error);
+        setPaymentStatus("failed");
+        logPaymentError(error, "sdk-load");
+        return;
       }
 
       // Create order
@@ -101,8 +126,21 @@ const CreditPurchaseModal: React.FC<CreditPurchaseModalProps> = ({
 
       const orderData = await orderResponse.json();
       if (!orderResponse.ok) {
-        throw new Error(orderData.error || "Failed to create order");
+        const error = parseRazorpayError({
+          message: orderData.error || "Failed to create order",
+        });
+        setPaymentError(error);
+        setPaymentStatus("failed");
+        logPaymentError(error, "create-order", orderData);
+        return;
       }
+
+      // Store payment details for status modal
+      setPaymentDetails({
+        credits: orderData.credits.total,
+        amount: (orderData.order.amount / 100).toFixed(2),
+        currency: orderData.order.currency,
+      });
 
       // Razorpay options
       const options = {
@@ -129,20 +167,29 @@ const CreditPurchaseModal: React.FC<CreditPurchaseModalProps> = ({
                 bonus_credits: orderData.credits.bonus,
                 total_credits: orderData.credits.total,
                 amount_paid: orderData.order.amount,
+                currency: orderData.order.currency,
               }),
             });
 
             const purchaseData = await purchaseResponse.json();
             if (!purchaseResponse.ok) {
-              throw new Error(purchaseData.error || "Purchase failed");
+              const error = parsePaymentVerificationError({
+                message: purchaseData.error || "Purchase failed",
+              });
+              setPaymentError(error);
+              setPaymentStatus("failed");
+              logPaymentError(error, "payment-verification", purchaseData);
+              return;
             }
 
-            // Call the original onPurchase callback for UI updates
+            // Payment successful
+            setPaymentStatus("success");
             await onPurchase(selectedOption.credits);
-            onClose();
           } catch (error) {
-            console.error("Payment verification failed:", error);
-            alert("Payment verification failed. Please contact support.");
+            const parsedError = parsePaymentVerificationError(error);
+            setPaymentError(parsedError);
+            setPaymentStatus("failed");
+            logPaymentError(parsedError, "payment-verification", error);
           }
         },
         prefill: {
@@ -155,6 +202,7 @@ const CreditPurchaseModal: React.FC<CreditPurchaseModalProps> = ({
         modal: {
           ondismiss: function () {
             setIsLoading(false);
+            setPaymentStatus("cancelled");
           },
         },
       };
@@ -162,113 +210,149 @@ const CreditPurchaseModal: React.FC<CreditPurchaseModalProps> = ({
       const razorpay = new window.Razorpay(options);
       razorpay.open();
     } catch (error) {
-      console.error("Purchase failed:", error);
-      alert("Purchase failed. Please try again.");
+      const parsedError = parseRazorpayError(error);
+      setPaymentError(parsedError);
+      setPaymentStatus("failed");
+      logPaymentError(parsedError, "purchase-flow", error);
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-900 rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-700">
-          <h2 className="text-xl font-semibold text-white">Buy Credits</h2>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-white transition-colors"
-          >
-            <X size={24} />
-          </button>
-        </div>
+    <>
+      {/* Payment Status Modal */}
+      <PaymentStatusModal
+        isOpen={paymentStatus !== "idle"}
+        onClose={() => {
+          setPaymentStatus("idle");
+          setPaymentError(null);
+          if (paymentStatus === "success") {
+            onClose();
+          }
+        }}
+        status={paymentStatus === "idle" ? "processing" : paymentStatus}
+        error={paymentError || undefined}
+        credits={paymentDetails.credits}
+        amount={paymentDetails.amount}
+        currency={paymentDetails.currency}
+        onRetry={() => {
+          setPaymentStatus("idle");
+          setPaymentError(null);
+          handlePurchase();
+        }}
+        onContactSupport={() => {
+          // Open support contact
+          window.open(
+            "mailto:support@insighter.com?subject=Payment Issue",
+            "_blank"
+          );
+        }}
+      />
 
-        {/* Content */}
-        <div className="p-6">
-          <p className="text-gray-300 mb-6">
-            Choose how many credits you want to purchase. You&apos;ll get 5%
-            bonus credits for every 100 credits!
-          </p>
-
-          {/* Credit Options */}
-          <div className="space-y-3 mb-6">
-            {creditOptions.map((option) => (
-              <div
-                key={option.credits}
-                className={`p-4 rounded-lg border cursor-pointer transition-all ${
-                  selectedCredits === option.credits
-                    ? "border-blue-500 bg-blue-500/10"
-                    : "border-gray-700 hover:border-gray-600"
-                }`}
-                onClick={() => setSelectedCredits(option.credits)}
-              >
-                <div className="flex justify-between items-center">
-                  <div>
-                    <div className="text-white font-medium">
-                      {option.credits} credits
-                    </div>
-                    <div className="text-sm text-gray-400">
-                      +{option.bonus} bonus credits
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-white font-semibold">
-                      ${option.price}
-                    </div>
-                    <div className="text-sm text-gray-400">
-                      ₹{option.priceInr}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
+      {/* Main Purchase Modal */}
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="bg-gray-900 rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto">
+          {/* Header */}
+          <div className="flex items-center justify-between p-6 border-b border-gray-700">
+            <h2 className="text-xl font-semibold text-white">Buy Credits</h2>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-white transition-colors"
+            >
+              <X size={24} />
+            </button>
           </div>
 
-          {/* Selected Option Summary */}
-          {selectedOption && (
-            <div className="bg-gray-800 rounded-lg p-4 mb-6">
-              <h3 className="text-white font-medium mb-2">Purchase Summary</h3>
-              <div className="space-y-1 text-sm">
-                <div className="flex justify-between text-gray-300">
-                  <span>Base Credits:</span>
-                  <span>{selectedOption.credits}</span>
+          {/* Content */}
+          <div className="p-6">
+            <p className="text-gray-300 mb-6">
+              Choose how many credits you want to purchase. You&apos;ll get 5%
+              bonus credits for every 100 credits!
+            </p>
+
+            {/* Credit Options */}
+            <div className="space-y-3 mb-6">
+              {creditOptions.map((option) => (
+                <div
+                  key={option.credits}
+                  className={`p-4 rounded-lg border cursor-pointer transition-all ${
+                    selectedCredits === option.credits
+                      ? "border-blue-500 bg-blue-500/10"
+                      : "border-gray-700 hover:border-gray-600"
+                  }`}
+                  onClick={() => setSelectedCredits(option.credits)}
+                >
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <div className="text-white font-medium">
+                        {option.credits} credits
+                      </div>
+                      <div className="text-sm text-gray-400">
+                        +{option.bonus} bonus credits
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-white font-semibold">
+                        ${option.price}
+                      </div>
+                      <div className="text-sm text-gray-400">
+                        ₹{option.priceInr}
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex justify-between text-gray-300">
-                  <span>Bonus Credits:</span>
-                  <span className="text-green-400">
-                    +{selectedOption.bonus}
-                  </span>
-                </div>
-                <div className="flex justify-between text-white font-medium border-t border-gray-700 pt-2">
-                  <span>Total Credits:</span>
-                  <span>{selectedOption.credits + selectedOption.bonus}</span>
-                </div>
-                <div className="flex justify-between text-white font-medium">
-                  <span>Total Price:</span>
-                  <span>
-                    ${selectedOption.price} / ₹{selectedOption.priceInr}
-                  </span>
+              ))}
+            </div>
+
+            {/* Selected Option Summary */}
+            {selectedOption && (
+              <div className="bg-gray-800 rounded-lg p-4 mb-6">
+                <h3 className="text-white font-medium mb-2">
+                  Purchase Summary
+                </h3>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between text-gray-300">
+                    <span>Base Credits:</span>
+                    <span>{selectedOption.credits}</span>
+                  </div>
+                  <div className="flex justify-between text-gray-300">
+                    <span>Bonus Credits:</span>
+                    <span className="text-green-400">
+                      +{selectedOption.bonus}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-white font-medium border-t border-gray-700 pt-2">
+                    <span>Total Credits:</span>
+                    <span>{selectedOption.credits + selectedOption.bonus}</span>
+                  </div>
+                  <div className="flex justify-between text-white font-medium">
+                    <span>Total Price:</span>
+                    <span>
+                      ${selectedOption.price} / ₹{selectedOption.priceInr}
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Purchase Button */}
-          <button
-            onClick={handlePurchase}
-            disabled={isLoading}
-            className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white font-medium py-3 px-4 rounded-lg transition-colors"
-          >
-            {isLoading ? "Processing..." : "Purchase Credits"}
-          </button>
+            {/* Purchase Button */}
+            <button
+              onClick={handlePurchase}
+              disabled={isLoading}
+              className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white font-medium py-3 px-4 rounded-lg transition-colors"
+            >
+              {isLoading ? "Processing..." : "Purchase Credits"}
+            </button>
 
-          {/* Terms */}
-          <p className="text-xs text-gray-400 mt-4 text-center">
-            Credits expire after 1 year. All features included with purchase.
-          </p>
+            {/* Terms */}
+            <p className="text-xs text-gray-400 mt-4 text-center">
+              Credits expire after 1 year. All features included with purchase.
+            </p>
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 };
 

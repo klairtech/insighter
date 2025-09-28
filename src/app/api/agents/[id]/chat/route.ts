@@ -3,6 +3,7 @@ import { supabaseServer } from '@/lib/server-utils';
 import { verifyAgentApiToken, extractTokenFromHeader } from '@/lib/jwt-utils';
 import { getOrCreateApiConversation, saveApiInteraction } from '@/lib/api-conversations';
 import { TokenTrackingData } from '@/lib/token-utils';
+import { checkUserCredits, deductCredits } from '@/lib/credit-utils';
 
 // Rate limiting: 100 requests per minute
 const RATE_LIMIT = 100;
@@ -45,7 +46,8 @@ interface ChatResponse {
   response_text: string;
   response_image_url?: string;
   conversation_id: string;
-  tokens_used: number;
+  credits_used: number;
+  credits_remaining?: number;
   processing_time_ms: number;
   // XAI and detailed metadata fields
   xai_metrics?: XAIMetrics;
@@ -291,6 +293,36 @@ export async function POST(
       return NextResponse.json(
         { error: 'Missing required fields: conversation_id and message' },
         { status: 400 }
+      );
+    }
+
+    // Check user credits before processing (estimate 50 credits for a typical request)
+    const estimatedCredits = 50;
+    const creditCheck = await checkUserCredits(tokenPayload.userId, estimatedCredits);
+    
+    if (!creditCheck.hasCredits) {
+      await logApiUsage(
+        agentId,
+        apiToken,
+        conversation_id,
+        message,
+        '',
+        null,
+        0,
+        Date.now() - startTime,
+        'error',
+        'Insufficient credits',
+        request
+      );
+      
+      return NextResponse.json(
+        { 
+          error: 'Insufficient credits',
+          current_balance: creditCheck.currentCredits,
+          required_credits: estimatedCredits,
+          message: 'You need more credits to use this agent. Please purchase credits to continue.'
+        },
+        { status: 402 } // Payment Required
       );
     }
 
@@ -588,11 +620,12 @@ export async function POST(
     // Deduct credits for the AI processing
     const { calculateCreditsForTokens, deductCredits, logCreditUsage } = await import('@/lib/credit-utils')
     const creditsUsed = calculateCreditsForTokens(agentResponse?.tokens_used || 0)
+    let creditResult: { success: boolean; error?: string; remainingCredits?: number } | null = null
     
     if (creditsUsed > 0) {
       console.log(`💳 Step 6: Deducting ${creditsUsed} credits for ${agentResponse?.tokens_used} tokens used`)
       
-      const creditResult = await deductCredits(
+      creditResult = await deductCredits(
         tokenPayload.userId, 
         creditsUsed, 
         `API Agent Usage - Agent ${agentId}`
@@ -622,7 +655,8 @@ export async function POST(
       response_text: responseText,
       response_image_url: responseImageUrl || undefined,
       conversation_id, // Return original conversation_id to client
-      tokens_used: tokensUsed,
+      credits_used: creditsUsed,
+      credits_remaining: creditResult?.remainingCredits,
       processing_time_ms: processingTime,
       // Include all agent metadata if available
       ...(agentResponse && {
@@ -703,7 +737,25 @@ export async function POST(
       })
     };
 
-    console.log('✅ Step 6: Response sent successfully');
+    // Step 6: Deduct credits after successful processing
+    console.log('🔍 Step 6: Deducting credits...');
+    const creditsToDeduct = Math.ceil(tokensUsed / 1000) * 10; // 10 credits per 1000 tokens
+    const deductResult = await deductCredits(
+      tokenPayload.userId, 
+      creditsToDeduct, 
+      `Agent API usage - ${agent.name}`
+    );
+    
+    if (!deductResult.success) {
+      console.error('❌ Failed to deduct credits:', deductResult.error);
+      // Don't fail the request, just log the error
+    } else {
+      console.log(`✅ Successfully deducted ${creditsToDeduct} credits. Remaining: ${deductResult.remainingCredits}`);
+      // Update the response with remaining credits
+      response.credits_remaining = deductResult.remainingCredits;
+    }
+
+    console.log('✅ Step 7: Response sent successfully');
     return NextResponse.json(response);
 
   } catch (error) {
@@ -749,7 +801,8 @@ export async function GET() {
         response_text: 'string (AI response)',
         response_image_url: 'string (optional image URL)',
         conversation_id: 'string',
-        tokens_used: 'number',
+        credits_used: 'number',
+        credits_remaining: 'number (optional)',
         processing_time_ms: 'number'
       }
     },

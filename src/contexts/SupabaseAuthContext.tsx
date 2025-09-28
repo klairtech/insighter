@@ -1,6 +1,12 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useCallback,
+} from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import {
   User,
@@ -27,7 +33,7 @@ interface UserProfile {
   id: string;
   email: string;
   name: string;
-  avatar_url?: string;
+  avatar_path?: string;
   role?: string;
   app_metadata?: {
     provider?: string;
@@ -80,6 +86,56 @@ export function SupabaseAuthProvider({
   const supabase = getSupabaseClient();
 
   const isAuthenticated = !!user && !!session;
+
+  const fetchUserProfile = useCallback(
+    async (user: User) => {
+      try {
+        // First, try to get profile data from the users table
+        const { data: dbProfile } = await supabase
+          .from("users")
+          .select("name, avatar_path")
+          .eq("id", user.id)
+          .single();
+
+        // Create user profile from Supabase user data and database
+        const userProfile: UserProfile = {
+          id: user.id,
+          email: user.email || "",
+          name:
+            dbProfile?.name ||
+            user.user_metadata?.name ||
+            user.user_metadata?.full_name ||
+            "",
+          avatar_path:
+            dbProfile?.avatar_path ||
+            user.user_metadata?.avatar_url ||
+            user.user_metadata?.picture,
+          role: user.user_metadata?.role || "user",
+          app_metadata: user.app_metadata,
+          user_metadata: user.user_metadata,
+        };
+
+        setProfile(userProfile);
+      } catch (error) {
+        console.error("Error fetching user profile:", error);
+
+        // Fallback to just auth metadata if database fetch fails
+        const userProfile: UserProfile = {
+          id: user.id,
+          email: user.email || "",
+          name: user.user_metadata?.name || user.user_metadata?.full_name || "",
+          avatar_path:
+            user.user_metadata?.avatar_url || user.user_metadata?.picture,
+          role: user.user_metadata?.role || "user",
+          app_metadata: user.app_metadata,
+          user_metadata: user.user_metadata,
+        };
+
+        setProfile(userProfile);
+      }
+    },
+    [supabase]
+  );
 
   useEffect(() => {
     // Check for manual signout flag first and clear any existing session
@@ -176,27 +232,7 @@ export function SupabaseAuthProvider({
     return () => {
       subscription.unsubscribe();
     };
-  }, [supabase.auth, isSigningOut]);
-
-  const fetchUserProfile = async (user: User) => {
-    try {
-      // Create user profile from Supabase user data
-      const userProfile: UserProfile = {
-        id: user.id,
-        email: user.email || "",
-        name: user.user_metadata?.name || user.user_metadata?.full_name || "",
-        avatar_url:
-          user.user_metadata?.avatar_url || user.user_metadata?.picture,
-        role: user.user_metadata?.role || "user",
-        app_metadata: user.app_metadata,
-        user_metadata: user.user_metadata,
-      };
-
-      setProfile(userProfile);
-    } catch (error) {
-      console.error("Error fetching user profile:", error);
-    }
-  };
+  }, [supabase.auth, isSigningOut, fetchUserProfile]);
 
   const signUp = async (email: string, password: string, name?: string) => {
     try {
@@ -356,7 +392,7 @@ export function SupabaseAuthProvider({
         data: {
           name: updates.name,
           full_name: updates.name,
-          avatar_url: updates.avatar_url,
+          avatar_url: updates.avatar_path,
           role: updates.role,
         },
       });

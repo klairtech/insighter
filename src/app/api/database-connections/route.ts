@@ -111,6 +111,8 @@ export async function POST(request: NextRequest) {
       columnDetails = await fetchPostgreSQLColumns(connectionConfig, tableNames, schemaName)
     } else if (config.type === 'mysql') {
       columnDetails = await fetchMySQLColumns(connectionConfig, tableNames, schemaName)
+    } else if (config.type === 'redshift') {
+      columnDetails = await fetchRedshiftColumns(connectionConfig, tableNames, schemaName)
     }
 
     // Step 3: Update schema with column details
@@ -193,6 +195,39 @@ export async function POST(request: NextRequest) {
       totalInputTokens = aiInputTokens
       totalOutputTokens = aiOutputTokens
 
+      // Deduct credits for AI processing
+      if (totalTokensUsed > 0) {
+        console.log(`💳 Deducting credits for AI database analysis: ${totalTokensUsed} tokens used`)
+        
+        const { calculateCreditsForTokens, deductCredits, logCreditUsage } = await import('@/lib/credit-utils')
+        const creditsUsed = calculateCreditsForTokens(totalTokensUsed)
+        
+        if (creditsUsed > 0) {
+          const creditResult = await deductCredits(
+            session.user.id, 
+            creditsUsed, 
+            `Database AI Analysis - ${config.name} (${config.type})`
+          )
+          
+          if (!creditResult.success) {
+            console.error('❌ Credit deduction failed:', creditResult.error)
+            // Don't fail the request, just log the error
+          } else {
+            console.log(`✅ Successfully deducted ${creditsUsed} credits for database AI analysis. Remaining: ${creditResult.remainingCredits}`)
+            
+            // Log credit usage for analytics
+            await logCreditUsage(
+              session.user.id,
+              'database-ai-analysis',
+              connection.id,
+              totalTokensUsed,
+              creditsUsed,
+              `Database AI Analysis - ${config.name} (${config.type})`
+            )
+          }
+        }
+      }
+
       // Apply AI definitions to schema
       for (const [tableName, { tableDefinition, columnDefinitions }] of batchResults) {
         // Apply table definition
@@ -261,6 +296,7 @@ export async function POST(request: NextRequest) {
 
     // Step 5: Single final write with complete schema
     console.log(`🔄 Step 5: Saving connection to database`)
+    
     const encryptedCompleteSchema = encryptObject({ schema: updatedSchema })
     
     const { error: finalUpdateError } = await supabaseServer
@@ -277,6 +313,26 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`✅ Step 5: Connection saved successfully`)
+    
+    // Add to workspace_data_sources so agents can find it
+    const { error: dataSourceError } = await supabaseServer
+      .from('workspace_data_sources')
+      .insert({
+        workspace_id: workspaceId,
+        source_type: 'database',
+        source_id: connection.id,
+        source_name: config.name,
+        is_active: true,
+        last_accessed_at: new Date().toISOString()
+      })
+
+    if (dataSourceError) {
+      console.error('Error adding to workspace_data_sources:', dataSourceError)
+      // Don't fail the request, just log the error
+    } else {
+      console.log(`✅ Added database connection to workspace_data_sources`)
+    }
+    
     console.log(`✅ Database connection created successfully: ${connection.id} for workspace ${workspaceId}`)
 
     // Save token usage
@@ -489,6 +545,93 @@ async function fetchMySQLColumns(config: DatabaseConnectionConfig, tableNames: s
     
   } catch (error) {
     await connection.end()
+    throw error
+  }
+}
+
+async function fetchRedshiftColumns(config: DatabaseConnectionConfig, tableNames: string[], schemaName: string): Promise<ColumnDetails> {
+  const client = new Client({
+    host: config.host,
+    port: parseInt(config.port) || 5439,
+    database: config.database,
+    user: config.username,
+    password: config.password,
+    ssl: config.ssl ? { rejectUnauthorized: false } : true, // Redshift requires SSL
+    connectionTimeoutMillis: 10000,
+  })
+
+  try {
+    await client.connect()
+    
+    const columnDetails: ColumnDetails = {}
+    
+    for (const tableName of tableNames) {
+      // Get column information for Redshift
+      const columnQuery = `
+        SELECT 
+          c.column_name,
+          c.data_type,
+          c.is_nullable,
+          c.column_default,
+          CASE WHEN pk.column_name IS NOT NULL THEN true ELSE false END as is_primary_key,
+          CASE WHEN fk.column_name IS NOT NULL THEN true ELSE false END as is_foreign_key,
+          fk.foreign_table_name,
+          fk.foreign_column_name
+        FROM information_schema.columns c
+        LEFT JOIN (
+          SELECT ku.column_name
+          FROM information_schema.table_constraints tc
+          JOIN information_schema.key_column_usage ku ON tc.constraint_name = ku.constraint_name
+          WHERE tc.table_name = $1 AND tc.constraint_type = 'PRIMARY KEY'
+        ) pk ON c.column_name = pk.column_name
+        LEFT JOIN (
+          SELECT ku.column_name, ccu.table_name as foreign_table_name, ccu.column_name as foreign_column_name
+          FROM information_schema.table_constraints tc
+          JOIN information_schema.key_column_usage ku ON tc.constraint_name = ku.constraint_name
+          JOIN information_schema.constraint_column_usage ccu ON tc.constraint_name = ccu.constraint_name
+          WHERE tc.table_name = $1 AND tc.constraint_type = 'FOREIGN KEY'
+        ) fk ON c.column_name = fk.column_name
+        WHERE c.table_name = $1 AND c.table_schema = $2
+        ORDER BY c.ordinal_position
+      `
+      
+      const result = await client.query(columnQuery, [tableName, schemaName])
+      
+      const columns = result.rows.map(row => ({
+        name: row.column_name,
+        type: row.data_type,
+        nullable: row.is_nullable === 'YES',
+        default_value: row.column_default,
+        is_primary_key: row.is_primary_key,
+        is_foreign_key: row.is_foreign_key,
+        foreign_table: row.is_foreign_key ? row.foreign_table_name : undefined,
+        foreign_column: row.is_foreign_key ? row.foreign_column_name : undefined,
+        sample_values: [] as string[], // Will be populated below
+        ai_definition: undefined // Will be populated by AI generation
+      }))
+      
+      // Get sample values for each column (limit to 5 samples)
+      for (const column of columns) {
+        try {
+          const sampleQuery = `SELECT ${column.name} FROM ${schemaName}.${tableName} WHERE ${column.name} IS NOT NULL LIMIT 5`
+          const sampleResult = await client.query(sampleQuery)
+          column.sample_values = sampleResult.rows
+            .map(row => String(row[column.name]))
+            .filter(val => val && val.length > 0) as string[]
+        } catch {
+          // If we can't get sample data, just continue
+          column.sample_values = []
+        }
+      }
+      
+      columnDetails[tableName] = columns
+    }
+    
+    await client.end()
+    return columnDetails
+    
+  } catch (error) {
+    await client.end()
     throw error
   }
 }

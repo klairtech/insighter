@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase-auth";
+import { createServerSupabaseClient } from "@/lib/server-utils";
 import { createRazorpayOrder } from "@/lib/razorpay";
 
 export async function POST(request: NextRequest) {
   try {
+    
+    // Create server-side Supabase client that can read session cookies
+    const supabase = await createServerSupabaseClient();
     
     // Get the current user
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -39,8 +42,10 @@ export async function POST(request: NextRequest) {
     const priceInr = isAnnual ? annualPrice : monthlyPrice;
     const credits = planData.monthly_credits;
 
-    // Generate unique receipt ID
-    const receiptId = `receipt_${user.id}_${planType}_${isAnnual ? 'annual' : 'monthly'}_${Date.now()}`;
+    // Generate unique receipt ID (max 40 chars for Razorpay)
+    const timestamp = Date.now().toString().slice(-8); // Last 8 digits
+    const randomId = Math.random().toString(36).substr(2, 6); // 6 chars
+    const receiptId = `prem_${timestamp}_${randomId}`; // Total: 5 + 8 + 1 + 6 = 20 chars
 
     // Create Razorpay order
     const order = await createRazorpayOrder({

@@ -15,7 +15,9 @@ import {
   ChevronDown,
   LogIn,
   Bell,
+  CreditCard,
 } from "lucide-react";
+import CreditBalance from "./CreditBalance";
 
 interface Workspace {
   id: string;
@@ -358,18 +360,8 @@ const Navigation: React.FC = () => {
                   Chat
                 </Link>
 
-                {/* Bell Notification */}
-                <Link
-                  href="/invitations"
-                  className="relative text-white/80 hover:text-white px-3 py-2 rounded-lg transition-colors duration-200 hover:bg-white/10"
-                >
-                  <Bell className="w-5 h-5" />
-                  {pendingInvitations > 0 && (
-                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
-                      {pendingInvitations > 9 ? "9+" : pendingInvitations}
-                    </span>
-                  )}
-                </Link>
+                {/* Credit Balance */}
+                <CreditBalance className="px-3 py-2" />
 
                 <div className="relative">
                   <button
@@ -378,8 +370,20 @@ const Navigation: React.FC = () => {
                     }
                     className="flex items-center space-x-2 text-white/80 hover:text-white px-3 py-2 rounded-lg transition-colors duration-200 hover:bg-white/10"
                   >
-                    <div className="w-8 h-8 bg-gradient-to-br from-primary-500 to-primary-600 rounded-full flex items-center justify-center shadow-lg">
-                      <User className="w-4 h-4 text-white" />
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center shadow-lg overflow-hidden">
+                      {profile?.avatar_path ? (
+                        <Image
+                          src={profile.avatar_path}
+                          alt="Profile"
+                          width={32}
+                          height={32}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center">
+                          <User className="w-4 h-4 text-white" />
+                        </div>
+                      )}
                     </div>
                     <div className="flex flex-col items-start">
                       <span className="text-sm font-medium">
@@ -413,6 +417,29 @@ const Navigation: React.FC = () => {
                         >
                           <Settings className="w-4 h-4 mr-3" />
                           Settings
+                        </Link>
+                        <Link
+                          href="/billing"
+                          className="flex items-center px-4 py-3 text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+                          onClick={() => setIsProfileDropdownOpen(false)}
+                        >
+                          <CreditCard className="w-4 h-4 mr-3" />
+                          Billing & Credits
+                        </Link>
+                        <Link
+                          href="/invitations"
+                          className="flex items-center px-4 py-3 text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+                          onClick={() => setIsProfileDropdownOpen(false)}
+                        >
+                          <Bell className="w-4 h-4 mr-3" />
+                          Invitations
+                          {pendingInvitations > 0 && (
+                            <span className="ml-auto bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                              {pendingInvitations > 9
+                                ? "9+"
+                                : pendingInvitations}
+                            </span>
+                          )}
                         </Link>
                         <button
                           onClick={handleLogout}
@@ -568,25 +595,6 @@ const Navigation: React.FC = () => {
                     onClick={() => setIsMenuOpen(false)}
                   >
                     Chat
-                  </Link>
-                  <Link
-                    href="/invitations"
-                    className={`relative block px-3 py-2 rounded-md text-base font-medium ${
-                      isActive("/invitations")
-                        ? "text-blue-400 bg-blue-500/10"
-                        : "text-gray-300 hover:text-white hover:bg-white/10"
-                    }`}
-                    onClick={() => setIsMenuOpen(false)}
-                  >
-                    <div className="flex items-center">
-                      <Bell className="w-5 h-5 mr-2" />
-                      Invitations
-                      {pendingInvitations > 0 && (
-                        <span className="ml-2 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
-                          {pendingInvitations > 9 ? "9+" : pendingInvitations}
-                        </span>
-                      )}
-                    </div>
                   </Link>
                   <Link
                     href="/profile"

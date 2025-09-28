@@ -7,6 +7,8 @@ import { DatabaseTable, DatabaseSchema } from "@/types/database-schema";
 import ConfirmationModal from "@/components/ConfirmationModal";
 import NotificationModal from "@/components/NotificationModal";
 import { useNotification } from "@/hooks/useNotification";
+import { useDataSourceConfig } from "@/hooks/useDataSourceConfig";
+import Image from "next/image";
 
 interface DatabaseConnection {
   id: string;
@@ -53,6 +55,7 @@ export default function DatabaseDetailClient({
   const { session } = useSupabaseAuth();
   const { notification, showSuccess, showError, hideNotification } =
     useNotification();
+  const { dataSources } = useDataSourceConfig();
   const [databaseSchema, setDatabaseSchema] = useState<DatabaseSchema | null>(
     null
   );
@@ -331,13 +334,23 @@ export default function DatabaseDetailClient({
   };
 
   const getDatabaseIcon = (type: string) => {
-    switch (type.toLowerCase()) {
+    const dbType = type.toLowerCase();
+    const dataSource = dataSources?.find((source) => source.id === dbType);
+
+    if (dataSource?.icon) {
+      return dataSource.icon;
+    }
+
+    // Fallback to text icons if no data source config
+    switch (dbType) {
       case "postgresql":
         return "PG";
       case "mysql":
         return "MY";
       case "bigquery":
         return "BQ";
+      case "redshift":
+        return "RS";
       default:
         return "DB";
     }
@@ -699,9 +712,44 @@ export default function DatabaseDetailClient({
                 </svg>
               </button>
               <div className="flex items-center space-x-3">
-                <span className="text-2xl">
-                  {getDatabaseIcon(database.type)}
-                </span>
+                <div className="w-8 h-8 flex items-center justify-center">
+                  {(() => {
+                    const icon = getDatabaseIcon(database.type);
+                    if (icon.startsWith("http")) {
+                      return (
+                        <Image
+                          src={icon}
+                          alt={database.type}
+                          width={32}
+                          height={32}
+                          className="w-8 h-8 object-contain filter brightness-0 invert"
+                          onError={(e) => {
+                            // Fallback to text icon if image fails to load
+                            e.currentTarget.style.display = "none";
+                            const nextElement = e.currentTarget
+                              .nextElementSibling as HTMLElement;
+                            if (nextElement) {
+                              nextElement.style.display = "block";
+                            }
+                          }}
+                        />
+                      );
+                    } else {
+                      return (
+                        <span className="text-2xl font-bold text-white">
+                          {icon}
+                        </span>
+                      );
+                    }
+                  })()}
+                  {/* Fallback icon for failed image loads */}
+                  <span
+                    className="text-2xl font-bold text-white hidden"
+                    style={{ display: "none" }}
+                  >
+                    {database.type.substring(0, 2).toUpperCase()}
+                  </span>
+                </div>
                 <div>
                   <h1 className="text-xl font-semibold text-white">
                     {database.name}

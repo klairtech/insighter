@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
 
 const RegisterPage: React.FC = () => {
@@ -21,13 +21,18 @@ const RegisterPage: React.FC = () => {
     isLoading: authLoading,
   } = useSupabaseAuth();
   const router = useRouter();
+  const pathname = usePathname();
 
   // Redirect if already authenticated
   useEffect(() => {
-    if (!authLoading && user) {
-      window.location.replace("/organizations");
+    if (!authLoading && user && pathname === "/register") {
+      // Add a small delay to prevent race conditions
+      const timer = setTimeout(() => {
+        router.push("/organizations");
+      }, 100);
+      return () => clearTimeout(timer);
     }
-  }, [user, authLoading]);
+  }, [user, authLoading, router, pathname]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

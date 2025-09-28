@@ -11,9 +11,7 @@ interface OrganizationSharingWrapperProps {
   onClose: () => void;
 }
 
-const OrganizationSharingWrapper: React.FC<OrganizationSharingWrapperProps> = (
-  props
-) => {
+function OrganizationSharingWrapper(props: OrganizationSharingWrapperProps) {
   // This wrapper ensures the context is available before rendering the component
   const authContext = useSupabaseAuth();
 
@@ -32,6 +30,6 @@ const OrganizationSharingWrapper: React.FC<OrganizationSharingWrapperProps> = (
   }
 
   return <OrganizationSharing {...props} />;
-};
+}
 
 export default OrganizationSharingWrapper;

@@ -30,6 +30,17 @@ export async function POST(request: NextRequest) {
 
     const { workspaceId, config, fetchSchema = false, schemaName = 'public' } = await request.json()
 
+    // Debug logging
+    console.log('Database connection test request:', {
+      workspaceId: workspaceId ? 'present' : 'missing',
+      config: config ? 'present' : 'missing',
+      configType: config?.type,
+      configName: config?.name,
+      configDatabase: config?.database,
+      configHost: config?.host,
+      configUsername: config?.username,
+      configPassword: config?.password ? 'present' : 'missing'
+    })
 
     if (!workspaceId || !config) {
       return NextResponse.json({ error: 'Workspace ID and config are required' }, { status: 400 })
@@ -37,19 +48,35 @@ export async function POST(request: NextRequest) {
 
     // Validate required fields
     const requiredFields = ['type', 'name', 'database']
+    const missingFields = []
+    
     for (const field of requiredFields) {
-      if (!config[field]) {
-        return NextResponse.json({ error: `${field} is required` }, { status: 400 })
+      if (!config[field] || config[field].toString().trim() === '') {
+        missingFields.push(field)
       }
+    }
+
+    if (missingFields.length > 0) {
+      return NextResponse.json({ 
+        error: `Missing required fields: ${missingFields.join(', ')}. Please fill in all required connection details.` 
+      }, { status: 400 })
     }
 
     // For non-SQLite databases, validate additional fields
     if (config.type !== 'sqlite') {
       const additionalRequired = ['host', 'username', 'password']
+      const missingAdditional = []
+      
       for (const field of additionalRequired) {
-        if (!config[field]) {
-          return NextResponse.json({ error: `${field} is required for ${config.type}` }, { status: 400 })
+        if (!config[field] || config[field].toString().trim() === '') {
+          missingAdditional.push(field)
         }
+      }
+
+      if (missingAdditional.length > 0) {
+        return NextResponse.json({ 
+          error: `Missing required fields for ${config.type}: ${missingAdditional.join(', ')}. Please fill in all connection details.` 
+        }, { status: 400 })
       }
     }
 

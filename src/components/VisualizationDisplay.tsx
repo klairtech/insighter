@@ -16,7 +16,7 @@ function D3VisualizationContainer({
   altText: string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [isLoaded, setIsLoaded] = useState(false);
+  const [, setIsLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -95,8 +95,10 @@ function D3VisualizationContainer({
       d3Container.style.justifyContent = "center";
 
       // Make D3.js and Chart.js available globally for the generated code
-      (window as any).d3 = d3;
-      (window as any).Chart = Chart;
+      (window as typeof window & { d3: typeof d3; Chart: typeof Chart }).d3 =
+        d3;
+      (window as typeof window & { d3: typeof d3; Chart: typeof Chart }).Chart =
+        Chart;
 
       // Append the content
       containerRef.current.appendChild(d3Container);
@@ -254,25 +256,6 @@ export default function VisualizationDisplay({
     !visualization.html_content.includes("No visualization data available") &&
     visualization.html_content.length > 20; // Ensure we have some content
 
-  // Debug logging after variables are declared
-  console.log("🔍 VisualizationDisplay: Component rendered with props:", {
-    graphData,
-    hasGraphData: !!graphData,
-    graphDataKeys: graphData ? Object.keys(graphData) : [],
-    hasVisualization,
-    hasHtmlContent,
-    visualization,
-    visualDecision,
-  });
-
-  // Debug HTML content
-  console.log("🔍 VisualizationDisplay: HTML content debug:", {
-    hasHtmlContent,
-    htmlContentLength: visualization?.html_content?.length,
-    htmlContentPreview: visualization?.html_content?.substring(0, 200),
-    htmlContentType: typeof visualization?.html_content,
-  });
-
   // Create Chart.js configuration from the data
   const createChartConfig = useCallback((): ChartConfiguration => {
     if (!visualization?.chart_data || !visualization?.chart_data?.labels) {
@@ -428,19 +411,31 @@ export default function VisualizationDisplay({
     if (!isFullscreen) {
       if (containerRef.current.requestFullscreen) {
         containerRef.current.requestFullscreen();
-      } else if ((containerRef.current as any).webkitRequestFullscreen) {
-        (containerRef.current as any).webkitRequestFullscreen();
-      } else if ((containerRef.current as any).msRequestFullscreen) {
-        (containerRef.current as any).msRequestFullscreen();
+      } else {
+        const element = containerRef.current as HTMLElement & {
+          webkitRequestFullscreen?: () => void;
+          msRequestFullscreen?: () => void;
+        };
+        if (element.webkitRequestFullscreen) {
+          element.webkitRequestFullscreen();
+        } else if (element.msRequestFullscreen) {
+          element.msRequestFullscreen();
+        }
       }
       setIsFullscreen(true);
     } else {
       if (document.exitFullscreen) {
         document.exitFullscreen();
-      } else if ((document as any).webkitExitFullscreen) {
-        (document as any).webkitExitFullscreen();
-      } else if ((document as any).msExitFullscreen) {
-        (document as any).msExitFullscreen();
+      } else {
+        const doc = document as Document & {
+          webkitExitFullscreen?: () => void;
+          msExitFullscreen?: () => void;
+        };
+        if (doc.webkitExitFullscreen) {
+          doc.webkitExitFullscreen();
+        } else if (doc.msExitFullscreen) {
+          doc.msExitFullscreen();
+        }
       }
       setIsFullscreen(false);
     }
@@ -612,7 +607,7 @@ export default function VisualizationDisplay({
           >
             {hasHtmlContent ? (
               <D3VisualizationContainer
-                htmlContent={visualization.html_content}
+                htmlContent={visualization.html_content || ""}
                 altText={visualization?.alt_text || "Data visualization chart"}
               />
             ) : (

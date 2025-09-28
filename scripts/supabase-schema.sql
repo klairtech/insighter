@@ -267,7 +267,7 @@ CREATE TABLE public.daily_quota (
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   credits_used integer NOT NULL DEFAULT 0,
-  CONSTRAINT daily_quota_pkey PRIMARY KEY (user_id, date),
+  CONSTRAINT daily_quota_pkey PRIMARY KEY (date, user_id),
   CONSTRAINT daily_quota_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
 );
 CREATE TABLE public.daily_quota_guest (
@@ -297,6 +297,23 @@ CREATE TABLE public.data_access_logs (
   CONSTRAINT data_access_logs_pkey PRIMARY KEY (id),
   CONSTRAINT data_access_logs_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
 );
+CREATE TABLE public.data_source_config (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  source_id text NOT NULL UNIQUE,
+  name text NOT NULL,
+  category text NOT NULL,
+  icon_url text,
+  color_class text,
+  default_port text,
+  description text,
+  is_enabled boolean NOT NULL DEFAULT false,
+  is_beta boolean NOT NULL DEFAULT false,
+  sort_order integer NOT NULL DEFAULT 0,
+  release_notes text,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT data_source_config_pkey PRIMARY KEY (id)
+);
 CREATE TABLE public.database_connections (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   name text NOT NULL,
@@ -318,6 +335,17 @@ CREATE TABLE public.database_connections (
   schema_name text DEFAULT 'public'::text,
   CONSTRAINT database_connections_pkey PRIMARY KEY (id),
   CONSTRAINT database_connections_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id)
+);
+CREATE TABLE public.exchange_rates (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  base_currency character varying NOT NULL,
+  target_currency character varying NOT NULL,
+  rate numeric NOT NULL,
+  last_updated timestamp with time zone DEFAULT now(),
+  source character varying DEFAULT 'manual'::character varying,
+  is_active boolean DEFAULT true,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT exchange_rates_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.external_connection_auth_tokens (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -560,6 +588,7 @@ CREATE TABLE public.insighter_purchases (
   purchase_date timestamp with time zone DEFAULT now(),
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
+  currency character varying DEFAULT 'INR'::character varying CHECK (currency::text = ANY (ARRAY['USD'::character varying, 'INR'::character varying, 'EUR'::character varying, 'GBP'::character varying]::text[])),
   CONSTRAINT insighter_purchases_pkey PRIMARY KEY (id),
   CONSTRAINT insighter_purchases_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
   CONSTRAINT insighter_purchases_plan_id_fkey FOREIGN KEY (plan_id) REFERENCES public.insighter_plans(id)
@@ -905,6 +934,8 @@ CREATE TABLE public.users (
   name text,
   country text,
   instruction_language character varying DEFAULT 'en'::character varying,
+  preferred_currency character varying DEFAULT 'INR'::character varying CHECK (preferred_currency::text = ANY (ARRAY['USD'::character varying, 'INR'::character varying, 'EUR'::character varying, 'GBP'::character varying]::text[])),
+  avatar_path text,
   CONSTRAINT users_pkey PRIMARY KEY (id),
   CONSTRAINT users_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id)
 );

@@ -23,14 +23,12 @@ export default function LiveAgentStatus({
   const [currentActivityIndex, setCurrentActivityIndex] = useState(0);
   const [displayedMessage, setDisplayedMessage] = useState("");
 
-  console.log("🔍 LiveAgentStatus rendered:", {
-    activities,
-    isVisible,
-    activitiesLength: activities.length,
-  });
-
   useEffect(() => {
-    if (!isVisible || activities.length === 0) return;
+    if (!isVisible || activities.length === 0) {
+      setCurrentActivityIndex(0);
+      setDisplayedMessage("");
+      return;
+    }
 
     const currentActivity = activities[currentActivityIndex];
     if (!currentActivity) return;
@@ -56,20 +54,17 @@ export default function LiveAgentStatus({
     }, 50);
 
     return () => clearInterval(typeInterval);
-  }, [activities, currentActivityIndex, isVisible]);
+  }, [activities.length, currentActivityIndex, isVisible]);
 
-  console.log("🔍 LiveAgentStatus visibility check:", {
-    isVisible,
-    activitiesLength: activities.length,
-  });
+  // Reset state when component becomes invisible
+  useEffect(() => {
+    if (!isVisible) {
+      setCurrentActivityIndex(0);
+      setDisplayedMessage("");
+    }
+  }, [isVisible]);
 
   if (!isVisible || activities.length === 0) {
-    console.log(
-      "🔍 LiveAgentStatus: Not rendering - isVisible:",
-      isVisible,
-      "activities.length:",
-      activities.length
-    );
     return null;
   }
 

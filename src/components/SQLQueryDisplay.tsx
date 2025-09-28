@@ -13,12 +13,6 @@ export default function SQLQueryDisplay({
   className = "",
   metadata,
 }: SQLQueryDisplayProps) {
-  console.log("🔍 SQLQueryDisplay: Component rendered with props:", {
-    sqlQuery,
-    metadata,
-    hasMetadata: !!metadata,
-    metadataKeys: metadata ? Object.keys(metadata) : [],
-  });
   const [isExpanded, setIsExpanded] = useState(false);
 
   // Handle different formats of SQL query

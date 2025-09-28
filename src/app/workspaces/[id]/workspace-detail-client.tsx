@@ -7,9 +7,12 @@ import WorkspaceSharing from "@/components/WorkspaceSharing";
 import AgentSharing from "@/components/AgentSharing";
 import DatabaseConnectionModal from "@/components/DatabaseConnectionModal";
 import DatabaseConnectionSuccessModal from "@/components/DatabaseConnectionSuccessModal";
+import ExternalConnectionModal from "@/components/ExternalConnectionModal";
 import NotificationModal from "@/components/NotificationModal";
 import { useNotification } from "@/hooks/useNotification";
 import { WorkspaceRole } from "@/lib/permissions";
+import { useDataSourceConfig } from "@/hooks/useDataSourceConfig";
+import Image from "next/image";
 
 interface Workspace {
   id: string;
@@ -61,6 +64,7 @@ export default function WorkspaceDetailClient({
   const { user, session } = useSupabaseAuth();
   const { notification, showSuccess, showError, hideNotification } =
     useNotification();
+  const { dataSources } = useDataSourceConfig();
   const [workspace] = useState<Workspace>(initialWorkspace);
   const [agent] = useState<Agent | null>(initialAgent);
   const [files] = useState<File[]>(initialFiles);
@@ -121,6 +125,26 @@ export default function WorkspaceDetailClient({
       updated_at: string;
       last_schema_sync: string | null;
       schema_version: string;
+    }>
+  >([]);
+
+  // External connection modal state
+  const [showExternalModal, setShowExternalModal] = useState(false);
+  const [externalConnections, setExternalConnections] = useState<
+    Array<{
+      id: string;
+      name: string;
+      type: string;
+      content_type: string;
+      url: string;
+      is_active: boolean;
+      created_at: string;
+      updated_at: string;
+      last_sync: string | null;
+      connection_status: string;
+      content_summary: string | null;
+      row_count: number;
+      column_count: number;
     }>
   >([]);
 
@@ -296,6 +320,65 @@ export default function WorkspaceDetailClient({
     }
   };
 
+  // Fetch external connections
+  const fetchExternalConnections = useCallback(async () => {
+    try {
+      if (!session?.access_token) {
+        console.log(
+          "🔐 Session not available yet, skipping external connections fetch"
+        );
+        return;
+      }
+
+      // setIsLoadingExternal(true);
+      console.log(
+        `🔍 Fetching external connections for workspace: ${workspace.id}`
+      );
+      const response = await fetch(
+        `/api/external-connections?workspaceId=${workspace.id}`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        console.error(
+          "❌ Failed to fetch external connections:",
+          response.status,
+          response.statusText
+        );
+        return;
+      }
+
+      const result = await response.json();
+      if (result.success && Array.isArray(result.connections)) {
+        setExternalConnections(result.connections);
+      } else {
+        console.error(
+          "❌ External connections fetch failed:",
+          result.error || "Invalid response format"
+        );
+      }
+    } catch (error) {
+      console.error("Error fetching external connections:", error);
+    } finally {
+      // setIsLoadingExternal(false);
+    }
+  }, [workspace.id, session?.access_token]);
+
+  // Handle external connection success
+  const handleExternalConnectionSuccess = () => {
+    fetchExternalConnections();
+    showSuccess(
+      "External data source connected successfully!",
+      "External data source connected successfully!"
+    );
+  };
+
   // Handle workspace deletion
   const handleWorkspaceDeletion = async () => {
     if (deleteConfirmation !== workspace.name) {
@@ -439,8 +522,14 @@ export default function WorkspaceDetailClient({
   useEffect(() => {
     if (workspace.id && session?.access_token) {
       fetchDatabaseConnections();
+      fetchExternalConnections();
     }
-  }, [workspace.id, session?.access_token, fetchDatabaseConnections]);
+  }, [
+    workspace.id,
+    session?.access_token,
+    fetchDatabaseConnections,
+    fetchExternalConnections,
+  ]);
 
   // Handle refresh parameter from database deletion
   useEffect(() => {
@@ -970,30 +1059,55 @@ export default function WorkspaceDetailClient({
                       d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"
                     />
                   </svg>
-                  <span>Data Sources ({databaseConnections.length})</span>
+                  <span>
+                    Data Sources (
+                    {databaseConnections.length + externalConnections.length})
+                  </span>
                 </h2>
-                <button
-                  onClick={() => setShowDatabaseModal(true)}
-                  className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-sm rounded-lg transition-colors flex items-center space-x-1"
-                >
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
+                <div className="flex space-x-2">
+                  <button
+                    onClick={() => setShowDatabaseModal(true)}
+                    className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-sm rounded-lg transition-colors flex items-center space-x-1"
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-                    />
-                  </svg>
-                  <span>Add</span>
-                </button>
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"
+                      />
+                    </svg>
+                    <span>Database</span>
+                  </button>
+                  <button
+                    onClick={() => setShowExternalModal(true)}
+                    className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors flex items-center space-x-1"
+                  >
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
+                      />
+                    </svg>
+                    <span>External</span>
+                  </button>
+                </div>
               </div>
 
-              {databaseConnections.length === 0 ? (
+              {databaseConnections.length === 0 &&
+              externalConnections.length === 0 ? (
                 <div className="text-center py-6">
                   <div className="w-12 h-12 bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-3">
                     <svg
@@ -1013,12 +1127,20 @@ export default function WorkspaceDetailClient({
                   <p className="text-gray-400 text-sm mb-3">
                     No data sources connected
                   </p>
-                  <button
-                    onClick={() => setShowDatabaseModal(true)}
-                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm rounded-lg transition-colors"
-                  >
-                    Connect Data Source
-                  </button>
+                  <div className="flex space-x-2 justify-center">
+                    <button
+                      onClick={() => setShowDatabaseModal(true)}
+                      className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm rounded-lg transition-colors"
+                    >
+                      Connect Database
+                    </button>
+                    <button
+                      onClick={() => setShowExternalModal(true)}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors"
+                    >
+                      Connect External
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-2 max-h-48 overflow-y-auto">
@@ -1034,22 +1156,38 @@ export default function WorkspaceDetailClient({
                   )}
                   {databaseConnections.slice(0, 5).map((connection) => {
                     const dbType = connection.type.toLowerCase();
-                    const dbColors: Record<string, string> = {
+
+                    // Find the data source configuration for this database type
+                    const dataSource = dataSources?.find(
+                      (source) => source.id === dbType
+                    );
+
+                    // Fallback colors and icons if data source config is not available
+                    const fallbackColors: Record<string, string> = {
                       postgresql: "bg-blue-500",
                       mysql: "bg-orange-500",
                       mongodb: "bg-green-500",
                       redis: "bg-red-500",
                       sqlite: "bg-purple-500",
                       bigquery: "bg-yellow-500",
+                      redshift: "bg-orange-600",
                     };
-                    const dbIcons: Record<string, string> = {
+                    const fallbackIcons: Record<string, string> = {
                       postgresql: "P",
                       mysql: "M",
                       mongodb: "M",
                       redis: "R",
                       sqlite: "S",
                       bigquery: "B",
+                      redshift: "R",
                     };
+
+                    const dbColor =
+                      dataSource?.color ||
+                      fallbackColors[dbType] ||
+                      "bg-gray-500";
+                    const dbIcon =
+                      dataSource?.icon || fallbackIcons[dbType] || "?";
 
                     return (
                       <div
@@ -1064,12 +1202,36 @@ export default function WorkspaceDetailClient({
                         <div className="flex items-center justify-between">
                           <div className="flex items-center space-x-2 flex-1 min-w-0">
                             <div
-                              className={`w-6 h-6 ${
-                                dbColors[dbType] || "bg-gray-500"
-                              } rounded flex items-center justify-center flex-shrink-0`}
+                              className={`w-6 h-6 ${dbColor} rounded flex items-center justify-center flex-shrink-0`}
                             >
-                              <span className="text-white text-xs font-bold">
-                                {dbIcons[dbType] || "?"}
+                              {dbIcon.startsWith("http") ? (
+                                <Image
+                                  src={dbIcon}
+                                  alt={connection.type}
+                                  width={16}
+                                  height={16}
+                                  className="w-4 h-4 object-contain filter brightness-0 invert"
+                                  onError={(e) => {
+                                    // Fallback to text icon if image fails to load
+                                    e.currentTarget.style.display = "none";
+                                    const nextElement = e.currentTarget
+                                      .nextElementSibling as HTMLElement;
+                                    if (nextElement) {
+                                      nextElement.style.display = "block";
+                                    }
+                                  }}
+                                />
+                              ) : (
+                                <span className="text-white text-xs font-bold">
+                                  {dbIcon}
+                                </span>
+                              )}
+                              {/* Fallback icon for failed image loads */}
+                              <span
+                                className="text-white text-xs font-bold hidden"
+                                style={{ display: "none" }}
+                              >
+                                {fallbackIcons[dbType] || "?"}
                               </span>
                             </div>
                             <div className="min-w-0 flex-1">
@@ -1093,7 +1255,118 @@ export default function WorkspaceDetailClient({
                   })}
                   {databaseConnections.length > 5 && (
                     <p className="text-gray-400 text-xs text-center py-2">
-                      +{databaseConnections.length - 5} more connections
+                      +{databaseConnections.length - 5} more database
+                      connections
+                    </p>
+                  )}
+
+                  {/* External Connections */}
+                  {externalConnections.slice(0, 5).map((connection) => {
+                    const connectionType = connection.type.toLowerCase();
+
+                    // Get the appropriate icon and color for external connections
+                    const getExternalConnectionInfo = (type: string) => {
+                      switch (type) {
+                        case "google-sheets":
+                          return {
+                            color: "bg-green-500",
+                            icon: "📊",
+                            name: "Google Sheets",
+                          };
+                        case "google-docs":
+                          return {
+                            color: "bg-blue-500",
+                            icon: "📄",
+                            name: "Google Docs",
+                          };
+                        case "google-analytics":
+                          return {
+                            color: "bg-orange-500",
+                            icon: "📈",
+                            name: "Google Analytics",
+                          };
+                        case "web-url":
+                          return {
+                            color: "bg-purple-500",
+                            icon: "🌐",
+                            name: "Web URL",
+                          };
+                        default:
+                          return {
+                            color: "bg-gray-500",
+                            icon: "🔗",
+                            name: "External",
+                          };
+                      }
+                    };
+
+                    const connectionInfo =
+                      getExternalConnectionInfo(connectionType);
+
+                    return (
+                      <div
+                        key={connection.id}
+                        className="bg-gray-700/50 rounded-lg p-3 border border-gray-600"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-3">
+                            <div
+                              className={`w-8 h-8 rounded-lg ${connectionInfo.color} flex items-center justify-center`}
+                            >
+                              <span className="text-white text-sm">
+                                {connectionInfo.icon}
+                              </span>
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-white text-sm truncate">
+                                {connection.name}
+                              </p>
+                              <p className="text-gray-400 text-xs">
+                                {connectionInfo.name}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <div
+                              className={`w-2 h-2 rounded-full ${
+                                connection.connection_status === "active"
+                                  ? "bg-green-500"
+                                  : connection.connection_status === "error"
+                                  ? "bg-red-500"
+                                  : connection.connection_status === "syncing"
+                                  ? "bg-yellow-500"
+                                  : "bg-gray-500"
+                              }`}
+                            ></div>
+                            <span
+                              className={`text-xs ${
+                                connection.connection_status === "active"
+                                  ? "text-green-400"
+                                  : connection.connection_status === "error"
+                                  ? "text-red-400"
+                                  : connection.connection_status === "syncing"
+                                  ? "text-yellow-400"
+                                  : "text-gray-400"
+                              }`}
+                            >
+                              {connection.connection_status === "active"
+                                ? "Connected"
+                                : connection.connection_status === "error"
+                                ? "Error"
+                                : connection.connection_status === "syncing"
+                                ? "Syncing"
+                                : "Inactive"}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {externalConnections.length > 5 && (
+                    <p className="text-gray-400 text-xs text-center py-2">
+                      +{externalConnections.length - 5} more external
+                      connections
                     </p>
                   )}
                 </div>
@@ -1737,6 +2010,22 @@ console.log(data.content);`}
         )}
 
         {/* Database Details Modal - REMOVED - Now using dedicated page */}
+
+        {/* Database Connection Modal */}
+        <DatabaseConnectionModal
+          isOpen={showDatabaseModal}
+          onClose={() => setShowDatabaseModal(false)}
+          onConnectionSuccess={handleDatabaseConnectionSuccess}
+          workspaceId={workspace.id}
+        />
+
+        {/* External Connection Modal */}
+        <ExternalConnectionModal
+          isOpen={showExternalModal}
+          onClose={() => setShowExternalModal(false)}
+          onConnectionSuccess={handleExternalConnectionSuccess}
+          workspaceId={workspace.id}
+        />
 
         {/* Notification Modal */}
         <NotificationModal

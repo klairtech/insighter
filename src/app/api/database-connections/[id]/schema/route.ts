@@ -57,7 +57,6 @@ export async function GET(
     let schema: DatabaseSchema | null = null
     let selectedTables: Array<{ table_name: string; selected_columns: string[] }> | null = null
 
-
     try {
       if (connection.schema_info_encrypted) {
         const decryptedSchema = decryptObject(connection.schema_info_encrypted)
@@ -94,6 +93,7 @@ export async function GET(
 
     // Database summary is now part of the schema (unified structure)
     // No need to fetch separately from database_summaries table
+
 
     return NextResponse.json({
       success: true,
