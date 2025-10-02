@@ -35,6 +35,13 @@ export const metadata: Metadata = {
   ],
   authors: [{ name: "Insighter Team" }],
   robots: "index, follow",
+  icons: {
+    icon: [
+      { url: '/icon.svg', type: 'image/svg+xml' },
+      { url: '/favicon.ico', sizes: 'any' }
+    ],
+    apple: { url: '/icon.svg', type: 'image/svg+xml' }
+  },
   openGraph: {
     title: "Insighter - AI-Powered Data Analytics Platform",
     description:

@@ -1,20 +1,51 @@
 <svg width="200" height="60" viewBox="0 0 200 60" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <!-- Background -->
-  <rect width="200" height="60" rx="8" fill="#0f1419"/>
-  
-  <!-- Icon -->
-  <g transform="translate(12, 12)">
-    <rect x="2" y="2" width="32" height="32" rx="6" fill="#4285f4" fill-opacity="0.2"/>
-    <path d="M12 8L20 16L12 24M20 16H8" stroke="#4285f4" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Lightbulb Icon -->
+  <g transform="translate(12, 8)">
+    <!-- Lightbulb body with gradient -->
+    <defs>
+      <linearGradient id="bulbGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" style="stop-color:#20B2AA;stop-opacity:1" />
+        <stop offset="100%" style="stop-color:#008B8B;stop-opacity:1" />
+      </linearGradient>
+      <linearGradient id="textGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" style="stop-color:#87CEEB;stop-opacity:1" />
+        <stop offset="100%" style="stop-color:#4682B4;stop-opacity:1" />
+      </linearGradient>
+    </defs>
+    
+    <!-- Light rays -->
+    <g stroke="#20B2AA" stroke-width="1.5" fill="none" opacity="0.8">
+      <path d="M18 2 L18 0" stroke-linecap="round"/>
+      <path d="M20 3 L22 1" stroke-linecap="round"/>
+      <path d="M22 4 L24 2" stroke-linecap="round"/>
+      <path d="M20 5 L22 7" stroke-linecap="round"/>
+      <path d="M18 6 L18 8" stroke-linecap="round"/>
+    </g>
+    
+    <!-- Lightbulb glass -->
+    <path d="M8 8 Q8 4 12 4 Q16 4 16 8 Q16 12 12 12 Q8 12 8 8 Z" fill="url(#bulbGradient)" opacity="0.9"/>
+    
+    <!-- Data visualization inside bulb -->
+    <!-- Bar chart -->
+    <rect x="9.5" y="9" width="1" height="2" fill="#008B8B" opacity="0.8"/>
+    <rect x="11" y="8.5" width="1" height="2.5" fill="#008B8B" opacity="0.8"/>
+    <rect x="12.5" y="8" width="1" height="3" fill="#008B8B" opacity="0.8"/>
+    
+    <!-- Line graph -->
+    <path d="M9 7.5 L10.5 7 L12 6.5 L13.5 7" stroke="#000000" stroke-width="0.8" fill="none" stroke-linecap="round"/>
+    <circle cx="9" cy="7.5" r="0.3" fill="#000000"/>
+    <circle cx="10.5" cy="7" r="0.3" fill="#000000"/>
+    <circle cx="12" cy="6.5" r="0.3" fill="#000000"/>
+    <circle cx="13.5" cy="7" r="0.3" fill="#000000"/>
+    
+    <!-- Lightbulb base -->
+    <rect x="10" y="12" width="4" height="1" fill="#008B8B" opacity="0.9"/>
+    <rect x="10.5" y="13" width="3" height="0.8" fill="#008B8B" opacity="0.9"/>
+    <rect x="11" y="13.8" width="2" height="0.6" fill="#008B8B" opacity="0.9"/>
   </g>
   
   <!-- Text -->
-  <text x="56" y="38" font-family="Inter, sans-serif" font-size="24" font-weight="700" fill="#ffffff">
-    Insighter
-  </text>
-  
-  <!-- Tagline -->
-  <text x="56" y="50" font-family="Inter, sans-serif" font-size="10" font-weight="400" fill="#9aa0a6">
-    AI-Powered Analytics
+  <text x="56" y="38" font-family="Inter, sans-serif" font-size="24" font-weight="700" fill="url(#textGradient)">
+    insighter
   </text>
 </svg>

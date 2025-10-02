@@ -23,11 +23,11 @@ export default function LogoRobust({
   const getLogoSrc = useCallback(() => {
     switch (variant) {
       case "white":
-        return "https://uvbtwtqmtsbdwmcrtdcx.supabase.co/storage/v1/object/public/website/public/Logos/Insighter/White/Insighter%20Bulb%20Logo%20White.svg";
+        return "/logo-white.svg";
       case "blue":
-        return "https://uvbtwtqmtsbdwmcrtdcx.supabase.co/storage/v1/object/public/website/public/Logos/Insighter/White/Insighter%20Bulb%20Logo%20White.svg";
+        return "/logo-blue.svg";
       default:
-        return "https://uvbtwtqmtsbdwmcrtdcx.supabase.co/storage/v1/object/public/website/public/Logos/Insighter/White/Insighter%20Bulb%20Logo%20White.svg";
+        return "/logo.svg";
     }
   }, [variant]);
 
