@@ -166,19 +166,10 @@ function D3VisualizationContainer({
           }
 
           // Wrap the script in an IIFE to create a new scope and make it responsive
-          // Properly escape the script content to avoid syntax errors
-          const escapedScriptContent = scriptContent
-            .replace(/\\/g, "\\\\") // Escape backslashes
-            .replace(/`/g, "\\`") // Escape backticks
-            .replace(/\$/g, "\\$") // Escape dollar signs
-            .replace(/\n/g, "\\n") // Escape newlines
-            .replace(/\r/g, "\\r") // Escape carriage returns
-            .replace(/\t/g, "\\t"); // Escape tabs
-
+          // Use a safer approach with Function constructor to avoid template literal conflicts
           const wrappedScript = `
             (function() {
               try {
-                
                 // Make D3.js responsive to container size and ensure interactivity
                 const container = document.getElementById('d3-container');
                 if (container) {
@@ -194,13 +185,16 @@ function D3VisualizationContainer({
                   container.style.pointerEvents = 'auto';
                   container.style.overflow = 'visible';
                   
+                  // Log container dimensions for debugging
+                  console.log('D3 Container dimensions:', {
                     containerWidth: rect.width,
                     containerHeight: rect.height
                   });
                 }
                 
-                // Execute the script content using eval to avoid template literal conflicts
-                eval(\`${escapedScriptContent}\`);
+                // Execute the script content using Function constructor for better security
+                const scriptFunction = new Function(scriptContent);
+                scriptFunction();
                 
                 // Add resize handler for responsive behavior
                 let resizeTimeout;
@@ -214,12 +208,18 @@ function D3VisualizationContainer({
                       window.d3Width = Math.max(rect.width - 40, 300);
                       window.d3Height = Math.max(rect.height - 40, 200);
                       
+                      // Log new dimensions for debugging
+                      console.log('D3 Container resized:', {
+                        containerWidth: rect.width,
+                        containerHeight: rect.height
                       });
                       
                       // Re-run the visualization with new dimensions
                       try {
-                        eval(\`${escapedScriptContent}\`);
+                        const resizeScriptFunction = new Function(scriptContent);
+                        resizeScriptFunction();
                       } catch (resizeError) {
+                        console.warn('Error re-running visualization on resize:', resizeError);
                       }
                     }
                   }, 100);
@@ -228,6 +228,7 @@ function D3VisualizationContainer({
                 window.addEventListener('resize', handleResize);
                 
               } catch (_error) {
+                console.warn('Error executing D3 visualization script:', _error);
               }
             })();
           `;
