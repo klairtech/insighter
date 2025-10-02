@@ -166,6 +166,13 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  if (!supabaseServer) {
+    return NextResponse.json(
+      { error: 'Database not configured' },
+      { status: 500 }
+    );
+  }
+
   const startTime = Date.now();
   let agentId: string | undefined;
   let apiToken: string | undefined;
