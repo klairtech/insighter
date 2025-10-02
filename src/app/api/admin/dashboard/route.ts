@@ -3,6 +3,10 @@ import { supabaseAdmin } from '@/lib/database'
 
 // Helper function to verify admin Supabase session
 async function verifyAdminSession(request: NextRequest) {
+  if (!supabaseAdmin) {
+    return null
+  }
+  
   const authHeader = request.headers.get('authorization')
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return null
@@ -36,6 +40,13 @@ async function verifyAdminSession(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
+    if (!supabaseAdmin) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      )
+    }
+    
     const decoded = await verifyAdminSession(request)
     if (!decoded) {
       return NextResponse.json(
