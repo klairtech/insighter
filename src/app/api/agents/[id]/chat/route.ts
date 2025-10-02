@@ -70,6 +70,11 @@ interface ChatResponse {
  * Check rate limit for API token
  */
 async function checkRateLimit(apiToken: string): Promise<boolean> {
+  if (!supabaseServer) {
+    console.error('Database not configured for rate limiting');
+    return false;
+  }
+
   const now = new Date();
   const windowStart = new Date(now.getTime() - RATE_WINDOW_MS);
   
