@@ -227,7 +227,7 @@ const Navigation: React.FC = () => {
           {/* Logo */}
           <Link href="/" className="flex items-center">
             <Image
-              src="https://uvbtwtqmtsbdwmcrtdcx.supabase.co/storage/v1/object/public/website/public/Logos/Insighter/Insighter%20Logo%20White%202.png"
+              src="https://uvbtwtqmtsbdwmcrtdcx.supabase.co/storage/v1/object/public/website/public/Logos/Insighter/White/Insighter%20Bulb%20Logo%20White.svg"
               alt="Insighter"
               width={120}
               height={36}
