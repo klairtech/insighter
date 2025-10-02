@@ -4,6 +4,13 @@ import { generateAgentApiToken } from '@/lib/jwt-utils';
 
 export async function POST(request: NextRequest) {
   try {
+    if (!supabaseServer) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      );
+    }
+
     // This is an admin endpoint - you might want to add additional security checks
     const { admin_key } = await request.json();
     
