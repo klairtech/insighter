@@ -95,9 +95,45 @@ export async function GET(request: NextRequest) {
     const orgMap = new Map((organizations || []).map(org => [org.id, org.name]))
     const workspaceMap = new Map(userWorkspaces.map(ws => [ws.id, ws]))
 
-    // Filter to only active agents and transform to match frontend expectations
+    // Filter to only active agents from workspaces with data sources
     const activeAgents = (agents || []).filter(agent => agent.status === 'active')
-    const transformedAgents = activeAgents.map(agent => {
+    
+    // Check which workspaces have data sources
+    const workspacesWithDataSources = new Set()
+    for (const workspaceId of workspaceIds) {
+      // Check for files
+      const { data: files } = await supabaseServer
+        .from('workspace_files')
+        .select('id')
+        .eq('workspace_id', workspaceId)
+        .limit(1)
+
+      // Check for database connections
+      const { data: databaseConnections } = await supabaseServer
+        .from('database_connections')
+        .select('id')
+        .eq('workspace_id', workspaceId)
+        .limit(1)
+
+      // Check for external connections
+      const { data: externalConnections } = await supabaseServer
+        .from('external_connections')
+        .select('id')
+        .eq('workspace_id', workspaceId)
+        .limit(1)
+
+      // Add to set if workspace has any data sources
+      if ((files?.length || 0) > 0 || (databaseConnections?.length || 0) > 0 || (externalConnections?.length || 0) > 0) {
+        workspacesWithDataSources.add(workspaceId)
+      }
+    }
+
+    // Only include agents from workspaces with data sources
+    const agentsWithDataSources = activeAgents.filter(agent => 
+      workspacesWithDataSources.has(agent.workspace_id)
+    )
+
+    const transformedAgents = agentsWithDataSources.map(agent => {
       const workspace = workspaceMap.get(agent.workspace_id)
       const orgName = workspace?.organization_id ? orgMap.get(workspace.organization_id) : 'Unknown Organization'
       

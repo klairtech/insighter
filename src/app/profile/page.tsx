@@ -1,9 +1,14 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
+import Image from "next/image";
 import { useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
 import apiService from "@/services/api";
 import { User, Camera, Lock, Save, X } from "lucide-react";
+import { type SupportedCurrency } from "@/lib/pricing-utils";
+import PremiumMembershipStatus from "@/components/PremiumMembershipStatus";
+import { usePremiumMembership } from "@/hooks/usePremiumMembership";
 
 const ProfilePage: React.FC = () => {
   const { user, session } = useSupabaseAuth();
@@ -11,6 +16,7 @@ const ProfilePage: React.FC = () => {
     name: "",
     email: "",
     avatar_path: "",
+    preferred_currency: "INR" as SupportedCurrency,
     created_at: "",
     updated_at: "",
   });
@@ -33,6 +39,13 @@ const ProfilePage: React.FC = () => {
   });
   const [isChangingPassword, setIsChangingPassword] = useState(false);
 
+  // Premium membership status
+  const {
+    isPremium,
+    membership: _membership,
+    isLoading: membershipLoading,
+  } = usePremiumMembership();
+
   const loadProfile = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -45,6 +58,8 @@ const ProfilePage: React.FC = () => {
         name: userProfile.name || "",
         email: userProfile.email || "",
         avatar_path: userProfile.avatar_path || "",
+        preferred_currency: (userProfile.preferred_currency ||
+          "INR") as SupportedCurrency,
         created_at: userProfile.created_at || "",
         updated_at: userProfile.updated_at || "",
       });
@@ -81,6 +96,7 @@ const ProfilePage: React.FC = () => {
       await apiService.updateUserProfile({
         name: profile.name,
         avatar_path: profile.avatar_path,
+        preferred_currency: profile.preferred_currency,
       });
       setSuccess("Profile updated successfully");
     } catch (error) {
@@ -221,7 +237,7 @@ const ProfilePage: React.FC = () => {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+      <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-white mb-4">Please log in</h1>
           <a
@@ -237,14 +253,14 @@ const ProfilePage: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+      <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
+    <div className="min-h-screen bg-background text-white">
       <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8">
@@ -276,9 +292,11 @@ const ProfilePage: React.FC = () => {
             <div className="flex items-center space-x-6">
               <div className="relative">
                 {avatarPreview ? (
-                  <img
+                  <Image
                     src={avatarPreview}
                     alt="Profile"
+                    width={80}
+                    height={80}
                     className="w-20 h-20 rounded-full object-cover border-2 border-gray-600"
                   />
                 ) : (
@@ -325,6 +343,41 @@ const ProfilePage: React.FC = () => {
           </div>
         </div>
 
+        {/* Membership Status */}
+        {!membershipLoading && (
+          <div className="mb-6">
+            {isPremium ? (
+              <PremiumMembershipStatus />
+            ) : (
+              <div className="bg-gray-800 shadow rounded-lg border border-gray-700">
+                <div className="px-6 py-6">
+                  <h2 className="text-lg font-medium text-white mb-4">
+                    Membership Status
+                  </h2>
+                  <div className="bg-gray-700 rounded-lg p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="text-white font-medium">Free Plan</h3>
+                        <p className="text-gray-400 text-sm mt-1">
+                          100 credits per month • Community support
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <Link
+                          href="/pricing"
+                          className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
+                        >
+                          Upgrade to Premium
+                        </Link>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Profile Information */}
         <div className="bg-gray-800 shadow rounded-lg border border-gray-700 mb-6">
           <div className="px-6 py-6">
@@ -367,6 +420,36 @@ const ProfilePage: React.FC = () => {
                 />
                 <p className="text-xs text-gray-500 mt-1">
                   Email cannot be changed
+                </p>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="preferred_currency"
+                  className="block text-sm font-medium text-gray-300 mb-1"
+                >
+                  Preferred Currency
+                </label>
+                <select
+                  name="preferred_currency"
+                  id="preferred_currency"
+                  value={profile.preferred_currency}
+                  onChange={(e) =>
+                    setProfile({
+                      ...profile,
+                      preferred_currency: e.target.value as SupportedCurrency,
+                    })
+                  }
+                  className="w-full bg-gray-700 border-gray-600 text-white rounded-md px-3 py-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="INR">₹ INR - Indian Rupee</option>
+                  <option value="USD">$ USD - US Dollar</option>
+                  <option value="EUR">€ EUR - Euro</option>
+                  <option value="GBP">£ GBP - British Pound</option>
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  This currency will be used for all your transactions and
+                  billing
                 </p>
               </div>
 

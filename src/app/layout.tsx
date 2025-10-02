@@ -3,6 +3,11 @@ import { Inter, Poppins } from "next/font/google";
 import "./globals.css";
 import Navigation from "@/components/Navigation";
 import { ClientProviders } from "@/components/providers/ClientProviders";
+import GoogleTagManager, {
+  GoogleTagManagerNoScript,
+} from "@/components/GoogleTagManager";
+import AnalyticsProvider from "@/components/AnalyticsProvider";
+import { Suspense } from "react";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -60,15 +65,23 @@ export default function RootLayout({
         />
         <link rel="dns-prefetch" href="//fonts.googleapis.com" />
         <link rel="dns-prefetch" href="//fonts.gstatic.com" />
+        <link rel="dns-prefetch" href="//www.googletagmanager.com" />
+        <link rel="dns-prefetch" href="//www.google-analytics.com" />
+        <GoogleTagManager />
       </head>
       <body
         className={`${inter.variable} ${poppins.variable} antialiased bg-background text-foreground`}
       >
+        <GoogleTagManagerNoScript />
         <ClientProviders>
-          <div className="min-h-screen bg-background">
-            <Navigation />
-            <main className="flex-1 pt-24">{children}</main>
-          </div>
+          <Suspense fallback={<div className="min-h-screen bg-background" />}>
+            <AnalyticsProvider>
+              <div className="min-h-screen bg-background">
+                <Navigation />
+                <main className="flex-1 pt-24">{children}</main>
+              </div>
+            </AnalyticsProvider>
+          </Suspense>
         </ClientProviders>
       </body>
     </html>

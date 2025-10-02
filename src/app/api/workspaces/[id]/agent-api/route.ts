@@ -99,21 +99,21 @@ export async function GET(
       }, { status: 200 }); // Return 200 with null agent instead of 404
     }
 
-    // If agent doesn't have API fields, create them
-    if (!agent.api_token) {
-      const jwtStartTime = Date.now();
-      const { generateAgentApiToken } = await import('@/lib/jwt-utils');
-      const newApiToken = generateAgentApiToken(agent.id, workspaceId, user.id);
-      console.log(`[API] JWT token generation completed in ${Date.now() - jwtStartTime}ms`);
-      
+    // Generate a user-specific API token for this request
+    // This ensures each user gets their own token with their user ID
+    const jwtStartTime = Date.now();
+    const { generateAgentApiToken } = await import('@/lib/jwt-utils');
+    const userSpecificToken = generateAgentApiToken(agent.id, workspaceId, user.id);
+    console.log(`[API] User-specific JWT token generated in ${Date.now() - jwtStartTime}ms for user: ${user.id}`);
+
+    // If agent doesn't have API fields, create them (but don't store the user-specific token)
+    if (!agent.api_enabled) {
       const tokenExpiresAt = new Date();
       tokenExpiresAt.setFullYear(tokenExpiresAt.getFullYear() + 1); // 1 year from now
 
       const { error: updateError } = await supabaseServer
         .from('ai_agents')
         .update({
-          api_token: newApiToken,
-          api_token_expires_at: tokenExpiresAt.toISOString(),
           api_enabled: true,
           api_rate_limit: 100,
           api_usage_count: 0,
@@ -127,12 +127,13 @@ export async function GET(
       }
 
       // Update the agent object with the new fields
-      agent.api_token = newApiToken;
-      agent.api_token_expires_at = tokenExpiresAt.toISOString();
       agent.api_enabled = true;
       agent.api_rate_limit = 100;
       agent.api_usage_count = 0;
     }
+
+    // Use the user-specific token for the response
+    agent.api_token = userSpecificToken;
 
     // Get recent API usage stats
     const usageStartTime = Date.now();

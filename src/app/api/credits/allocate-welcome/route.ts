@@ -4,7 +4,7 @@ import { supabaseServer } from "@/lib/supabase-auth";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { userId, email } = body;
+    const { userId } = body;
 
     if (!userId) {
       return NextResponse.json(

@@ -7,22 +7,38 @@ export interface PaymentError {
   code: string;
   message: string;
   type: 'failed' | 'timeout' | 'cancelled' | 'network' | 'validation' | 'unknown';
-  details?: any;
+  details?: Record<string, unknown>;
   retryable: boolean;
 }
 
 export interface PaymentResult {
   success: boolean;
   error?: PaymentError;
-  data?: any;
+  data?: Record<string, unknown>;
 }
 
 /**
  * Parse Razorpay error codes and return structured error information
  */
-export function parseRazorpayError(error: any): PaymentError {
+export function parseRazorpayError(error: unknown): PaymentError {
+  // Handle empty or null error objects
+  if (!error || (typeof error === 'object' && Object.keys(error).length === 0)) {
+    return {
+      code: 'UNKNOWN_ERROR',
+      message: 'An unexpected error occurred. Please try again or contact support.',
+      type: 'unknown',
+      retryable: true,
+      details: { originalError: error }
+    };
+  }
+
+  // Type guard for error object
+  const errorObj = error as Record<string, unknown>;
+  const errorCode = errorObj.code as string;
+  const errorMessage = errorObj.message as string;
+
   // Handle timeout errors first (before network check)
-  if (error.code === 'TIMEOUT' || error.message?.toLowerCase().includes('timeout')) {
+  if (errorCode === 'TIMEOUT' || errorMessage?.toLowerCase().includes('timeout')) {
     return {
       code: 'PAYMENT_TIMEOUT',
       message: 'Payment timed out. Your payment may still be processing. Please check your account or try again.',
@@ -32,7 +48,7 @@ export function parseRazorpayError(error: any): PaymentError {
   }
 
   // Handle network errors (only if explicitly network-related)
-  if (error.code === 'NETWORK_ERROR' || error.message?.toLowerCase().includes('network')) {
+  if (errorCode === 'NETWORK_ERROR' || errorMessage?.toLowerCase().includes('network')) {
     return {
       code: 'NETWORK_ERROR',
       message: 'Network connection failed. Please check your internet connection and try again.',
@@ -42,7 +58,7 @@ export function parseRazorpayError(error: any): PaymentError {
   }
 
   // Handle user cancellation
-  if (error.code === 'USER_CANCELLED' || error.message?.includes('cancelled')) {
+  if (errorCode === 'USER_CANCELLED' || errorMessage?.includes('cancelled')) {
     return {
       code: 'USER_CANCELLED',
       message: 'Payment was cancelled. No charges have been made.',
@@ -52,7 +68,7 @@ export function parseRazorpayError(error: any): PaymentError {
   }
 
   // Handle validation errors
-  if (error.code === 'BAD_REQUEST_ERROR' || error.message?.includes('validation')) {
+  if (errorCode === 'BAD_REQUEST_ERROR' || errorMessage?.includes('validation')) {
     return {
       code: 'VALIDATION_ERROR',
       message: 'Invalid payment details. Please check your information and try again.',
@@ -62,7 +78,7 @@ export function parseRazorpayError(error: any): PaymentError {
   }
 
   // Handle payment failures
-  if (error.code === 'PAYMENT_FAILED' || error.message?.includes('failed')) {
+  if (errorCode === 'PAYMENT_FAILED' || errorMessage?.includes('failed')) {
     return {
       code: 'PAYMENT_FAILED',
       message: 'Payment failed. Please try again or use a different payment method.',
@@ -72,7 +88,7 @@ export function parseRazorpayError(error: any): PaymentError {
   }
 
   // Handle insufficient funds
-  if (error.code === 'INSUFFICIENT_FUNDS') {
+  if (errorCode === 'INSUFFICIENT_FUNDS') {
     return {
       code: 'INSUFFICIENT_FUNDS',
       message: 'Insufficient funds. Please check your account balance or use a different payment method.',
@@ -82,7 +98,7 @@ export function parseRazorpayError(error: any): PaymentError {
   }
 
   // Handle card declined
-  if (error.code === 'CARD_DECLINED') {
+  if (errorCode === 'CARD_DECLINED') {
     return {
       code: 'CARD_DECLINED',
       message: 'Your card was declined. Please try a different card or contact your bank.',
@@ -92,7 +108,7 @@ export function parseRazorpayError(error: any): PaymentError {
   }
 
   // Handle server errors
-  if (error.code === 'INTERNAL_SERVER_ERROR' || error.status >= 500) {
+  if (errorCode === 'INTERNAL_SERVER_ERROR' || (errorObj.status as number) >= 500) {
     return {
       code: 'SERVER_ERROR',
       message: 'Server error occurred. Please try again in a few minutes.',
@@ -107,15 +123,30 @@ export function parseRazorpayError(error: any): PaymentError {
     message: 'An unexpected error occurred. Please try again or contact support.',
     type: 'unknown',
     retryable: true,
-    details: error
+    details: { originalError: error }
   };
 }
 
 /**
  * Handle payment verification errors
  */
-export function parsePaymentVerificationError(error: any): PaymentError {
-  if (error.message?.includes('signature')) {
+export function parsePaymentVerificationError(error: unknown): PaymentError {
+  // Handle empty or null error objects
+  if (!error || (typeof error === 'object' && Object.keys(error).length === 0)) {
+    return {
+      code: 'UNKNOWN_ERROR',
+      message: 'An unexpected error occurred during payment verification. Please try again or contact support.',
+      type: 'unknown',
+      retryable: true,
+      details: { originalError: error }
+    };
+  }
+
+  // Type guard for error object
+  const errorObj = error as Record<string, unknown>;
+  const errorMessage = errorObj.message as string;
+
+  if (errorMessage?.includes('signature')) {
     return {
       code: 'SIGNATURE_VERIFICATION_FAILED',
       message: 'Payment verification failed. Please contact support with your payment ID.',
@@ -124,7 +155,7 @@ export function parsePaymentVerificationError(error: any): PaymentError {
     };
   }
 
-  if (error.message?.includes('Unauthorized')) {
+  if (errorMessage?.includes('Unauthorized')) {
     return {
       code: 'AUTHENTICATION_FAILED',
       message: 'Authentication failed. Please log in again and try the payment.',
@@ -183,7 +214,7 @@ export function shouldRetry(error: PaymentError, attemptCount: number): boolean 
 /**
  * Log payment error for debugging
  */
-export function logPaymentError(error: PaymentError, context: string, details?: any) {
+export function logPaymentError(error: PaymentError, context: string, details?: Record<string, unknown>) {
   console.error(`[Payment Error - ${context}]`, {
     code: error.code,
     type: error.type,

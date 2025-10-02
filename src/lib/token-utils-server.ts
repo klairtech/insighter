@@ -12,7 +12,13 @@ import { TokenTrackingData } from './token-utils'
 export async function saveTokenUsageToDatabase(
   userId: string,
   tokenData: TokenTrackingData,
-  action: 'chat' | 'canvas_generation' | 'dashboard_creation' = 'chat'
+  action: 'chat' | 'canvas_generation' | 'dashboard_creation' = 'chat',
+  modelInfo?: {
+    model_used: string;
+    model_provider: string;
+    model_version: string;
+    fallback_used: boolean;
+  }
 ): Promise<void> {
   try {
     
@@ -28,6 +34,10 @@ export async function saveTokenUsageToDatabase(
         system_tokens: tokenData.systemPromptTokens,
         context_tokens: tokenData.contextTokens,
         agent_processing_tokens: tokenData.totalProcessingTokens,
+        model_used: modelInfo?.model_used,
+        model_provider: modelInfo?.model_provider,
+        model_version: modelInfo?.model_version,
+        fallback_used: modelInfo?.fallback_used || false,
         metadata: {
           stageBreakdown: tokenData.stageBreakdown,
           userInputTokens: tokenData.userInputTokens,
@@ -37,7 +47,8 @@ export async function saveTokenUsageToDatabase(
           qaAgentTokens: tokenData.qaAgentTokens,
           fileContentTokens: tokenData.fileContentTokens,
           conversationHistoryTokens: tokenData.conversationHistoryTokens,
-          agentResponseTokens: tokenData.agentResponseTokens
+          agentResponseTokens: tokenData.agentResponseTokens,
+          modelInfo: modelInfo
         }
       })
     

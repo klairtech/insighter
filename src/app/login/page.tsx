@@ -10,18 +10,33 @@ const LoginPage: React.FC = () => {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const authContext = useSupabaseAuth();
   const {
     signIn,
     signInWithGoogle,
     user,
     isLoading: authLoading,
-  } = useSupabaseAuth();
+  } = authContext || {};
   const router = useRouter();
   const pathname = usePathname();
 
   // Redirect if already authenticated
   useEffect(() => {
     if (!authLoading && user && pathname === "/login") {
+      // Check if user has explicitly signed out recently
+      const hasSignedOut =
+        sessionStorage.getItem("insighter_signout") === "true" ||
+        localStorage.getItem("insighter_signout") === "true" ||
+        localStorage.getItem("insighter_manual_signout") === "true";
+
+      if (hasSignedOut) {
+        // Clear the signout flags and don't redirect
+        sessionStorage.removeItem("insighter_signout");
+        localStorage.removeItem("insighter_signout");
+        localStorage.removeItem("insighter_manual_signout");
+        return;
+      }
+
       // Add a small delay to prevent race conditions
       const timer = setTimeout(() => {
         router.push("/organizations");
@@ -60,8 +75,7 @@ const LoginPage: React.FC = () => {
       } else {
         router.push("/organizations");
       }
-    } catch (err) {
-      console.error("Sign in error:", err);
+    } catch (_err) {
       setError("An error occurred. Please try again.");
     } finally {
       setIsLoading(false);
@@ -77,8 +91,7 @@ const LoginPage: React.FC = () => {
       if (error) {
         setError(error.message || "Failed to sign in with Google");
       }
-    } catch (err) {
-      console.error("Google sign in error:", err);
+    } catch (_err) {
       setError("An error occurred. Please try again.");
     } finally {
       setIsLoading(false);
@@ -88,7 +101,7 @@ const LoginPage: React.FC = () => {
   // Show loading while checking authentication
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center pt-24">
+      <div className="fixed inset-0 bg-background flex items-center justify-center">
         <div className="flex flex-col items-center space-y-4">
           <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
           <p className="text-gray-300 text-sm">Loading...</p>
@@ -103,7 +116,7 @@ const LoginPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-black flex items-center justify-center p-4 pt-24">
+    <div className="fixed inset-0 bg-background flex items-center justify-center p-4">
       {/* Background Effects */}
       <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 via-transparent to-purple-500/10"></div>
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-blue-500/5 via-transparent to-transparent"></div>

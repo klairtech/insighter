@@ -333,7 +333,7 @@ export async function POST(
 }
 
 // Google Sheets sync handler
-async function syncGoogleSheets(connection: { id: string; name: string; type: string }, config: { sheetId?: string; url?: string; [key: string]: unknown }, syncType: string): Promise<SyncResult> {
+async function syncGoogleSheets(connection: { id: string; name: string; type: string }, config: { sheetId?: string; url?: string; [key: string]: unknown }, _syncType: string): Promise<SyncResult> {
   console.log(`📊 Syncing Google Sheets: ${config.sheetId || config.url}`)
   
   try {
@@ -355,7 +355,7 @@ async function syncGoogleSheets(connection: { id: string; name: string; type: st
       decryptObject(oauthTokens.refresh_token_encrypted) : undefined
 
     // Initialize Google Sheets connector
-    const { GoogleSheetsConnector } = await import('@/lib/connectors/google-sheets')
+    const { GoogleSheetsConnector } = await import('@/lib/datasources/google-sheets')
     const connector = new GoogleSheetsConnector(accessToken as any, refreshToken as any)
 
     // Fetch sheet data
@@ -394,7 +394,7 @@ async function syncGoogleSheets(connection: { id: string; name: string; type: st
 }
 
 // Google Docs sync handler
-async function syncGoogleDocs(connection: { id: string; name: string; type: string }, config: { documentId?: string; url?: string; [key: string]: unknown }, syncType: string): Promise<SyncResult> {
+async function syncGoogleDocs(connection: { id: string; name: string; type: string }, config: { documentId?: string; url?: string; [key: string]: unknown }, _syncType: string): Promise<SyncResult> {
   console.log(`📄 Syncing Google Docs: ${config.documentId || config.url}`)
   
   try {
@@ -416,7 +416,7 @@ async function syncGoogleDocs(connection: { id: string; name: string; type: stri
       decryptObject(oauthTokens.refresh_token_encrypted) : undefined
 
     // Initialize Google Docs connector
-    const { GoogleDocsConnector } = await import('@/lib/connectors/google-docs')
+    const { GoogleDocsConnector } = await import('@/lib/datasources/google-docs')
     const connector = new GoogleDocsConnector(accessToken as any, refreshToken as any)
 
     // Fetch document data
@@ -453,12 +453,12 @@ async function syncGoogleDocs(connection: { id: string; name: string; type: stri
 }
 
 // Web URL sync handler
-async function syncWebURL(connection: { id: string; name: string; type: string }, config: { url: string; [key: string]: unknown }, syncType: string): Promise<SyncResult> {
+async function syncWebURL(connection: { id: string; name: string; type: string }, config: { url: string; [key: string]: unknown }, _syncType: string): Promise<SyncResult> {
   console.log(`🌐 Syncing Web URL: ${config.url}`)
   
   try {
     // Initialize web scraper connector
-    const { WebScraperConnector } = await import('@/lib/connectors/web-scraper')
+    const { WebScraperConnector } = await import('@/lib/datasources/web-scraper')
     const connector = new WebScraperConnector({
       url: config.url,
       selectors: config.selectors as { title?: string; content?: string; exclude?: string[]; include?: string[] } | undefined,
@@ -500,7 +500,7 @@ async function syncWebURL(connection: { id: string; name: string; type: string }
 }
 
 // Google Analytics sync handler
-async function syncGoogleAnalytics(connection: { id: string; name: string; type: string }, config: { propertyId?: string; url?: string; [key: string]: unknown }, syncType: string): Promise<SyncResult> {
+async function syncGoogleAnalytics(connection: { id: string; name: string; type: string }, config: { propertyId?: string; url?: string; [key: string]: unknown }, _syncType: string): Promise<SyncResult> {
   console.log(`📊 Syncing Google Analytics: ${config.propertyId || config.url}`)
   
   try {
@@ -522,7 +522,7 @@ async function syncGoogleAnalytics(connection: { id: string; name: string; type:
       decryptObject(oauthTokens.refresh_token_encrypted) : undefined
 
     // Initialize Google Analytics connector
-    const { GoogleAnalyticsConnector } = await import('@/lib/connectors/google-analytics')
+    const { GoogleAnalyticsConnector } = await import('@/lib/datasources/google-analytics')
     const connector = new GoogleAnalyticsConnector(accessToken as any, refreshToken as any)
 
     // Fetch analytics data

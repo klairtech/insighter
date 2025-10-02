@@ -1,19 +1,23 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
 
 interface CurrencySelectorProps {
   onCurrencyChange?: (currency: string) => void;
   className?: string;
+  initialCurrency?: string;
 }
 
 const CurrencySelector: React.FC<CurrencySelectorProps> = ({
   onCurrencyChange,
   className = "",
+  initialCurrency,
 }) => {
-  const { user } = useSupabaseAuth();
-  const [selectedCurrency, setSelectedCurrency] = useState("INR");
+  const { user, session } = useSupabaseAuth();
+  const [selectedCurrency, setSelectedCurrency] = useState(
+    initialCurrency || "INR"
+  );
   const [isLoading, setIsLoading] = useState(false);
   const [availableCurrencies] = useState([
     { code: "INR", symbol: "₹", name: "Indian Rupee" },
@@ -22,26 +26,36 @@ const CurrencySelector: React.FC<CurrencySelectorProps> = ({
     { code: "GBP", symbol: "£", name: "British Pound" },
   ]);
 
-  useEffect(() => {
-    if (user) {
-      fetchUserCurrency();
-    }
-  }, [user]);
-
-  const fetchUserCurrency = async () => {
+  const fetchUserCurrency = useCallback(async () => {
     try {
-      const response = await fetch("/api/user/currency");
+      if (!session?.access_token) {
+        return;
+      }
+
+      const response = await fetch("/api/user/currency", {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
       if (response.ok) {
         const data = await response.json();
         setSelectedCurrency(data.preferred_currency || "INR");
       }
-    } catch (error) {
-      console.error("Error fetching user currency:", error);
+    } catch (_error) {}
+  }, [session]);
+
+  useEffect(() => {
+    if (user) {
+      fetchUserCurrency();
     }
-  };
+  }, [user, fetchUserCurrency]);
 
   const handleCurrencyChange = async (currency: string) => {
     if (currency === selectedCurrency) return;
+
+    if (!session?.access_token) {
+      return;
+    }
 
     setIsLoading(true);
     try {
@@ -49,6 +63,7 @@ const CurrencySelector: React.FC<CurrencySelectorProps> = ({
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({ preferred_currency: currency }),
       });
@@ -57,16 +72,14 @@ const CurrencySelector: React.FC<CurrencySelectorProps> = ({
         setSelectedCurrency(currency);
         onCurrencyChange?.(currency);
       } else {
-        console.error("Failed to update currency preference");
       }
-    } catch (error) {
-      console.error("Error updating currency preference:", error);
+    } catch (_error) {
     } finally {
       setIsLoading(false);
     }
   };
 
-  const getCurrencySymbol = (code: string) => {
+  const _getCurrencySymbol = (code: string) => {
     return availableCurrencies.find((c) => c.code === code)?.symbol || code;
   };
 

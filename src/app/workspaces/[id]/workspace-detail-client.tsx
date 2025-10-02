@@ -5,13 +5,13 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
 import WorkspaceSharing from "@/components/WorkspaceSharing";
 import AgentSharing from "@/components/AgentSharing";
-import DatabaseConnectionModal from "@/components/DatabaseConnectionModal";
 import DatabaseConnectionSuccessModal from "@/components/DatabaseConnectionSuccessModal";
-import ExternalConnectionModal from "@/components/ExternalConnectionModal";
+import UnifiedConnectionModal from "@/components/UnifiedConnectionModal";
 import NotificationModal from "@/components/NotificationModal";
 import { useNotification } from "@/hooks/useNotification";
 import { WorkspaceRole } from "@/lib/permissions";
 import { useDataSourceConfig } from "@/hooks/useDataSourceConfig";
+import { useAnalytics } from "@/hooks/useAnalytics";
 import Image from "next/image";
 
 interface Workspace {
@@ -61,10 +61,23 @@ export default function WorkspaceDetailClient({
 }: WorkspaceDetailClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user, session } = useSupabaseAuth();
+
+  // Add safety check for SupabaseAuth context
+  let user, session;
+  try {
+    const auth = useSupabaseAuth();
+    user = auth?.user;
+    session = auth?.session;
+  } catch (_error) {
+    user = null;
+    session = null;
+  }
+
   const { notification, showSuccess, showError, hideNotification } =
     useNotification();
   const { dataSources } = useDataSourceConfig();
+  const { trackStartChat, trackConnectDataSource, trackUploadFile } =
+    useAnalytics();
   const [workspace] = useState<Workspace>(initialWorkspace);
   const [agent] = useState<Agent | null>(initialAgent);
   const [files] = useState<File[]>(initialFiles);
@@ -73,6 +86,7 @@ export default function WorkspaceDetailClient({
   const [showAgentSharing, setShowAgentSharing] = useState(false);
   const [showApiDetails, setShowApiDetails] = useState(false);
   const [showFullToken, setShowFullToken] = useState(false);
+  const [activeApiTab, setActiveApiTab] = useState("Overview");
   const [apiInfo, setApiInfo] = useState<{
     api_token: string;
     api_enabled: boolean;
@@ -107,8 +121,8 @@ export default function WorkspaceDetailClient({
     setStatusType(type);
   };
 
-  // Database connection modal state
-  const [showDatabaseModal, setShowDatabaseModal] = useState(false);
+  // Unified connection modal state
+  const [showConnectionModal, setShowConnectionModal] = useState(false);
   const [isLoadingDatabases, setIsLoadingDatabases] = useState(false);
   const [isRefreshingDatabases, setIsRefreshingDatabases] = useState(false);
   const [databaseConnections, setDatabaseConnections] = useState<
@@ -128,8 +142,6 @@ export default function WorkspaceDetailClient({
     }>
   >([]);
 
-  // External connection modal state
-  const [showExternalModal, setShowExternalModal] = useState(false);
   const [externalConnections, setExternalConnections] = useState<
     Array<{
       id: string;
@@ -159,16 +171,10 @@ export default function WorkspaceDetailClient({
   const fetchDatabaseConnections = useCallback(async () => {
     try {
       if (!session?.access_token) {
-        console.log(
-          "🔐 Session not available yet, skipping database connections fetch"
-        );
         return;
       }
 
       setIsLoadingDatabases(true);
-      console.log(
-        `🔍 Fetching database connections for workspace: ${workspace.id}`
-      );
       const response = await fetch(
         `/api/workspaces/${workspace.id}/database-connections`,
         {
@@ -182,14 +188,7 @@ export default function WorkspaceDetailClient({
 
       if (!response.ok) {
         if (response.status === 401) {
-          console.error("❌ Authentication failed - session may have expired");
           // Could trigger a re-authentication flow here if needed
-        } else {
-          console.error(
-            "❌ Failed to fetch database connections:",
-            response.status,
-            response.statusText
-          );
         }
         return;
       }
@@ -198,94 +197,113 @@ export default function WorkspaceDetailClient({
 
       if (Array.isArray(connections)) {
         setDatabaseConnections(connections);
-      } else {
-        console.error(
-          "❌ Database connections fetch failed:",
-          connections.error || "Invalid response format"
-        );
       }
-    } catch (error) {
-      console.error("Error fetching database connections:", error);
+    } catch (_error) {
     } finally {
       setIsLoadingDatabases(false);
     }
   }, [workspace.id, session?.access_token]);
 
-  // Handle database connection success
-  const handleDatabaseConnectionSuccess = (data: {
+  // Handle unified connection success
+  const handleConnectionSuccess = (data: {
     connectionName: string;
-    tablesProcessed: number;
+    connectionType: string;
+    tablesProcessed?: number;
   }) => {
-    // Enhanced retry mechanism with exponential backoff
-    const fetchWithRetry = async (retries = 5, delay = 500) => {
-      try {
-        // Check if we have a valid session and access token
-        if (!session?.access_token) {
-          console.error("❌ No valid session or access token available");
-          setIsRefreshingDatabases(false);
-          return;
-        }
+    // Track data source connection
+    trackConnectDataSource(data.connectionType);
 
-        setIsRefreshingDatabases(true);
-
-        // Fetch connections directly to check the response
-        const response = await fetch(
-          `/api/workspaces/${workspace.id}/database-connections`,
-          {
-            method: "GET",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${session.access_token}`,
-            },
-          }
-        );
-
-        if (!response.ok) {
-          if (response.status === 401) {
-            console.error(
-              "❌ Authentication failed - session may have expired"
-            );
-            // Don't retry on 401 errors as they won't succeed
+    // Handle different connection types
+    if (
+      ["postgresql", "mysql", "redshift", "sqlite"].includes(
+        data.connectionType
+      )
+    ) {
+      // Database connection
+      const fetchWithRetry = async (retries = 5, delay = 500) => {
+        try {
+          if (!session?.access_token) {
             setIsRefreshingDatabases(false);
             return;
           }
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
 
-        const connections = await response.json();
+          setIsRefreshingDatabases(true);
 
-        // Check if we actually got connections
-        if (connections && connections.length > 0) {
-          setDatabaseConnections(connections);
-          setIsRefreshingDatabases(false);
+          const response = await fetch(
+            `/api/workspaces/${workspace.id}/database-connections`,
+            {
+              method: "GET",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${session.access_token}`,
+              },
+            }
+          );
 
-          // Show success modal instead of toast
-          setSuccessModalData(data);
-          setShowSuccessModal(true);
-          return;
-        } else if (retries > 0) {
-          setTimeout(() => fetchWithRetry(retries - 1, delay * 1.5), delay);
-        } else {
-          setIsRefreshingDatabases(false);
+          if (!response.ok) {
+            if (response.status === 401) {
+              setIsRefreshingDatabases(false);
+              return;
+            }
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+
+          const connections = await response.json();
+
+          if (connections && connections.length > 0) {
+            setDatabaseConnections(connections);
+            setIsRefreshingDatabases(false);
+
+            // Show success modal for database connections
+            setSuccessModalData({
+              connectionName: data.connectionName,
+              tablesProcessed: data.tablesProcessed || 0,
+            });
+            setShowSuccessModal(true);
+            setShowConnectionModal(false);
+            return;
+          } else if (retries > 0) {
+            setTimeout(() => fetchWithRetry(retries - 1, delay * 1.5), delay);
+          } else {
+            setIsRefreshingDatabases(false);
+          }
+        } catch (_error) {
+          if (retries > 0) {
+            setTimeout(() => fetchWithRetry(retries - 1, delay * 1.5), delay);
+          } else {
+            setIsRefreshingDatabases(false);
+          }
         }
-      } catch (error) {
-        console.error("❌ Failed to fetch database connections:", error);
-        if (retries > 0) {
-          setTimeout(() => fetchWithRetry(retries - 1, delay * 1.5), delay);
-        } else {
-          setIsRefreshingDatabases(false);
-        }
+      };
+
+      // Start with a small delay to allow database transaction to commit
+      setTimeout(() => {
+        fetchWithRetry();
+      }, 200);
+
+      // Refresh API info since data sources changed
+      if (agent && agent.status === "active") {
+        fetchApiInfo();
       }
-    };
-
-    // Start with a small delay to allow database transaction to commit
-    setTimeout(() => {
-      fetchWithRetry();
-    }, 200);
-
-    // Refresh API info since data sources changed
-    if (agent && agent.status === "active") {
-      fetchApiInfo();
+    } else if (
+      ["google-sheets", "google-docs", "google-analytics", "web-url"].includes(
+        data.connectionType
+      )
+    ) {
+      // External connection
+      fetchExternalConnections();
+      showSuccess(
+        "External data source connected successfully!",
+        "External data source connected successfully!"
+      );
+      setShowConnectionModal(false);
+    } else if (["excel", "csv", "pdf", "word"].includes(data.connectionType)) {
+      // File connection
+      showSuccess(
+        "File uploaded successfully!",
+        "File uploaded and processed successfully!"
+      );
+      setShowConnectionModal(false);
     }
   };
 
@@ -314,8 +332,7 @@ export default function WorkspaceDetailClient({
         const error = await response.json();
         updateStatus(`Failed to update workspace: ${error.error}`, "error");
       }
-    } catch (error) {
-      console.error("Error updating workspace:", error);
+    } catch (_error) {
       updateStatus("Failed to update workspace. Please try again.", "error");
     }
   };
@@ -324,16 +341,10 @@ export default function WorkspaceDetailClient({
   const fetchExternalConnections = useCallback(async () => {
     try {
       if (!session?.access_token) {
-        console.log(
-          "🔐 Session not available yet, skipping external connections fetch"
-        );
         return;
       }
 
       // setIsLoadingExternal(true);
-      console.log(
-        `🔍 Fetching external connections for workspace: ${workspace.id}`
-      );
       const response = await fetch(
         `/api/external-connections?workspaceId=${workspace.id}`,
         {
@@ -346,38 +357,20 @@ export default function WorkspaceDetailClient({
       );
 
       if (!response.ok) {
-        console.error(
-          "❌ Failed to fetch external connections:",
-          response.status,
-          response.statusText
-        );
         return;
       }
 
       const result = await response.json();
       if (result.success && Array.isArray(result.connections)) {
         setExternalConnections(result.connections);
-      } else {
-        console.error(
-          "❌ External connections fetch failed:",
-          result.error || "Invalid response format"
-        );
       }
-    } catch (error) {
-      console.error("Error fetching external connections:", error);
+    } catch (_error) {
     } finally {
       // setIsLoadingExternal(false);
     }
   }, [workspace.id, session?.access_token]);
 
   // Handle external connection success
-  const handleExternalConnectionSuccess = () => {
-    fetchExternalConnections();
-    showSuccess(
-      "External data source connected successfully!",
-      "External data source connected successfully!"
-    );
-  };
 
   // Handle workspace deletion
   const handleWorkspaceDeletion = async () => {
@@ -405,8 +398,7 @@ export default function WorkspaceDetailClient({
         const error = await response.json();
         updateStatus(`Failed to delete workspace: ${error.error}`, "error");
       }
-    } catch (error) {
-      console.error("Error deleting workspace:", error);
+    } catch (_error) {
       updateStatus("Failed to delete workspace. Please try again.", "error");
     }
   };
@@ -423,6 +415,10 @@ export default function WorkspaceDetailClient({
 
     for (let i = 0; i < selectedFiles.length; i++) {
       const file = selectedFiles[i];
+
+      // Track file upload
+      trackUploadFile(file.type, file.size);
+
       const formData = new FormData();
       formData.append("file", file);
 
@@ -463,8 +459,7 @@ export default function WorkspaceDetailClient({
           "error"
         );
       }
-    } catch (error) {
-      console.error("Error uploading files:", error);
+    } catch (_error) {
       updateStatus("Failed to upload files. Please try again.", "error");
     } finally {
       setIsUploading(false);
@@ -496,8 +491,7 @@ export default function WorkspaceDetailClient({
         setApiInfo(null);
         return null;
       }
-    } catch (error) {
-      console.error("Error fetching API info:", error);
+    } catch (_error) {
       setApiInfo(null);
       return null;
     }
@@ -543,6 +537,23 @@ export default function WorkspaceDetailClient({
     }
   }, [searchParams, session?.access_token, fetchDatabaseConnections, router]);
 
+  // Add null check for workspace after all hooks
+  if (!initialWorkspace) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-white mb-4">
+            Workspace Not Found
+          </h1>
+          <p className="text-gray-400">
+            The workspace you&apos;re looking for doesn&apos;t exist or you
+            don&apos;t have access to it.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const handleRegenerateToken = async () => {
     try {
       const response = await fetch(
@@ -552,6 +563,9 @@ export default function WorkspaceDetailClient({
           headers: {
             "Content-Type": "application/json",
           },
+          body: JSON.stringify({
+            action: "regenerate_token",
+          }),
         }
       );
 
@@ -561,7 +575,7 @@ export default function WorkspaceDetailClient({
 
       const result = await response.json();
 
-      if (result.success) {
+      if (result.message) {
         showSuccess(
           "API Token Regenerated",
           "Your API token has been successfully regenerated!"
@@ -573,15 +587,14 @@ export default function WorkspaceDetailClient({
           result.error || "Failed to regenerate token"
         );
       }
-    } catch (error) {
-      console.error("Error regenerating token:", error);
+    } catch (_error) {
       showError("Token Regeneration Failed", "Failed to regenerate API token");
     }
   };
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+      <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-white mb-4">
             Authentication Required
@@ -595,7 +608,7 @@ export default function WorkspaceDetailClient({
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
+    <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8">
@@ -780,197 +793,64 @@ export default function WorkspaceDetailClient({
 
         {/* Main Content - Compact 3-Row Layout */}
         <div className="space-y-4">
-          {/* Row 2: Agent Info and API Info */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {/* Agent Info */}
-            <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700 rounded-lg p-4">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-lg font-semibold text-white flex items-center space-x-2">
-                  <svg
-                    className="w-5 h-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-                    />
-                  </svg>
-                  <span>AI Agent</span>
-                </h2>
-                <span
-                  className={`px-2 py-1 text-xs rounded-full ${
-                    agent?.status === "active"
-                      ? "bg-green-600 text-white"
-                      : "bg-gray-600 text-white"
-                  }`}
-                >
-                  {agent?.status || "inactive"}
-                </span>
-              </div>
-              <div className="space-y-2">
-                <p className="text-white font-medium">
-                  {agent?.name || "No Agent"}
-                </p>
-                <p className="text-gray-400 text-sm">
-                  {agent?.description || "No description"}
-                </p>
-                <button
-                  onClick={() => router.push(`/chat?agentId=${agent?.id}`)}
-                  className="w-full px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors"
-                >
-                  Chat with Agent
-                </button>
-              </div>
-            </div>
-
-            {/* API Info */}
-            <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700 rounded-lg p-4">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-lg font-semibold text-white flex items-center space-x-2">
-                  <svg
-                    className="w-5 h-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M13 10V3L4 14h7v7l9-11h-7z"
-                    />
-                  </svg>
-                  <span>API Integration</span>
-                </h2>
-                <span className="px-2 py-1 bg-green-600 text-white text-xs rounded-full">
-                  Active
-                </span>
-              </div>
-              <div className="space-y-2">
-                <p className="text-gray-300 text-sm">
-                  {files.length > 0 || databaseConnections.length > 0
-                    ? "Agent is ready for API access"
-                    : "Upload files or connect database to activate API"}
-                </p>
-                <button
-                  onClick={async () => {
-                    if (apiInfo) {
-                      setShowApiDetails(!showApiDetails);
-                    } else {
-                      const hasDataSources =
-                        files.length > 0 || databaseConnections.length > 0;
-                      if (!hasDataSources) {
-                        updateStatus(
-                          "API is not available yet. Please upload files or connect a database first to activate the API.",
-                          "warning"
-                        );
-                      } else {
-                        // Fetch API info when button is clicked
-                        const fetchedApiInfo = await fetchApiInfo();
-                        if (fetchedApiInfo) {
-                          setShowApiDetails(true);
-                        } else {
-                          updateStatus(
-                            "API information is not available. Please try again later.",
-                            "error"
-                          );
-                        }
-                      }
-                    }
-                  }}
-                  className="w-full px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors"
-                >
-                  View API Details
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Row 3: Files and Database */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {/* Files Section */}
-            <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700 rounded-lg p-4">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-lg font-semibold text-white flex items-center space-x-2">
-                  <svg
-                    className="w-5 h-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                    />
-                  </svg>
-                  <span>Files ({files.length})</span>
-                </h2>
-                <button
-                  onClick={() => setShowUploadModal(true)}
-                  className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors flex items-center space-x-1"
-                >
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-                    />
-                  </svg>
-                  <span>Upload</span>
-                </button>
-              </div>
-
-              {files.length === 0 ? (
-                <div className="text-center py-6">
-                  <div className="w-12 h-12 bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-3">
-                    <svg
-                      className="w-6 h-6 text-gray-400"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
+          {/* Row 2: Enhanced Agent and API Section - Only show if there are data sources */}
+          {(files.length > 0 ||
+            databaseConnections.length > 0 ||
+            externalConnections.length > 0) && (
+            <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700 rounded-lg p-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Enhanced AI Agent Section */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center">
+                        <svg
+                          className="w-5 h-5 text-white"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                          />
+                        </svg>
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-semibold text-white">
+                          AI Agent
+                        </h3>
+                        <p className="text-gray-400 text-sm">
+                          Intelligent workspace assistant
+                        </p>
+                      </div>
+                    </div>
+                    <span
+                      className={`px-3 py-1 text-xs rounded-full font-medium ${
+                        agent?.status === "active"
+                          ? "bg-green-500/20 text-green-400 border border-green-500/30"
+                          : "bg-gray-500/20 text-gray-400 border border-gray-500/30"
+                      }`}
                     >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                      />
-                    </svg>
+                      {agent?.status || "inactive"}
+                    </span>
                   </div>
-                  <p className="text-gray-400 text-sm mb-3">
-                    No files uploaded
-                  </p>
-                  <button
-                    onClick={() => setShowUploadModal(true)}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors"
-                  >
-                    Upload Files
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-2 max-h-48 overflow-y-auto">
-                  {files.slice(0, 5).map((file) => (
-                    <div
-                      key={file.id}
-                      className="bg-gray-700/30 rounded-lg p-3 border border-gray-600"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-2 flex-1 min-w-0">
-                          <div className="w-6 h-6 bg-blue-600 rounded flex items-center justify-center flex-shrink-0">
+
+                  <div className="bg-gray-900/50 rounded-lg p-5 border border-gray-700/50 relative">
+                    {/* Action buttons in top right */}
+                    {(workspace.userRole === "owner" ||
+                      workspace.userRole === "admin") &&
+                      agent && (
+                        <div className="absolute top-3 right-3 flex space-x-1">
+                          <button
+                            onClick={() => setShowAgentSharing(true)}
+                            className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded-md transition-colors"
+                            title="Share Agent"
+                          >
                             <svg
-                              className="w-3 h-3 text-white"
+                              className="w-4 h-4"
                               fill="none"
                               stroke="currentColor"
                               viewBox="0 0 24 24"
@@ -979,44 +859,23 @@ export default function WorkspaceDetailClient({
                                 strokeLinecap="round"
                                 strokeLinejoin="round"
                                 strokeWidth={2}
-                                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                                d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z"
                               />
                             </svg>
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-white text-sm truncate">
-                              {file.filename}
-                            </p>
-                            <p className="text-gray-400 text-xs">
-                              {file.file_size} bytes
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <span
-                            className={`px-2 py-1 text-xs rounded-full ${
-                              file.processing_status === "completed"
-                                ? "bg-green-600 text-white"
-                                : file.processing_status === "processing"
-                                ? "bg-yellow-600 text-white"
-                                : file.processing_status === "failed"
-                                ? "bg-red-600 text-white"
-                                : "bg-gray-600 text-white"
-                            }`}
-                          >
-                            {file.processing_status}
-                          </span>
+                          </button>
                           <button
                             onClick={() => {
-                              // Navigate to file detail page
-                              router.push(
-                                `/workspaces/${workspace.id}/files/${file.id}`
+                              // TODO: Implement agent editing
+                              updateStatus(
+                                "Agent editing coming soon!",
+                                "info"
                               );
                             }}
-                            className="p-1 hover:bg-gray-600 rounded transition-colors"
+                            className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded-md transition-colors"
+                            title="Edit Agent"
                           >
                             <svg
-                              className="w-4 h-4 text-gray-400"
+                              className="w-4 h-4"
                               fill="none"
                               stroke="currentColor"
                               viewBox="0 0 24 24"
@@ -1025,29 +884,163 @@ export default function WorkspaceDetailClient({
                                 strokeLinecap="round"
                                 strokeLinejoin="round"
                                 strokeWidth={2}
-                                d="M9 5l7 7-7 7"
+                                d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
                               />
                             </svg>
                           </button>
                         </div>
+                      )}
+
+                    {/* Agent content */}
+                    <div className="pr-16">
+                      <h4 className="text-white font-medium mb-2 text-lg">
+                        {agent?.name || "No Agent Configured"}
+                      </h4>
+                      <p className="text-gray-400 text-sm mb-6 leading-relaxed">
+                        {agent?.description ||
+                          "Configure an AI agent to analyze your workspace data and answer questions."}
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        trackStartChat(workspace.id);
+                        router.push(`/chat?agentId=${agent?.id}`);
+                      }}
+                      className="w-full px-4 py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-medium rounded-lg transition-all duration-200 transform hover:scale-[1.02] shadow-lg"
+                    >
+                      <div className="flex items-center justify-center space-x-2">
+                        <svg
+                          className="w-4 h-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                          />
+                        </svg>
+                        <span>Chat with Agent</span>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Enhanced API Integration Section */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg flex items-center justify-center">
+                        <svg
+                          className="w-5 h-5 text-white"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M13 10V3L4 14h7v7l9-11h-7z"
+                          />
+                        </svg>
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-semibold text-white">
+                          API Integration
+                        </h3>
+                        <p className="text-gray-400 text-sm">
+                          Programmatic access to your data
+                        </p>
                       </div>
                     </div>
-                  ))}
-                  {files.length > 5 && (
-                    <p className="text-gray-400 text-xs text-center py-2">
-                      +{files.length - 5} more files
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
+                    <span className="px-3 py-1 text-xs rounded-full font-medium bg-green-500/20 text-green-400 border border-green-500/30">
+                      Active
+                    </span>
+                  </div>
 
-            {/* Database Connections Section */}
-            <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700 rounded-lg p-4">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-lg font-semibold text-white flex items-center space-x-2">
+                  <div className="bg-gray-900/50 rounded-lg p-5 border border-gray-700/50 relative">
+                    {/* Rate limit info in top right */}
+                    <div className="absolute top-3 right-3 flex items-center space-x-2">
+                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                      <span className="text-xs text-gray-500">Rate Limit</span>
+                      <span className="text-sm text-white font-medium">
+                        {apiInfo?.api_rate_limit || "100"}/hour
+                      </span>
+                    </div>
+
+                    <div className="mb-6 pr-24">
+                      <h4 className="text-white font-medium mb-2 text-lg">
+                        REST API
+                      </h4>
+                      <p className="text-gray-400 text-sm mb-4 leading-relaxed">
+                        {files.length > 0 || databaseConnections.length > 0
+                          ? "Ready for integration"
+                          : "Connect data sources to activate"}
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={async () => {
+                        if (apiInfo) {
+                          setShowApiDetails(!showApiDetails);
+                        } else {
+                          const hasDataSources =
+                            files.length > 0 || databaseConnections.length > 0;
+                          if (!hasDataSources) {
+                            updateStatus(
+                              "API is not available yet. Please upload files or connect a database first to activate the API.",
+                              "warning"
+                            );
+                          } else {
+                            // Fetch API info when button is clicked
+                            const fetchedApiInfo = await fetchApiInfo();
+                            if (fetchedApiInfo) {
+                              setShowApiDetails(true);
+                            } else {
+                              updateStatus(
+                                "API information is not available. Please try again later.",
+                                "error"
+                              );
+                            }
+                          }
+                        }
+                      }}
+                      className="w-full px-4 py-3 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white font-medium rounded-lg transition-all duration-200 transform hover:scale-[1.02] shadow-lg"
+                    >
+                      <div className="flex items-center justify-center space-x-2">
+                        <svg
+                          className="w-4 h-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                          />
+                        </svg>
+                        <span>View API Details</span>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Row 3: Unified Data Sources Section (Full Width) */}
+          <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700 rounded-lg p-4">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center space-x-3">
+                <div className="w-8 h-8 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-lg flex items-center justify-center">
                   <svg
-                    className="w-5 h-5"
+                    className="w-4 h-4 text-white"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -1059,326 +1052,391 @@ export default function WorkspaceDetailClient({
                       d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"
                     />
                   </svg>
-                  <span>
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold text-white">
                     Data Sources (
-                    {databaseConnections.length + externalConnections.length})
-                  </span>
-                </h2>
-                <div className="flex space-x-2">
-                  <button
-                    onClick={() => setShowDatabaseModal(true)}
-                    className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-sm rounded-lg transition-colors flex items-center space-x-1"
-                  >
-                    <svg
-                      className="w-4 h-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"
-                      />
-                    </svg>
-                    <span>Database</span>
-                  </button>
-                  <button
-                    onClick={() => setShowExternalModal(true)}
-                    className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors flex items-center space-x-1"
-                  >
-                    <svg
-                      className="w-4 h-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
-                      />
-                    </svg>
-                    <span>External</span>
-                  </button>
+                    {files.length +
+                      databaseConnections.length +
+                      externalConnections.length}
+                    )
+                  </h2>
+                  <p className="text-gray-400 text-sm">
+                    Connect files, databases and external sources
+                  </p>
                 </div>
               </div>
-
-              {databaseConnections.length === 0 &&
-              externalConnections.length === 0 ? (
-                <div className="text-center py-6">
-                  <div className="w-12 h-12 bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-3">
-                    <svg
-                      className="w-6 h-6 text-gray-400"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"
-                      />
-                    </svg>
-                  </div>
-                  <p className="text-gray-400 text-sm mb-3">
-                    No data sources connected
-                  </p>
-                  <div className="flex space-x-2 justify-center">
-                    <button
-                      onClick={() => setShowDatabaseModal(true)}
-                      className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm rounded-lg transition-colors"
-                    >
-                      Connect Database
-                    </button>
-                    <button
-                      onClick={() => setShowExternalModal(true)}
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors"
-                    >
-                      Connect External
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-2 max-h-48 overflow-y-auto">
-                  {(isLoadingDatabases || isRefreshingDatabases) && (
-                    <div className="flex items-center justify-center py-4">
-                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-                      <span className="ml-2 text-sm text-gray-400">
-                        {isRefreshingDatabases
-                          ? "Refreshing data sources..."
-                          : "Loading data sources..."}
-                      </span>
-                    </div>
-                  )}
-                  {databaseConnections.slice(0, 5).map((connection) => {
-                    const dbType = connection.type.toLowerCase();
-
-                    // Find the data source configuration for this database type
-                    const dataSource = dataSources?.find(
-                      (source) => source.id === dbType
-                    );
-
-                    // Fallback colors and icons if data source config is not available
-                    const fallbackColors: Record<string, string> = {
-                      postgresql: "bg-blue-500",
-                      mysql: "bg-orange-500",
-                      mongodb: "bg-green-500",
-                      redis: "bg-red-500",
-                      sqlite: "bg-purple-500",
-                      bigquery: "bg-yellow-500",
-                      redshift: "bg-orange-600",
-                    };
-                    const fallbackIcons: Record<string, string> = {
-                      postgresql: "P",
-                      mysql: "M",
-                      mongodb: "M",
-                      redis: "R",
-                      sqlite: "S",
-                      bigquery: "B",
-                      redshift: "R",
-                    };
-
-                    const dbColor =
-                      dataSource?.color ||
-                      fallbackColors[dbType] ||
-                      "bg-gray-500";
-                    const dbIcon =
-                      dataSource?.icon || fallbackIcons[dbType] || "?";
-
-                    return (
-                      <div
-                        key={connection.id}
-                        className="bg-gray-700/30 rounded-lg p-3 border border-gray-600 cursor-pointer hover:bg-gray-600/30 transition-colors"
-                        onClick={() => {
-                          router.push(
-                            `/workspaces/${workspace.id}/databases/${connection.id}`
-                          );
-                        }}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center space-x-2 flex-1 min-w-0">
-                            <div
-                              className={`w-6 h-6 ${dbColor} rounded flex items-center justify-center flex-shrink-0`}
-                            >
-                              {dbIcon.startsWith("http") ? (
-                                <Image
-                                  src={dbIcon}
-                                  alt={connection.type}
-                                  width={16}
-                                  height={16}
-                                  className="w-4 h-4 object-contain filter brightness-0 invert"
-                                  onError={(e) => {
-                                    // Fallback to text icon if image fails to load
-                                    e.currentTarget.style.display = "none";
-                                    const nextElement = e.currentTarget
-                                      .nextElementSibling as HTMLElement;
-                                    if (nextElement) {
-                                      nextElement.style.display = "block";
-                                    }
-                                  }}
-                                />
-                              ) : (
-                                <span className="text-white text-xs font-bold">
-                                  {dbIcon}
-                                </span>
-                              )}
-                              {/* Fallback icon for failed image loads */}
-                              <span
-                                className="text-white text-xs font-bold hidden"
-                                style={{ display: "none" }}
-                              >
-                                {fallbackIcons[dbType] || "?"}
-                              </span>
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <p className="text-white text-sm truncate">
-                                {connection.name}
-                              </p>
-                              <p className="text-gray-400 text-xs capitalize">
-                                {connection.type}
-                              </p>
-                            </div>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                            <span className="text-green-400 text-xs">
-                              Connected
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {databaseConnections.length > 5 && (
-                    <p className="text-gray-400 text-xs text-center py-2">
-                      +{databaseConnections.length - 5} more database
-                      connections
-                    </p>
-                  )}
-
-                  {/* External Connections */}
-                  {externalConnections.slice(0, 5).map((connection) => {
-                    const connectionType = connection.type.toLowerCase();
-
-                    // Get the appropriate icon and color for external connections
-                    const getExternalConnectionInfo = (type: string) => {
-                      switch (type) {
-                        case "google-sheets":
-                          return {
-                            color: "bg-green-500",
-                            icon: "📊",
-                            name: "Google Sheets",
-                          };
-                        case "google-docs":
-                          return {
-                            color: "bg-blue-500",
-                            icon: "📄",
-                            name: "Google Docs",
-                          };
-                        case "google-analytics":
-                          return {
-                            color: "bg-orange-500",
-                            icon: "📈",
-                            name: "Google Analytics",
-                          };
-                        case "web-url":
-                          return {
-                            color: "bg-purple-500",
-                            icon: "🌐",
-                            name: "Web URL",
-                          };
-                        default:
-                          return {
-                            color: "bg-gray-500",
-                            icon: "🔗",
-                            name: "External",
-                          };
-                      }
-                    };
-
-                    const connectionInfo =
-                      getExternalConnectionInfo(connectionType);
-
-                    return (
-                      <div
-                        key={connection.id}
-                        className="bg-gray-700/50 rounded-lg p-3 border border-gray-600"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center space-x-3">
-                            <div
-                              className={`w-8 h-8 rounded-lg ${connectionInfo.color} flex items-center justify-center`}
-                            >
-                              <span className="text-white text-sm">
-                                {connectionInfo.icon}
-                              </span>
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <p className="text-white text-sm truncate">
-                                {connection.name}
-                              </p>
-                              <p className="text-gray-400 text-xs">
-                                {connectionInfo.name}
-                              </p>
-                            </div>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <div
-                              className={`w-2 h-2 rounded-full ${
-                                connection.connection_status === "active"
-                                  ? "bg-green-500"
-                                  : connection.connection_status === "error"
-                                  ? "bg-red-500"
-                                  : connection.connection_status === "syncing"
-                                  ? "bg-yellow-500"
-                                  : "bg-gray-500"
-                              }`}
-                            ></div>
-                            <span
-                              className={`text-xs ${
-                                connection.connection_status === "active"
-                                  ? "text-green-400"
-                                  : connection.connection_status === "error"
-                                  ? "text-red-400"
-                                  : connection.connection_status === "syncing"
-                                  ? "text-yellow-400"
-                                  : "text-gray-400"
-                              }`}
-                            >
-                              {connection.connection_status === "active"
-                                ? "Connected"
-                                : connection.connection_status === "error"
-                                ? "Error"
-                                : connection.connection_status === "syncing"
-                                ? "Syncing"
-                                : "Inactive"}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-
-                  {externalConnections.length > 5 && (
-                    <p className="text-gray-400 text-xs text-center py-2">
-                      +{externalConnections.length - 5} more external
-                      connections
-                    </p>
-                  )}
-                </div>
-              )}
+              <button
+                onClick={() => setShowConnectionModal(true)}
+                className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white text-sm font-medium rounded-lg transition-all duration-200 transform hover:scale-[1.02] shadow-lg flex items-center space-x-2"
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                  />
+                </svg>
+                <span>Connect Source</span>
+              </button>
             </div>
+
+            {files.length === 0 &&
+            databaseConnections.length === 0 &&
+            externalConnections.length === 0 ? (
+              <div className="text-center py-8">
+                <div className="w-16 h-16 bg-gradient-to-br from-gray-700 to-gray-800 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-gray-600">
+                  <svg
+                    className="w-8 h-8 text-gray-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"
+                    />
+                  </svg>
+                </div>
+                <h3 className="text-white font-medium mb-2">
+                  No data sources connected
+                </h3>
+                <p className="text-gray-400 text-sm mb-4">
+                  Connect files, databases, or external sources to start
+                  analyzing your data
+                </p>
+                <button
+                  onClick={() => setShowConnectionModal(true)}
+                  className="px-6 py-2.5 bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white text-sm font-medium rounded-lg transition-all duration-200 transform hover:scale-[1.02] shadow-lg"
+                >
+                  Connect Your First Source
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {(isLoadingDatabases || isRefreshingDatabases) && (
+                  <div className="flex items-center justify-center py-4">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                    <span className="ml-2 text-sm text-gray-400">
+                      {isRefreshingDatabases
+                        ? "Refreshing data sources..."
+                        : "Loading data sources..."}
+                    </span>
+                  </div>
+                )}
+
+                {/* Files */}
+                {files.slice(0, 3).map((file) => (
+                  <div
+                    key={file.id}
+                    className="bg-gray-900/50 rounded-lg p-3 border border-gray-700/50 cursor-pointer hover:bg-gray-800/50 hover:border-gray-600/50 transition-all duration-200 group"
+                    onClick={() => {
+                      router.push(
+                        `/workspaces/${workspace.id}/files/${file.id}`
+                      );
+                    }}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3 flex-1 min-w-0">
+                        <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center flex-shrink-0 shadow-sm">
+                          <svg
+                            className="w-4 h-4 text-white"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                            />
+                          </svg>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-white text-sm font-medium truncate">
+                            {file.filename}
+                          </p>
+                          <p className="text-gray-400 text-xs">
+                            File • {(file.file_size / 1024).toFixed(1)} KB
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <span
+                          className={`px-2 py-1 text-xs rounded-full border ${
+                            file.processing_status === "completed"
+                              ? "bg-green-500/20 text-green-400 border-green-500/30"
+                              : file.processing_status === "processing"
+                              ? "bg-yellow-500/20 text-yellow-400 border-yellow-500/30"
+                              : file.processing_status === "failed"
+                              ? "bg-red-500/20 text-red-400 border-red-500/30"
+                              : "bg-gray-500/20 text-gray-400 border-gray-500/30"
+                          }`}
+                        >
+                          {file.processing_status}
+                        </span>
+                        <svg
+                          className="w-4 h-4 text-gray-400 group-hover:text-white transition-colors"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M9 5l7 7-7 7"
+                          />
+                        </svg>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                {/* Database Connections */}
+                {databaseConnections.slice(0, 5).map((connection) => {
+                  const dbType = connection.type.toLowerCase();
+
+                  // Find the data source configuration for this database type
+                  const dataSource = dataSources?.find(
+                    (source) => source.id === dbType
+                  );
+
+                  // Fallback colors and icons if data source config is not available
+                  const fallbackColors: Record<string, string> = {
+                    postgresql: "bg-blue-500",
+                    mysql: "bg-orange-500",
+                    mongodb: "bg-green-500",
+                    redis: "bg-red-500",
+                    sqlite: "bg-purple-500",
+                    bigquery: "bg-yellow-500",
+                    redshift: "bg-orange-600",
+                  };
+                  const fallbackIcons: Record<string, string> = {
+                    postgresql: "P",
+                    mysql: "M",
+                    mongodb: "M",
+                    redis: "R",
+                    sqlite: "S",
+                    bigquery: "B",
+                    redshift: "R",
+                  };
+
+                  const dbColor =
+                    dataSource?.color ||
+                    fallbackColors[dbType] ||
+                    "bg-gray-500";
+                  const dbIcon =
+                    dataSource?.icon || fallbackIcons[dbType] || "?";
+
+                  return (
+                    <div
+                      key={connection.id}
+                      className="bg-gray-900/50 rounded-lg p-3 border border-gray-700/50 cursor-pointer hover:bg-gray-800/50 hover:border-gray-600/50 transition-all duration-200 group"
+                      onClick={() => {
+                        router.push(
+                          `/workspaces/${workspace.id}/databases/${connection.id}`
+                        );
+                      }}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3 flex-1 min-w-0">
+                          <div
+                            className={`w-8 h-8 ${dbColor} rounded-lg flex items-center justify-center flex-shrink-0 shadow-sm`}
+                          >
+                            {dbIcon.startsWith("http") ? (
+                              <Image
+                                src={dbIcon}
+                                alt={connection.type}
+                                width={16}
+                                height={16}
+                                className="w-4 h-4 object-contain filter brightness-0 invert"
+                                onError={(e) => {
+                                  // Fallback to text icon if image fails to load
+                                  e.currentTarget.style.display = "none";
+                                  const nextElement = e.currentTarget
+                                    .nextElementSibling as HTMLElement;
+                                  if (nextElement) {
+                                    nextElement.style.display = "block";
+                                  }
+                                }}
+                              />
+                            ) : (
+                              <span className="text-white text-xs font-bold">
+                                {dbIcon}
+                              </span>
+                            )}
+                            {/* Fallback icon for failed image loads */}
+                            <span
+                              className="text-white text-xs font-bold hidden"
+                              style={{ display: "none" }}
+                            >
+                              {fallbackIcons[dbType] || "?"}
+                            </span>
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-white text-sm font-medium truncate">
+                              {connection.name}
+                            </p>
+                            <p className="text-gray-400 text-xs capitalize">
+                              {connection.type}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <span className="px-2 py-1 bg-green-500/20 text-green-400 text-xs rounded-full border border-green-500/30">
+                            Connected
+                          </span>
+                          <svg
+                            className="w-4 h-4 text-gray-400 group-hover:text-white transition-colors"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M9 5l7 7-7 7"
+                            />
+                          </svg>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                {databaseConnections.length > 5 && (
+                  <p className="text-gray-400 text-xs text-center py-2">
+                    +{databaseConnections.length - 5} more database connections
+                  </p>
+                )}
+
+                {/* External Connections */}
+                {externalConnections.slice(0, 5).map((connection) => {
+                  const connectionType = connection.type.toLowerCase();
+
+                  // Get the appropriate icon and color for external connections
+                  const getExternalConnectionInfo = (type: string) => {
+                    switch (type) {
+                      case "google-sheets":
+                        return {
+                          color: "bg-green-500",
+                          icon: "📊",
+                          name: "Google Sheets",
+                        };
+                      case "google-docs":
+                        return {
+                          color: "bg-blue-500",
+                          icon: "📄",
+                          name: "Google Docs",
+                        };
+                      case "google-analytics":
+                        return {
+                          color: "bg-orange-500",
+                          icon: "📈",
+                          name: "Google Analytics",
+                        };
+                      case "web-url":
+                        return {
+                          color: "bg-purple-500",
+                          icon: "🌐",
+                          name: "Web URL",
+                        };
+                      default:
+                        return {
+                          color: "bg-gray-500",
+                          icon: "🔗",
+                          name: "External",
+                        };
+                    }
+                  };
+
+                  const connectionInfo =
+                    getExternalConnectionInfo(connectionType);
+
+                  return (
+                    <div
+                      key={connection.id}
+                      className="bg-gray-700/50 rounded-lg p-3 border border-gray-600"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          <div
+                            className={`w-8 h-8 rounded-lg ${connectionInfo.color} flex items-center justify-center`}
+                          >
+                            <span className="text-white text-sm">
+                              {connectionInfo.icon}
+                            </span>
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-white text-sm truncate">
+                              {connection.name}
+                            </p>
+                            <p className="text-gray-400 text-xs">
+                              {connectionInfo.name}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <div
+                            className={`w-2 h-2 rounded-full ${
+                              connection.connection_status === "active"
+                                ? "bg-green-500"
+                                : connection.connection_status === "error"
+                                ? "bg-red-500"
+                                : connection.connection_status === "syncing"
+                                ? "bg-yellow-500"
+                                : "bg-gray-500"
+                            }`}
+                          ></div>
+                          <span
+                            className={`text-xs ${
+                              connection.connection_status === "active"
+                                ? "text-green-400"
+                                : connection.connection_status === "error"
+                                ? "text-red-400"
+                                : connection.connection_status === "syncing"
+                                ? "text-yellow-400"
+                                : "text-gray-400"
+                            }`}
+                          >
+                            {connection.connection_status === "active"
+                              ? "Connected"
+                              : connection.connection_status === "error"
+                              ? "Error"
+                              : connection.connection_status === "syncing"
+                              ? "Syncing"
+                              : "Inactive"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {externalConnections.length > 5 && (
+                  <p className="text-gray-400 text-xs text-center py-2">
+                    +{externalConnections.length - 5} more external connections
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
         {/* API Details Modal */}
         {showApiDetails && apiInfo && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-gray-800 rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
+            <div className="bg-gray-800 rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden">
               <div className="bg-gradient-to-r from-gray-800 to-gray-900 px-6 py-4 border-b border-gray-700">
                 <div className="flex items-center justify-between">
                   <h2 className="text-xl font-semibold text-white">
@@ -1404,165 +1462,894 @@ export default function WorkspaceDetailClient({
                   </button>
                 </div>
               </div>
-              <div className="p-6 space-y-6 max-h-[calc(90vh-120px)] overflow-y-auto">
-                {/* API Endpoint */}
-                <div>
-                  <h3 className="text-lg font-semibold text-white mb-3">
-                    API Endpoint
-                  </h3>
-                  <div className="bg-gray-900 rounded-lg p-4">
-                    <div className="flex items-center space-x-2 mb-2">
-                      <span className="px-2 py-1 bg-green-600 text-white text-xs font-mono rounded">
-                        POST
-                      </span>
-                      <code className="text-blue-400 font-mono text-sm">
-                        {apiInfo.api_endpoint ||
-                          `/api/agents/${agent?.id}/chat`}
-                      </code>
-                    </div>
-                    <p className="text-gray-300 text-sm">
-                      Send messages to your AI agent and get intelligent
-                      responses based on your workspace data.
-                    </p>
-                  </div>
-                </div>
 
-                {/* Authentication */}
-                <div>
-                  <h3 className="text-lg font-semibold text-white mb-3">
-                    Authentication
-                  </h3>
-                  <div className="bg-gray-900 rounded-lg p-4 space-y-3">
+              {/* Tab Navigation */}
+              <div className="bg-gray-900 border-b border-gray-700">
+                <nav className="flex space-x-8 px-6">
+                  {[
+                    "Overview",
+                    "Authentication",
+                    "Instructions",
+                    "Examples",
+                    "Reference",
+                  ].map((tab) => (
+                    <button
+                      key={tab}
+                      onClick={() => setActiveApiTab(tab)}
+                      className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+                        activeApiTab === tab
+                          ? "border-blue-500 text-blue-400"
+                          : "border-transparent text-gray-400 hover:text-gray-300 hover:border-gray-600"
+                      }`}
+                    >
+                      {tab}
+                    </button>
+                  ))}
+                </nav>
+              </div>
+
+              <div className="p-6 max-h-[calc(90vh-180px)] overflow-y-auto">
+                {/* Overview Tab */}
+                {activeApiTab === "Overview" && (
+                  <div className="space-y-6">
                     <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">
-                        API Token
-                      </label>
-                      <div className="flex items-center space-x-2">
-                        <input
-                          type={showFullToken ? "text" : "password"}
-                          value={apiInfo.api_token}
-                          readOnly
-                          className="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm font-mono"
-                        />
-                        <button
-                          onClick={() => setShowFullToken(!showFullToken)}
-                          className="px-3 py-2 bg-gray-600 hover:bg-gray-500 text-white text-sm rounded-lg transition-colors"
-                        >
-                          {showFullToken ? "Hide" : "Show"}
-                        </button>
+                      <h3 className="text-lg font-semibold text-white mb-4">
+                        API Overview
+                      </h3>
+                      <div className="bg-gray-900 rounded-lg p-6">
+                        <div className="flex items-center space-x-3 mb-4">
+                          <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center">
+                            <svg
+                              className="w-6 h-6 text-white"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M13 10V3L4 14h7v7l9-11h-7z"
+                              />
+                            </svg>
+                          </div>
+                          <div>
+                            <h4 className="text-white font-medium text-lg">
+                              AI Agent API
+                            </h4>
+                            <p className="text-gray-400 text-sm">
+                              Intelligent conversation endpoint
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                          <div className="bg-gray-800 rounded-lg p-4">
+                            <div className="flex items-center space-x-2 mb-2">
+                              <span className="px-2 py-1 bg-green-600 text-white text-xs font-mono rounded">
+                                POST
+                              </span>
+                              <code className="text-blue-400 font-mono text-sm">
+                                {apiInfo.api_endpoint ||
+                                  `/api/agents/${agent?.id}/chat`}
+                              </code>
+                            </div>
+                            <p className="text-gray-300 text-sm">
+                              Send messages to your AI agent and get intelligent
+                              responses based on your workspace data.
+                            </p>
+                          </div>
+
+                          <div className="bg-gray-800 rounded-lg p-4">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-sm text-gray-400">
+                                Rate Limit
+                              </span>
+                              <span className="text-white font-medium">
+                                {apiInfo.api_rate_limit}/hour
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-sm text-gray-400">
+                                Usage
+                              </span>
+                              <span className="text-white font-medium">
+                                {apiInfo.api_usage_count} requests
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm text-gray-400">
+                                Expires
+                              </span>
+                              <span className="text-white font-medium text-xs">
+                                {new Date(
+                                  apiInfo.api_token_expires_at
+                                ).toLocaleDateString()}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-4">
+                          <div className="flex items-start space-x-3">
+                            <svg
+                              className="w-5 h-5 text-blue-400 mt-0.5"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                              />
+                            </svg>
+                            <div>
+                              <h5 className="text-blue-400 font-medium mb-1">
+                                Quick Start
+                              </h5>
+                              <p className="text-gray-300 text-sm">
+                                Use your API token to authenticate requests. The
+                                agent can analyze your uploaded files, database
+                                connections, and external data sources to
+                                provide intelligent responses.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     </div>
-                    <div className="text-sm text-gray-400">
-                      Include this token in the Authorization header:{" "}
-                      <code className="bg-gray-700 px-1 rounded">
-                        Authorization: Bearer YOUR_TOKEN
-                      </code>
-                    </div>
                   </div>
-                </div>
+                )}
 
-                {/* Request Format */}
-                <div>
-                  <h3 className="text-lg font-semibold text-white mb-3">
-                    Request Format
-                  </h3>
-                  <div className="bg-gray-900 rounded-lg p-4">
-                    <div className="mb-3">
-                      <h4 className="text-sm font-medium text-gray-300 mb-2">
-                        Headers
-                      </h4>
-                      <pre className="bg-gray-800 rounded p-3 text-sm text-gray-300 overflow-x-auto">
-                        {`Content-Type: application/json
-Authorization: Bearer ${apiInfo.api_token?.substring(0, 20)}...`}
-                      </pre>
-                    </div>
+                {/* Authentication Tab */}
+                {activeApiTab === "Authentication" && (
+                  <div className="space-y-6">
                     <div>
-                      <h4 className="text-sm font-medium text-gray-300 mb-2">
-                        Request Body
-                      </h4>
-                      <pre className="bg-gray-800 rounded p-3 text-sm text-gray-300 overflow-x-auto">
-                        {`{
-  "conversation_id": "unique_conversation_id",
-  "message": "Your question or message to the AI agent"
-}`}
-                      </pre>
+                      <h3 className="text-lg font-semibold text-white mb-4">
+                        Authentication
+                      </h3>
+                      <div className="bg-gray-900 rounded-lg p-6">
+                        <div className="mb-6">
+                          <label className="block text-sm font-medium text-gray-300 mb-3">
+                            API Token
+                          </label>
+                          <div className="flex items-center space-x-2">
+                            <input
+                              type={showFullToken ? "text" : "password"}
+                              value={apiInfo.api_token}
+                              readOnly
+                              className="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm font-mono"
+                            />
+                            <button
+                              onClick={async () => {
+                                try {
+                                  await navigator.clipboard.writeText(
+                                    apiInfo.api_token
+                                  );
+                                  showSuccess(
+                                    "Copied!",
+                                    "API token copied to clipboard"
+                                  );
+                                } catch (_error) {
+                                  showError(
+                                    "Copy Failed",
+                                    "Failed to copy API token to clipboard"
+                                  );
+                                }
+                              }}
+                              className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors flex items-center space-x-1"
+                            >
+                              <svg
+                                className="w-4 h-4"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                                />
+                              </svg>
+                              <span>Copy</span>
+                            </button>
+                            <button
+                              onClick={() => setShowFullToken(!showFullToken)}
+                              className="px-3 py-2 bg-gray-600 hover:bg-gray-500 text-white text-sm rounded-lg transition-colors"
+                            >
+                              {showFullToken ? "Hide" : "Show"}
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="bg-gray-800 rounded-lg p-4">
+                          <h4 className="text-white font-medium mb-3">
+                            How to Use
+                          </h4>
+                          <div className="space-y-3">
+                            <div>
+                              <p className="text-sm text-gray-400 mb-2">
+                                Include the token in the Authorization header:
+                              </p>
+                              <code className="bg-gray-700 px-2 py-1 rounded text-sm text-gray-300 block">
+                                Authorization: Bearer{" "}
+                                {apiInfo.api_token?.substring(0, 20)}...
+                              </code>
+                            </div>
+                            <div>
+                              <p className="text-sm text-gray-400 mb-2">
+                                Required headers:
+                              </p>
+                              <code className="bg-gray-700 px-2 py-1 rounded text-sm text-gray-300 block">
+                                Content-Type: application/json
+                              </code>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
 
-                {/* Response Format */}
-                <div>
-                  <h3 className="text-lg font-semibold text-white mb-3">
-                    Response Format
-                  </h3>
-                  <div className="bg-gray-900 rounded-lg p-4">
-                    <div className="mb-3">
-                      <h4 className="text-sm font-medium text-gray-300 mb-2">
-                        Success Response (200)
-                      </h4>
-                      <pre className="bg-gray-800 rounded p-3 text-sm text-gray-300 overflow-x-auto">
-                        {`{
-  "id": "message_id",
-  "conversation_id": "conversation_id",
-  "content": "AI agent response text",
-  "message_type": "agent_response",
-  "metadata": {
-    "files_referenced": ["file1.pdf", "file2.docx"],
-    "confidence_score": 0.95,
-    "processing_time_ms": 1250,
-    "tokens_used": 150
-  },
-  "created_at": "2024-01-15T10:30:00Z"
-}`}
-                      </pre>
-                    </div>
+                {/* Instructions Tab */}
+                {activeApiTab === "Instructions" && (
+                  <div className="space-y-6">
                     <div>
-                      <h4 className="text-sm font-medium text-gray-300 mb-2">
-                        Error Response (4xx/5xx)
-                      </h4>
-                      <pre className="bg-gray-800 rounded p-3 text-sm text-gray-300 overflow-x-auto">
-                        {`{
-  "error": "Error message description",
-  "code": "ERROR_CODE",
-  "details": "Additional error details"
-}`}
-                      </pre>
+                      <h3 className="text-lg font-semibold text-white mb-4">
+                        API Usage Instructions
+                      </h3>
+
+                      {/* Request Fields */}
+                      <div className="bg-gray-900 rounded-lg p-6 mb-6">
+                        <h4 className="text-white font-medium mb-4">
+                          Request Fields
+                        </h4>
+                        <div className="space-y-4">
+                          <div className="bg-gray-800 rounded-lg p-4">
+                            <div className="flex items-start space-x-3">
+                              <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                                <span className="text-white text-xs font-bold">
+                                  1
+                                </span>
+                              </div>
+                              <div className="flex-1">
+                                <h5 className="text-white font-medium mb-2">
+                                  conversation_id
+                                </h5>
+                                <p className="text-gray-300 text-sm mb-2">
+                                  <strong>Type:</strong> String (required)
+                                </p>
+                                <p className="text-gray-300 text-sm mb-2">
+                                  <strong>Description:</strong> A unique
+                                  identifier for your conversation session. This
+                                  helps maintain context across multiple
+                                  messages in the same conversation.
+                                </p>
+                                <p className="text-gray-300 text-sm">
+                                  <strong>Example:</strong>{" "}
+                                  <code className="bg-gray-700 px-1 rounded">
+                                    &quot;my_conversation_123&quot;
+                                  </code>
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="bg-gray-800 rounded-lg p-4">
+                            <div className="flex items-start space-x-3">
+                              <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                                <span className="text-white text-xs font-bold">
+                                  2
+                                </span>
+                              </div>
+                              <div className="flex-1">
+                                <h5 className="text-white font-medium mb-2">
+                                  message
+                                </h5>
+                                <p className="text-gray-300 text-sm mb-2">
+                                  <strong>Type:</strong> String (required)
+                                </p>
+                                <p className="text-gray-300 text-sm mb-2">
+                                  <strong>Description:</strong> Your question or
+                                  message to the AI agent. The agent will
+                                  analyze this message along with your workspace
+                                  data to provide intelligent responses.
+                                </p>
+                                <p className="text-gray-300 text-sm">
+                                  <strong>Example:</strong>{" "}
+                                  <code className="bg-gray-700 px-1 rounded">
+                                    &quot;What insights can you provide from my
+                                    uploaded documents?&quot;
+                                  </code>
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Response Fields */}
+                      <div className="bg-gray-900 rounded-lg p-6 mb-6">
+                        <h4 className="text-white font-medium mb-4">
+                          Response Fields
+                        </h4>
+                        <div className="space-y-4">
+                          <div className="bg-gray-800 rounded-lg p-4">
+                            <div className="flex items-start space-x-3">
+                              <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                                <span className="text-white text-xs font-bold">
+                                  1
+                                </span>
+                              </div>
+                              <div className="flex-1">
+                                <h5 className="text-white font-medium mb-2">
+                                  response_text
+                                </h5>
+                                <p className="text-gray-300 text-sm mb-2">
+                                  <strong>Type:</strong> String
+                                </p>
+                                <p className="text-gray-300 text-sm">
+                                  <strong>Description:</strong> The AI
+                                  agent&apos;s response text. This is the main
+                                  content you&apos;ll want to display to your
+                                  users.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="bg-gray-800 rounded-lg p-4">
+                            <div className="flex items-start space-x-3">
+                              <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                                <span className="text-white text-xs font-bold">
+                                  2
+                                </span>
+                              </div>
+                              <div className="flex-1">
+                                <h5 className="text-white font-medium mb-2">
+                                  response_image_url
+                                </h5>
+                                <p className="text-gray-300 text-sm mb-2">
+                                  <strong>Type:</strong> String (optional)
+                                </p>
+                                <p className="text-gray-300 text-sm">
+                                  <strong>Description:</strong> URL to generated
+                                  images, charts, or visualizations when
+                                  applicable.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="bg-gray-800 rounded-lg p-4">
+                            <div className="flex items-start space-x-3">
+                              <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                                <span className="text-white text-xs font-bold">
+                                  3
+                                </span>
+                              </div>
+                              <div className="flex-1">
+                                <h5 className="text-white font-medium mb-2">
+                                  conversation_id
+                                </h5>
+                                <p className="text-gray-300 text-sm mb-2">
+                                  <strong>Type:</strong> String
+                                </p>
+                                <p className="text-gray-300 text-sm">
+                                  <strong>Description:</strong> Echoes back the
+                                  conversation ID you provided in the request.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="bg-gray-800 rounded-lg p-4">
+                            <div className="flex items-start space-x-3">
+                              <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                                <span className="text-white text-xs font-bold">
+                                  4
+                                </span>
+                              </div>
+                              <div className="flex-1">
+                                <h5 className="text-white font-medium mb-2">
+                                  credits_used
+                                </h5>
+                                <p className="text-gray-300 text-sm mb-2">
+                                  <strong>Type:</strong> Number
+                                </p>
+                                <p className="text-gray-300 text-sm">
+                                  <strong>Description:</strong> Number of
+                                  credits consumed for this API call.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="bg-gray-800 rounded-lg p-4">
+                            <div className="flex items-start space-x-3">
+                              <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                                <span className="text-white text-xs font-bold">
+                                  5
+                                </span>
+                              </div>
+                              <div className="flex-1">
+                                <h5 className="text-white font-medium mb-2">
+                                  credits_remaining
+                                </h5>
+                                <p className="text-gray-300 text-sm mb-2">
+                                  <strong>Type:</strong> Number (optional)
+                                </p>
+                                <p className="text-gray-300 text-sm">
+                                  <strong>Description:</strong> Your remaining
+                                  credit balance after this API call.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="bg-gray-800 rounded-lg p-4">
+                            <div className="flex items-start space-x-3">
+                              <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                                <span className="text-white text-xs font-bold">
+                                  6
+                                </span>
+                              </div>
+                              <div className="flex-1">
+                                <h5 className="text-white font-medium mb-2">
+                                  processing_time_ms
+                                </h5>
+                                <p className="text-gray-300 text-sm mb-2">
+                                  <strong>Type:</strong> Number
+                                </p>
+                                <p className="text-gray-300 text-sm">
+                                  <strong>Description:</strong> Time taken to
+                                  process your request in milliseconds.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="bg-gray-800 rounded-lg p-4">
+                            <div className="flex items-start space-x-3">
+                              <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                                <span className="text-white text-xs font-bold">
+                                  7
+                                </span>
+                              </div>
+                              <div className="flex-1">
+                                <h5 className="text-white font-medium mb-2">
+                                  xai_metrics
+                                </h5>
+                                <p className="text-gray-300 text-sm mb-2">
+                                  <strong>Type:</strong> Object (optional)
+                                </p>
+                                <p className="text-gray-300 text-sm mb-2">
+                                  <strong>Description:</strong> eXplainable AI
+                                  metrics including:
+                                </p>
+                                <ul className="text-gray-300 text-sm ml-4 space-y-1">
+                                  <li>
+                                    • <strong>confidence_score:</strong>{" "}
+                                    AI&apos;s confidence (0.0-1.0)
+                                  </li>
+                                  <li>
+                                    • <strong>data_quality_score:</strong>{" "}
+                                    Quality of input data (0.0-1.0)
+                                  </li>
+                                  <li>
+                                    •{" "}
+                                    <strong>
+                                      response_completeness_score:
+                                    </strong>{" "}
+                                    How complete the response is (0.0-1.0)
+                                  </li>
+                                  <li>
+                                    •{" "}
+                                    <strong>
+                                      user_satisfaction_prediction:
+                                    </strong>{" "}
+                                    Predicted user satisfaction (0.0-1.0)
+                                  </li>
+                                </ul>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="bg-gray-800 rounded-lg p-4">
+                            <div className="flex items-start space-x-3">
+                              <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                                <span className="text-white text-xs font-bold">
+                                  8
+                                </span>
+                              </div>
+                              <div className="flex-1">
+                                <h5 className="text-white font-medium mb-2">
+                                  agent_thinking_notes
+                                </h5>
+                                <p className="text-gray-300 text-sm mb-2">
+                                  <strong>Type:</strong> Array of Strings
+                                  (optional)
+                                </p>
+                                <p className="text-gray-300 text-sm">
+                                  <strong>Description:</strong> Internal
+                                  reasoning steps and decision-making process of
+                                  the AI agent.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="bg-gray-800 rounded-lg p-4">
+                            <div className="flex items-start space-x-3">
+                              <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                                <span className="text-white text-xs font-bold">
+                                  9
+                                </span>
+                              </div>
+                              <div className="flex-1">
+                                <h5 className="text-white font-medium mb-2">
+                                  sql_queries
+                                </h5>
+                                <p className="text-gray-300 text-sm mb-2">
+                                  <strong>Type:</strong> Array of Strings
+                                  (optional)
+                                </p>
+                                <p className="text-gray-300 text-sm">
+                                  <strong>Description:</strong> SQL queries
+                                  executed to retrieve data from connected
+                                  databases.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="bg-gray-800 rounded-lg p-4">
+                            <div className="flex items-start space-x-3">
+                              <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                                <span className="text-white text-xs font-bold">
+                                  10
+                                </span>
+                              </div>
+                              <div className="flex-1">
+                                <h5 className="text-white font-medium mb-2">
+                                  graph_data
+                                </h5>
+                                <p className="text-gray-300 text-sm mb-2">
+                                  <strong>Type:</strong> Object (optional)
+                                </p>
+                                <p className="text-gray-300 text-sm">
+                                  <strong>Description:</strong> Structured data
+                                  for generating charts, graphs, and
+                                  visualizations.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="bg-gray-800 rounded-lg p-4">
+                            <div className="flex items-start space-x-3">
+                              <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                                <span className="text-white text-xs font-bold">
+                                  11
+                                </span>
+                              </div>
+                              <div className="flex-1">
+                                <h5 className="text-white font-medium mb-2">
+                                  token_tracking
+                                </h5>
+                                <p className="text-gray-300 text-sm mb-2">
+                                  <strong>Type:</strong> Object (optional)
+                                </p>
+                                <p className="text-gray-300 text-sm mb-2">
+                                  <strong>Description:</strong> Detailed token
+                                  usage breakdown including:
+                                </p>
+                                <ul className="text-gray-300 text-sm ml-4 space-y-1">
+                                  <li>
+                                    • <strong>userInputTokens:</strong> Tokens
+                                    from your message
+                                  </li>
+                                  <li>
+                                    • <strong>systemPromptTokens:</strong>{" "}
+                                    System prompt tokens
+                                  </li>
+                                  <li>
+                                    • <strong>contextTokens:</strong> Context
+                                    data tokens
+                                  </li>
+                                  <li>
+                                    • <strong>totalTokensUsed:</strong> Total
+                                    tokens consumed
+                                  </li>
+                                </ul>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="bg-gray-800 rounded-lg p-4">
+                            <div className="flex items-start space-x-3">
+                              <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                                <span className="text-white text-xs font-bold">
+                                  12
+                                </span>
+                              </div>
+                              <div className="flex-1">
+                                <h5 className="text-white font-medium mb-2">
+                                  rag_context
+                                </h5>
+                                <p className="text-gray-300 text-sm mb-2">
+                                  <strong>Type:</strong> Object (optional)
+                                </p>
+                                <p className="text-gray-300 text-sm mb-2">
+                                  <strong>Description:</strong>{" "}
+                                  Retrieval-Augmented Generation context
+                                  including:
+                                </p>
+                                <ul className="text-gray-300 text-sm ml-4 space-y-1">
+                                  <li>
+                                    • <strong>retrieved_chunks:</strong> Number
+                                    of data chunks retrieved
+                                  </li>
+                                  <li>
+                                    • <strong>similarity_scores:</strong>{" "}
+                                    Relevance scores for retrieved data
+                                  </li>
+                                  <li>
+                                    • <strong>source_documents:</strong> Names
+                                    of source documents used
+                                  </li>
+                                </ul>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Best Practices */}
+                      <div className="bg-gray-900 rounded-lg p-6">
+                        <h4 className="text-white font-medium mb-4">
+                          Best Practices
+                        </h4>
+                        <div className="space-y-4">
+                          <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-4">
+                            <div className="flex items-start space-x-3">
+                              <svg
+                                className="w-5 h-5 text-blue-400 mt-0.5"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
+                                />
+                              </svg>
+                              <div>
+                                <h5 className="text-blue-400 font-medium mb-1">
+                                  Conversation Management
+                                </h5>
+                                <p className="text-gray-300 text-sm">
+                                  Use consistent conversation IDs to maintain
+                                  context. Start new conversations with a new ID
+                                  when the topic changes significantly.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="bg-green-900/20 border border-green-500/30 rounded-lg p-4">
+                            <div className="flex items-start space-x-3">
+                              <svg
+                                className="w-5 h-5 text-green-400 mt-0.5"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M13 10V3L4 14h7v7l9-11h-7z"
+                                />
+                              </svg>
+                              <div>
+                                <h5 className="text-green-400 font-medium mb-1">
+                                  Message Quality
+                                </h5>
+                                <p className="text-gray-300 text-sm">
+                                  Be specific in your questions. The more
+                                  context you provide, the better the AI can
+                                  analyze your data and provide relevant
+                                  insights.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="bg-yellow-900/20 border border-yellow-500/30 rounded-lg p-4">
+                            <div className="flex items-start space-x-3">
+                              <svg
+                                className="w-5 h-5 text-yellow-400 mt-0.5"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                                />
+                              </svg>
+                              <div>
+                                <h5 className="text-yellow-400 font-medium mb-1">
+                                  Rate Limiting
+                                </h5>
+                                <p className="text-gray-300 text-sm">
+                                  Respect the rate limits. Implement exponential
+                                  backoff if you hit rate limits, and consider
+                                  caching responses when appropriate.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
 
-                {/* Example Usage */}
-                <div>
-                  <h3 className="text-lg font-semibold text-white mb-3">
-                    Example Usage
-                  </h3>
-                  <div className="bg-gray-900 rounded-lg p-4">
-                    <div className="mb-3">
-                      <h4 className="text-sm font-medium text-gray-300 mb-2">
-                        cURL
-                      </h4>
-                      <pre className="bg-gray-800 rounded p-3 text-sm text-gray-300 overflow-x-auto">
-                        {`curl -X POST "${
-                          apiInfo.api_endpoint ||
-                          `/api/agents/${agent?.id}/chat`
-                        }" \\
+                {/* Examples Tab */}
+                {activeApiTab === "Examples" && (
+                  <div className="space-y-6">
+                    <div>
+                      <h3 className="text-lg font-semibold text-white mb-4">
+                        Code Examples
+                      </h3>
+
+                      {/* cURL Example */}
+                      <div className="bg-gray-900 rounded-lg p-6 mb-6">
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="flex items-center space-x-2">
+                            <div className="w-8 h-8 bg-gray-700 rounded-lg flex items-center justify-center">
+                              <span className="text-white font-mono text-sm">
+                                $
+                              </span>
+                            </div>
+                            <h4 className="text-white font-medium">cURL</h4>
+                          </div>
+                          <button
+                            onClick={async () => {
+                              const curlCommand = `curl -X POST "${
+                                apiInfo.api_endpoint ||
+                                `/api/agents/${agent?.id}/chat`
+                              }" \\
+  -H "Content-Type: application/json" \\
+  -H "Authorization: Bearer ${apiInfo.api_token}" \\
+  -d '{
+    "conversation_id": "my_conversation_123",
+    "message": "What insights can you provide from my uploaded documents?"
+  }'`;
+                              try {
+                                await navigator.clipboard.writeText(
+                                  curlCommand
+                                );
+                                showSuccess(
+                                  "Copied!",
+                                  "cURL command copied to clipboard"
+                                );
+                              } catch {
+                                showError(
+                                  "Copy Failed",
+                                  "Failed to copy cURL command"
+                                );
+                              }
+                            }}
+                            className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded transition-colors flex items-center space-x-1"
+                          >
+                            <svg
+                              className="w-3 h-3"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                              />
+                            </svg>
+                            <span>Copy</span>
+                          </button>
+                        </div>
+                        <pre className="bg-gray-800 rounded p-4 text-sm text-gray-300 overflow-x-auto">
+                          {`curl -X POST "${
+                            apiInfo.api_endpoint ||
+                            `/api/agents/${agent?.id}/chat`
+                          }" \\
   -H "Content-Type: application/json" \\
   -H "Authorization: Bearer ${apiInfo.api_token?.substring(0, 20)}..." \\
   -d '{
     "conversation_id": "my_conversation_123",
     "message": "What insights can you provide from my uploaded documents?"
   }'`}
-                      </pre>
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-medium text-gray-300 mb-2">
-                        JavaScript
-                      </h4>
-                      <pre className="bg-gray-800 rounded p-3 text-sm text-gray-300 overflow-x-auto">
-                        {`const response = await fetch('${
-                          apiInfo.api_endpoint ||
-                          `/api/agents/${agent?.id}/chat`
-                        }', {
+                        </pre>
+                      </div>
+
+                      {/* JavaScript Example */}
+                      <div className="bg-gray-900 rounded-lg p-6 mb-6">
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="flex items-center space-x-2">
+                            <div className="w-8 h-8 bg-yellow-600 rounded-lg flex items-center justify-center">
+                              <span className="text-white font-bold text-sm">
+                                JS
+                              </span>
+                            </div>
+                            <h4 className="text-white font-medium">
+                              JavaScript
+                            </h4>
+                          </div>
+                          <button
+                            onClick={async () => {
+                              const jsCode = `const response = await fetch('${
+                                apiInfo.api_endpoint ||
+                                `/api/agents/${agent?.id}/chat`
+                              }', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer ${apiInfo.api_token}'
+  },
+  body: JSON.stringify({
+    conversation_id: 'my_conversation_123',
+    message: 'What insights can you provide from my uploaded documents?'
+  })
+});
+
+const data = await response.json();
+`;
+                              try {
+                                await navigator.clipboard.writeText(jsCode);
+                                showSuccess(
+                                  "Copied!",
+                                  "JavaScript code copied to clipboard"
+                                );
+                              } catch {
+                                showError(
+                                  "Copy Failed",
+                                  "Failed to copy JavaScript code"
+                                );
+                              }
+                            }}
+                            className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded transition-colors flex items-center space-x-1"
+                          >
+                            <svg
+                              className="w-3 h-3"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                              />
+                            </svg>
+                            <span>Copy</span>
+                          </button>
+                        </div>
+                        <pre className="bg-gray-800 rounded p-4 text-sm text-gray-300 overflow-x-auto">
+                          {`const response = await fetch('${
+                            apiInfo.api_endpoint ||
+                            `/api/agents/${agent?.id}/chat`
+                          }', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
@@ -1575,62 +2362,257 @@ Authorization: Bearer ${apiInfo.api_token?.substring(0, 20)}...`}
 });
 
 const data = await response.json();
-console.log(data.content);`}
-                      </pre>
+`}
+                        </pre>
+                      </div>
+
+                      {/* Python Example */}
+                      <div className="bg-gray-900 rounded-lg p-6">
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="flex items-center space-x-2">
+                            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+                              <span className="text-white font-bold text-sm">
+                                PY
+                              </span>
+                            </div>
+                            <h4 className="text-white font-medium">Python</h4>
+                          </div>
+                          <button
+                            onClick={async () => {
+                              const pythonCode = `import requests
+
+url = '${apiInfo.api_endpoint || `/api/agents/${agent?.id}/chat`}'
+headers = {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer ${apiInfo.api_token}'
+}
+data = {
+    'conversation_id': 'my_conversation_123',
+    'message': 'What insights can you provide from my uploaded documents?'
+}
+
+response = requests.post(url, headers=headers, json=data)
+result = response.json()
+print(result['response_text'])`;
+                              try {
+                                await navigator.clipboard.writeText(pythonCode);
+                                showSuccess(
+                                  "Copied!",
+                                  "Python code copied to clipboard"
+                                );
+                              } catch {
+                                showError(
+                                  "Copy Failed",
+                                  "Failed to copy Python code"
+                                );
+                              }
+                            }}
+                            className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded transition-colors flex items-center space-x-1"
+                          >
+                            <svg
+                              className="w-3 h-3"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                              />
+                            </svg>
+                            <span>Copy</span>
+                          </button>
+                        </div>
+                        <pre className="bg-gray-800 rounded p-4 text-sm text-gray-300 overflow-x-auto">
+                          {`import requests
+
+url = '${apiInfo.api_endpoint || `/api/agents/${agent?.id}/chat`}'
+headers = {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer ${apiInfo.api_token?.substring(0, 20)}...'
+}
+data = {
+    'conversation_id': 'my_conversation_123',
+    'message': 'What insights can you provide from my uploaded documents?'
+}
+
+response = requests.post(url, headers=headers, json=data)
+result = response.json()
+print(result['content'])`}
+                        </pre>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
 
-                {/* Rate Limits & Usage */}
-                <div>
-                  <h3 className="text-lg font-semibold text-white mb-3">
-                    Rate Limits & Usage
-                  </h3>
-                  <div className="bg-gray-900 rounded-lg p-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-2">
-                          Rate Limit
-                        </label>
-                        <p className="text-white">
-                          {apiInfo.api_rate_limit} requests/hour
-                        </p>
+                {/* Reference Tab */}
+                {activeApiTab === "Reference" && (
+                  <div className="space-y-6">
+                    <div>
+                      <h3 className="text-lg font-semibold text-white mb-4">
+                        API Reference
+                      </h3>
+
+                      {/* Request Format */}
+                      <div className="bg-gray-900 rounded-lg p-6 mb-6">
+                        <h4 className="text-white font-medium mb-4">
+                          Request Format
+                        </h4>
+                        <div className="space-y-4">
+                          <div>
+                            <h5 className="text-sm font-medium text-gray-300 mb-2">
+                              Headers
+                            </h5>
+                            <pre className="bg-gray-800 rounded p-3 text-sm text-gray-300 overflow-x-auto">
+                              {`Content-Type: application/json
+Authorization: Bearer ${apiInfo.api_token?.substring(0, 20)}...`}
+                            </pre>
+                          </div>
+                          <div>
+                            <h5 className="text-sm font-medium text-gray-300 mb-2">
+                              Request Body
+                            </h5>
+                            <pre className="bg-gray-800 rounded p-3 text-sm text-gray-300 overflow-x-auto">
+                              {`{
+  "conversation_id": "unique_conversation_id",
+  "message": "Your question or message to the AI agent"
+}`}
+                            </pre>
+                          </div>
+                        </div>
                       </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-2">
-                          Usage Count
-                        </label>
-                        <p className="text-white">{apiInfo.api_usage_count}</p>
+
+                      {/* Response Format */}
+                      <div className="bg-gray-900 rounded-lg p-6 mb-6">
+                        <h4 className="text-white font-medium mb-4">
+                          Response Format
+                        </h4>
+                        <div className="space-y-4">
+                          <div>
+                            <h5 className="text-sm font-medium text-gray-300 mb-2">
+                              Success Response (200)
+                            </h5>
+                            <pre className="bg-gray-800 rounded p-3 text-sm text-gray-300 overflow-x-auto">
+                              {`{
+  "response_text": "AI agent response text",
+  "response_image_url": "https://example.com/chart.png",
+  "conversation_id": "my_conversation_123",
+  "credits_used": 5,
+  "credits_remaining": 95,
+  "processing_time_ms": 1250,
+  "xai_metrics": {
+    "confidence_score": 0.95,
+    "data_quality_score": 0.88,
+    "response_completeness_score": 0.92,
+    "user_satisfaction_prediction": 0.89
+  },
+  "agent_thinking_notes": [
+    "Analyzing user query for data requirements",
+    "Retrieving relevant data from connected sources",
+    "Generating comprehensive response"
+  ],
+  "sql_queries": [
+    "SELECT * FROM users WHERE created_at > '2024-01-01'"
+  ],
+  "graph_data": {
+    "chart_type": "bar",
+    "data": [{"label": "Q1", "value": 100}]
+  },
+  "token_tracking": {
+    "userInputTokens": 25,
+    "systemPromptTokens": 150,
+    "contextTokens": 200,
+    "totalTokensUsed": 375
+  },
+  "rag_context": {
+    "retrieved_chunks": 3,
+    "similarity_scores": [0.95, 0.87, 0.82],
+    "source_documents": ["database_connection_1", "file_upload_2"]
+  }
+}`}
+                            </pre>
+                          </div>
+                          <div>
+                            <h5 className="text-sm font-medium text-gray-300 mb-2">
+                              Error Response (4xx/5xx)
+                            </h5>
+                            <pre className="bg-gray-800 rounded p-3 text-sm text-gray-300 overflow-x-auto">
+                              {`{
+  "error": "Error message description",
+  "code": "ERROR_CODE",
+  "details": "Additional error details"
+}`}
+                            </pre>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                    <div className="mt-3">
-                      <label className="block text-sm font-medium text-gray-300 mb-2">
-                        Token Expires
-                      </label>
-                      <p className="text-white">
-                        {new Date(
-                          apiInfo.api_token_expires_at
-                        ).toLocaleString()}
-                      </p>
+
+                      {/* Rate Limits */}
+                      <div className="bg-gray-900 rounded-lg p-6">
+                        <h4 className="text-white font-medium mb-4">
+                          Rate Limits & Usage
+                        </h4>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div className="bg-gray-800 rounded-lg p-4">
+                            <div className="flex items-center space-x-2 mb-2">
+                              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                              <span className="text-sm text-gray-400">
+                                Rate Limit
+                              </span>
+                            </div>
+                            <p className="text-white font-medium">
+                              {apiInfo.api_rate_limit} requests/hour
+                            </p>
+                          </div>
+                          <div className="bg-gray-800 rounded-lg p-4">
+                            <div className="flex items-center space-x-2 mb-2">
+                              <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                              <span className="text-sm text-gray-400">
+                                Usage Count
+                              </span>
+                            </div>
+                            <p className="text-white font-medium">
+                              {apiInfo.api_usage_count}
+                            </p>
+                          </div>
+                          <div className="bg-gray-800 rounded-lg p-4">
+                            <div className="flex items-center space-x-2 mb-2">
+                              <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
+                              <span className="text-sm text-gray-400">
+                                Token Expires
+                              </span>
+                            </div>
+                            <p className="text-white font-medium text-xs">
+                              {new Date(
+                                apiInfo.api_token_expires_at
+                              ).toLocaleDateString()}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
+              </div>
 
-                {/* Actions */}
-                <div className="flex justify-end space-x-3 pt-4 border-t border-gray-700">
-                  <button
-                    onClick={() => setShowApiDetails(false)}
-                    className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
-                  >
-                    Close
-                  </button>
+              {/* Actions */}
+              <div className="flex justify-end space-x-3 p-6 pt-4 border-t border-gray-700">
+                <button
+                  onClick={() => setShowApiDetails(false)}
+                  className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
+                >
+                  Close
+                </button>
+                {activeApiTab === "Authentication" && (
                   <button
                     onClick={handleRegenerateToken}
                     className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
                   >
                     Regenerate Token
                   </button>
-                </div>
+                )}
               </div>
             </div>
           </div>
@@ -1790,13 +2772,15 @@ console.log(data.content);`}
           />
         )}
 
-        {/* Database Connection Modal */}
-        <DatabaseConnectionModal
-          isOpen={showDatabaseModal}
-          onClose={() => setShowDatabaseModal(false)}
-          onConnectionSuccess={handleDatabaseConnectionSuccess}
-          workspaceId={workspace.id}
-        />
+        {/* Unified Connection Modal */}
+        {workspace?.id && (
+          <UnifiedConnectionModal
+            isOpen={showConnectionModal}
+            onClose={() => setShowConnectionModal(false)}
+            onConnectionSuccess={handleConnectionSuccess}
+            workspaceId={workspace.id}
+          />
+        )}
 
         {/* Database Connection Success Modal */}
         {successModalData && (
@@ -2011,21 +2995,15 @@ console.log(data.content);`}
 
         {/* Database Details Modal - REMOVED - Now using dedicated page */}
 
-        {/* Database Connection Modal */}
-        <DatabaseConnectionModal
-          isOpen={showDatabaseModal}
-          onClose={() => setShowDatabaseModal(false)}
-          onConnectionSuccess={handleDatabaseConnectionSuccess}
-          workspaceId={workspace.id}
-        />
-
-        {/* External Connection Modal */}
-        <ExternalConnectionModal
-          isOpen={showExternalModal}
-          onClose={() => setShowExternalModal(false)}
-          onConnectionSuccess={handleExternalConnectionSuccess}
-          workspaceId={workspace.id}
-        />
+        {/* Unified Connection Modal */}
+        {workspace?.id && (
+          <UnifiedConnectionModal
+            isOpen={showConnectionModal}
+            onClose={() => setShowConnectionModal(false)}
+            onConnectionSuccess={handleConnectionSuccess}
+            workspaceId={workspace.id}
+          />
+        )}
 
         {/* Notification Modal */}
         <NotificationModal

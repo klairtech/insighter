@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-auth";
 
-export async function POST(request: NextRequest) {
+export async function POST(_request: NextRequest) {
   try {
     // This endpoint should be called by a cron job or scheduled task
     // For security, you might want to add an API key check here
@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
         // Create monthly free credit batch
         const batchCode = `monthly_free_${currentDate.getFullYear()}_${String(currentDate.getMonth() + 1).padStart(2, '0')}_${user.id}`;
         
-        const { data: batch, error: batchError } = await supabaseServer
+        const { error: batchError } = await supabaseServer
           .from('insighter_credit_batches')
           .insert({
             user_id: user.id,

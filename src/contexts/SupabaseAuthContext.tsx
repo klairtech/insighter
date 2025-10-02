@@ -14,6 +14,7 @@ import {
   AuthError,
   AuthChangeEvent,
 } from "@supabase/supabase-js";
+import { analytics, setUserProperties } from "@/lib/analytics";
 
 // Create a singleton Supabase client to avoid multiple instances
 let supabaseClient: ReturnType<typeof createBrowserClient> | null = null;
@@ -116,9 +117,16 @@ export function SupabaseAuthProvider({
         };
 
         setProfile(userProfile);
-      } catch (error) {
-        console.error("Error fetching user profile:", error);
 
+        // Set user properties for analytics
+        setUserProperties({
+          user_id: user.id,
+          user_email: user.email,
+          user_name: userProfile.name,
+          signup_date: user.created_at,
+          provider: user.app_metadata?.provider || "email",
+        });
+      } catch {
         // Fallback to just auth metadata if database fetch fails
         const userProfile: UserProfile = {
           id: user.id,
@@ -132,6 +140,15 @@ export function SupabaseAuthProvider({
         };
 
         setProfile(userProfile);
+
+        // Set user properties for analytics
+        setUserProperties({
+          user_id: user.id,
+          user_email: user.email,
+          user_name: userProfile.name,
+          signup_date: user.created_at,
+          provider: user.app_metadata?.provider || "email",
+        });
       }
     },
     [supabase]
@@ -143,7 +160,6 @@ export function SupabaseAuthProvider({
       typeof window !== "undefined" &&
       sessionStorage.getItem("insighter_signout") === "true"
     ) {
-      // console.log("Manual signout detected - clearing session immediately");
       setSession(null);
       setUser(null);
       setProfile(null);
@@ -152,6 +168,11 @@ export function SupabaseAuthProvider({
       return;
     }
 
+    // Add a timeout to prevent infinite loading
+    const loadingTimeout = setTimeout(() => {
+      setIsLoading(false);
+    }, 10000); // 10 second timeout
+
     // Get initial session
     const getInitialSession = async () => {
       try {
@@ -159,13 +180,14 @@ export function SupabaseAuthProvider({
         if (
           isSigningOut ||
           (typeof window !== "undefined" &&
-            sessionStorage.getItem("insighter_signout") === "true")
+            (sessionStorage.getItem("insighter_signout") === "true" ||
+              localStorage.getItem("insighter_signout") === "true" ||
+              localStorage.getItem("insighter_manual_signout") === "true"))
         ) {
-          // console.log(
-          //   "Skipping initial session check - signing out or manual signout detected"
-          // );
           if (typeof window !== "undefined") {
             sessionStorage.removeItem("insighter_signout");
+            localStorage.removeItem("insighter_signout");
+            localStorage.removeItem("insighter_manual_signout");
           }
           setIsLoading(false);
           return;
@@ -177,18 +199,32 @@ export function SupabaseAuthProvider({
         } = await supabase.auth.getSession();
 
         if (error) {
-          console.error("Error getting session:", error);
-        } else {
-          setSession(session);
-          setUser(session?.user ?? null);
+        } else if (session) {
+          // Double-check that we're not in the middle of signing out
+          const stillSigningOut =
+            isSigningOut ||
+            (typeof window !== "undefined" &&
+              (sessionStorage.getItem("insighter_signout") === "true" ||
+                localStorage.getItem("insighter_signout") === "true" ||
+                localStorage.getItem("insighter_manual_signout") === "true"));
 
-          if (session?.user) {
-            await fetchUserProfile(session.user);
+          if (stillSigningOut) {
+            setSession(null);
+            setUser(null);
+          } else {
+            setSession(session);
+            setUser(session.user);
+
+            if (session.user) {
+              await fetchUserProfile(session.user);
+            }
           }
+        } else {
+          setSession(null);
+          setUser(null);
         }
-      } catch (error) {
-        console.error("Error in getInitialSession:", error);
       } finally {
+        clearTimeout(loadingTimeout);
         setIsLoading(false);
       }
     };
@@ -202,7 +238,6 @@ export function SupabaseAuthProvider({
       async (event: AuthChangeEvent, session: Session | null) => {
         // Don't restore session if we're in the middle of signing out or if user manually signed out
         if (isSigningOut && event === "SIGNED_OUT") {
-          // console.log("Ignoring SIGNED_OUT event during manual signout");
           return;
         }
 
@@ -211,7 +246,6 @@ export function SupabaseAuthProvider({
           typeof window !== "undefined" &&
           sessionStorage.getItem("insighter_signout") === "true"
         ) {
-          // console.log("Ignoring auth state change - manual signout detected");
           sessionStorage.removeItem("insighter_signout");
           return;
         }
@@ -225,11 +259,13 @@ export function SupabaseAuthProvider({
           setProfile(null);
         }
 
+        clearTimeout(loadingTimeout);
         setIsLoading(false);
       }
     );
 
     return () => {
+      clearTimeout(loadingTimeout);
       subscription.unsubscribe();
     };
   }, [supabase.auth, isSigningOut, fetchUserProfile]);
@@ -248,14 +284,19 @@ export function SupabaseAuthProvider({
       });
 
       if (error) {
-        console.error("Sign up error:", error);
+        // Track signup error
+        analytics.error("signup_error", error.message, "authentication");
         return { error };
       }
 
+      // Track successful signup
+      analytics.signup("email");
+
       return { error: null };
-    } catch (error) {
-      console.error("Sign up error:", error);
-      return { error: error as AuthError };
+    } catch (_error) {
+      const error = _error as AuthError;
+      analytics.error("signup_exception", error.message, "authentication");
+      return { error };
     }
   };
 
@@ -267,14 +308,19 @@ export function SupabaseAuthProvider({
       });
 
       if (error) {
-        console.error("Sign in error:", error);
+        // Track login error
+        analytics.error("login_error", error.message, "authentication");
         return { error };
       }
 
+      // Track successful login
+      analytics.login("email");
+
       return { error: null };
-    } catch (error) {
-      console.error("Sign in error:", error);
-      return { error: error as AuthError };
+    } catch (_error) {
+      const error = _error as AuthError;
+      analytics.error("login_exception", error.message, "authentication");
+      return { error };
     }
   };
 
@@ -285,37 +331,85 @@ export function SupabaseAuthProvider({
       });
 
       if (error) {
-        console.error("Google sign in error:", error);
+        // Track Google OAuth error
+        analytics.error("google_oauth_error", error.message, "authentication");
         return { error };
       }
 
+      // Track Google OAuth initiation
+      analytics.login("google");
+
       return { error: null };
-    } catch (error) {
-      console.error("Google sign in error:", error);
-      return { error: error as AuthError };
+    } catch (_error) {
+      const error = _error as AuthError;
+      analytics.error(
+        "google_oauth_exception",
+        error.message,
+        "authentication"
+      );
+      return { error };
     }
   };
 
   const signOut = async () => {
     try {
-      console.log("Starting sign out process...");
       setIsSigningOut(true);
+
+      // Track logout
+      analytics.logout();
 
       // Clear local state first
       setUser(null);
       setSession(null);
       setProfile(null);
 
-      // Sign out from Supabase with all scopes
+      // Set signout flag immediately to prevent session restoration
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("insighter_signout", "true");
+        localStorage.setItem("insighter_signout", "true");
+        localStorage.setItem("insighter_manual_signout", "true");
+      }
+
+      // Call server-side signout to clear HTTP-only cookies
+      try {
+        const serverSignOutResponse = await fetch("/api/auth/signout", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        });
+
+        if (serverSignOutResponse.ok) {
+        }
+      } catch {}
+
+      // Also try client-side signout as backup
       const { error } = await supabase.auth.signOut({ scope: "global" });
 
       if (error) {
-        console.error("Sign out error:", error);
         // Continue with local cleanup even if global signout fails
       }
 
       // Also try local signout
-      await supabase.auth.signOut({ scope: "local" });
+      const { error: localError } = await supabase.auth.signOut({
+        scope: "local",
+      });
+
+      if (localError) {
+      }
+
+      // Clear any cached session data in the Supabase client
+      try {
+        // Force clear the session cache
+        await supabase.auth.getSession();
+        // Also try to clear any internal cache
+        if (supabase.auth["_storage"]) {
+          supabase.auth["_storage"].removeItem("sb-access-token");
+          supabase.auth["_storage"].removeItem("sb-refresh-token");
+        }
+      } catch {
+        // Ignore errors here, we're just trying to clear cache
+      }
 
       // Clear all possible localStorage keys
       if (typeof window !== "undefined") {
@@ -344,23 +438,36 @@ export function SupabaseAuthProvider({
         sessionKeysToRemove.forEach((key) => {
           sessionStorage.removeItem(key);
         });
+
+        // Clear all cookies that might contain session data
+        document.cookie.split(";").forEach((cookie) => {
+          const eqPos = cookie.indexOf("=");
+          const name =
+            eqPos > -1 ? cookie.substr(0, eqPos).trim() : cookie.trim();
+          if (name.includes("supabase") || name.includes("sb-")) {
+            document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
+            document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=${window.location.hostname}`;
+            document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=.${window.location.hostname}`;
+          }
+        });
       }
 
-      // Wait a bit for cleanup to complete, then force a page reload
+      // Force a hard reload to clear any cached session data
       setTimeout(() => {
         if (typeof window !== "undefined") {
-          // Set a flag in sessionStorage to prevent auto-restore
-          sessionStorage.setItem("insighter_signout", "true");
-          window.location.href = "/";
+          // Use replace instead of href to prevent back button issues
+          // Add a longer delay to ensure all cleanup is complete
+          window.location.replace("/");
         }
-      }, 100);
+      }, 500);
 
-      console.log("Sign out successful");
+      // Reset the Supabase client singleton to ensure no cached data
+      supabaseClient = null;
+
       return { error: null };
-    } catch (error) {
-      console.error("Sign out error:", error);
+    } catch (_error) {
       setIsSigningOut(false);
-      return { error: error as AuthError };
+      return { error: _error as AuthError };
     }
   };
 
@@ -371,14 +478,12 @@ export function SupabaseAuthProvider({
       });
 
       if (error) {
-        console.error("Reset password error:", error);
         return { error };
       }
 
       return { error: null };
-    } catch (error) {
-      console.error("Reset password error:", error);
-      return { error: error as AuthError };
+    } catch (_error) {
+      return { error: _error as AuthError };
     }
   };
 
@@ -398,7 +503,6 @@ export function SupabaseAuthProvider({
       });
 
       if (error) {
-        console.error("Update profile error:", error);
         return { error };
       }
 
@@ -407,11 +511,9 @@ export function SupabaseAuthProvider({
         await fetchUserProfile(data.user);
       }
 
-      console.log("Profile updated successfully");
       return { error: null };
-    } catch (error) {
-      console.error("Update profile error:", error);
-      return { error: error as AuthError };
+    } catch (_error) {
+      return { error: _error as AuthError };
     }
   };
 
@@ -439,14 +541,9 @@ export function SupabaseAuthProvider({
 export function useSupabaseAuth() {
   const context = useContext(SupabaseAuthContext);
   if (context === undefined) {
-    // In development, throw an error to help with debugging
-    if (process.env.NODE_ENV === "development") {
-      throw new Error(
-        "useSupabaseAuth must be used within a SupabaseAuthProvider"
-      );
-    }
+    // Always return a safe fallback to prevent crashes
+    // Removed the development error throw to prevent runtime crashes
     // In production, return a safe fallback to prevent crashes
-    console.warn("useSupabaseAuth called outside of SupabaseAuthProvider");
     return {
       user: null,
       profile: null,

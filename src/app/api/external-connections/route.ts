@@ -63,6 +63,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 })
     }
 
+    // Check if user has minimum credits (10 credits minimum) for adding data sources
+    const { checkUserCredits } = await import('@/lib/credit-service-server')
+    const minimumCreditsCheck = await checkUserCredits(session.user.id, 10)
+    
+    if (!minimumCreditsCheck.hasCredits) {
+      console.log(`❌ External Connections API: User has insufficient credits for adding data sources. User has ${minimumCreditsCheck.currentCredits}, needs minimum 10 credits`)
+      return NextResponse.json(
+        { 
+          error: 'Insufficient credits to add data sources',
+          currentCredits: minimumCreditsCheck.currentCredits,
+          requiredCredits: 10,
+          message: 'You need at least 10 credits to add new data sources. Please purchase more credits to continue.'
+        },
+        { status: 402 } // Payment Required
+      )
+    }
+
     // Encrypt sensitive configuration data
     const encryptedConfig = encryptObject(connectionConfig)
     const encryptedWebScrapingConfig = webScrapingConfig ? encryptObject(webScrapingConfig) : null

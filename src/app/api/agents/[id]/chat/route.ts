@@ -3,7 +3,7 @@ import { supabaseServer } from '@/lib/server-utils';
 import { verifyAgentApiToken, extractTokenFromHeader } from '@/lib/jwt-utils';
 import { getOrCreateApiConversation, saveApiInteraction } from '@/lib/api-conversations';
 import { TokenTrackingData } from '@/lib/token-utils';
-import { checkUserCredits, deductCredits } from '@/lib/credit-utils';
+// import { checkUserCredits, deductCredits } from '@/lib/credit-utils';
 
 // Rate limiting: 100 requests per minute
 const RATE_LIMIT = 100;
@@ -222,12 +222,11 @@ export async function POST(
       );
     }
 
-    // Get agent details
+    // Get agent details (don't validate against stored token since we use user-specific tokens)
     const { data: agent, error: agentError } = await supabaseServer
       .from('ai_agents')
       .select('id, name, status, api_enabled, workspace_id, api_usage_count')
       .eq('id', agentId)
-      .eq('api_token', apiToken)
       .single();
 
     console.log('🔍 Agent Debug:', {
@@ -264,6 +263,81 @@ export async function POST(
       );
     }
 
+    // Verify user has access to this agent using the token payload
+    // The tokenPayload.userId should match the user making the request
+    console.log('🔍 User Access Check:', {
+      tokenUserId: tokenPayload.userId,
+      agentWorkspaceId: agent.workspace_id
+    });
+
+    // Check if user has access to the workspace that owns this agent
+    const { data: workspaceAccess } = await supabaseServer
+      .from('workspaces')
+      .select('organization_id')
+      .eq('id', agent.workspace_id)
+      .single();
+
+    if (!workspaceAccess) {
+      await logApiUsage(
+        agentId,
+        apiToken,
+        '',
+        '',
+        '',
+        null,
+        0,
+        Date.now() - startTime,
+        'error',
+        'Workspace not found for agent',
+        request
+      );
+      
+      return NextResponse.json(
+        { error: 'Agent workspace not found' },
+        { status: 404 }
+      );
+    }
+
+    // Check if user has access to the organization or workspace
+    const { data: orgMembership } = await supabaseServer
+      .from('organization_members')
+      .select('role')
+      .eq('user_id', tokenPayload.userId)
+      .eq('organization_id', workspaceAccess.organization_id)
+      .eq('status', 'active')
+      .single();
+
+    const { data: workspaceMembership } = await supabaseServer
+      .from('workspace_members')
+      .select('role')
+      .eq('user_id', tokenPayload.userId)
+      .eq('workspace_id', agent.workspace_id)
+      .eq('status', 'active')
+      .single();
+
+    const hasAccess = orgMembership || workspaceMembership;
+
+    if (!hasAccess) {
+      await logApiUsage(
+        agentId,
+        apiToken,
+        '',
+        '',
+        '',
+        null,
+        0,
+        Date.now() - startTime,
+        'error',
+        'User does not have access to this agent',
+        request
+      );
+      
+      return NextResponse.json(
+        { error: 'Access denied to this agent' },
+        { status: 403 }
+      );
+    }
+
     if (agent.status !== 'active' || !agent.api_enabled) {
       await logApiUsage(
         agentId,
@@ -297,6 +371,36 @@ export async function POST(
     }
 
     // Check user credits before processing (estimate 50 credits for a typical request)
+    // First check if user has minimum credits (10 credits minimum)
+    const { checkUserCredits } = await import('@/lib/credit-service-server');
+    const minimumCreditsCheck = await checkUserCredits(tokenPayload.userId, 10);
+    
+    if (!minimumCreditsCheck.hasCredits) {
+      await logApiUsage(
+        agentId,
+        apiToken,
+        conversation_id,
+        message,
+        '',
+        null,
+        0,
+        Date.now() - startTime,
+        'error',
+        'Insufficient credits for chat',
+        request
+      );
+      
+      return NextResponse.json(
+        { 
+          error: 'Insufficient credits to use chat functionality',
+          current_balance: minimumCreditsCheck.currentCredits,
+          required_credits: 10,
+          message: 'You need at least 10 credits to use the chat feature. Please purchase more credits to continue.'
+        },
+        { status: 402 } // Payment Required
+      );
+    }
+
     const estimatedCredits = 50;
     const creditCheck = await checkUserCredits(tokenPayload.userId, estimatedCredits);
     
@@ -408,8 +512,8 @@ export async function POST(
         } | null = null;
 
         try {
-          // Use the enhanced multi-agent flow processing
-          const { processWithEnhancedMultiAgentFlow } = await import('@/lib/enhanced-multi-agent-flow');
+          // Use the new multi-agent flow processing
+          const { multiAgentFlow } = await import('@/lib/multi-agent-flow');
           
           // Get conversation history for context
           const { data: conversationHistory, error: historyError } = await supabaseServer
@@ -437,18 +541,19 @@ export async function POST(
           //   ]
           // };
 
-          // Process with the enhanced multi-agent flow
-          agentResponse = await processWithEnhancedMultiAgentFlow(
+          // Process with the new multi-agent flow
+          agentResponse = await multiAgentFlow.processQuery(
             message,
             agent.workspace_id,
             agentId,
-            conversationHistory || []
+            conversationHistory || [],
+            tokenPayload.userId
           );
 
           responseText = agentResponse.content;
           tokensUsed = agentResponse.tokens_used;
           
-          // Debug: Log what we received from the enhanced multi-agent flow
+          // Debug: Log what we received from the multi-agent flow
           console.log('🔍 Debug: Agent response keys:', Object.keys(agentResponse));
           console.log('🔍 Debug: Has xai_metrics:', !!agentResponse.xai_metrics);
           console.log('🔍 Debug: Has sql_queries:', !!agentResponse.sql_queries);

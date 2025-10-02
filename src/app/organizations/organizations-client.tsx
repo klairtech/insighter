@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
 import OrganizationSharingWrapper from "@/components/OrganizationSharingWrapper";
 import ErrorBoundary from "@/components/ErrorBoundary";
+import { useAnalytics } from "@/hooks/useAnalytics";
 
 interface Organization {
   id: string;
@@ -39,6 +40,7 @@ export default function OrganizationsClient({
 }: OrganizationsClientProps) {
   const router = useRouter();
   const { session, isLoading } = useSupabaseAuth();
+  const { trackFeatureUsage } = useAnalytics();
   const [organizations, setOrganizations] =
     useState<Organization[]>(initialOrganizations);
   const [isCreating, setIsCreating] = useState(false);
@@ -61,12 +63,25 @@ export default function OrganizationsClient({
       hasAccessToken: !!session?.access_token,
       userEmail: session?.user?.email,
     });
-  }, [session, isLoading]);
+
+    // Clear any existing error when session loads successfully
+    if (
+      !isLoading &&
+      session &&
+      error === "Please wait while we load your session..."
+    ) {
+      setError("");
+    }
+  }, [session, isLoading, error]);
   const [showSharingModal, setShowSharingModal] = useState(false);
   const [selectedOrganization, setSelectedOrganization] =
     useState<Organization | null>(null);
 
   const handleOrganizationClick = (organizationId: string) => {
+    // Track organization view
+    trackFeatureUsage("organization_viewed", {
+      organization_id: organizationId,
+    });
     router.push(`/organizations/${organizationId}`);
   };
 
@@ -79,6 +94,14 @@ export default function OrganizationsClient({
 
     if (isLoading) {
       setError("Please wait while we load your session...");
+      return;
+    }
+
+    // If we've been loading for too long, provide a retry option
+    if (!session && !isLoading) {
+      setError(
+        "Session loading failed. Please refresh the page and try again."
+      );
       return;
     }
 
@@ -114,6 +137,12 @@ export default function OrganizationsClient({
           Object.fromEntries(response.headers.entries())
         );
 
+        // Track organization creation error
+        trackFeatureUsage("organization_creation_error", {
+          error_message: errorMessage,
+          organization_name: newOrganization.name,
+        });
+
         try {
           const responseText = await response.text();
 
@@ -141,6 +170,15 @@ export default function OrganizationsClient({
       const createdOrg = await response.json();
       setOrganizations((prev) => [createdOrg, ...prev]);
       setShowCreateModal(false);
+
+      // Track successful organization creation
+      trackFeatureUsage("organization_created", {
+        organization_id: createdOrg.id,
+        organization_name: createdOrg.name,
+        industry: createdOrg.industry,
+        size: createdOrg.size,
+      });
+
       setNewOrganization({
         name: "",
         description: "",
@@ -195,7 +233,7 @@ export default function OrganizationsClient({
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
+    <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8">
@@ -209,22 +247,27 @@ export default function OrganizationsClient({
           </div>
           <button
             onClick={() => setShowCreateModal(true)}
-            className="mt-4 sm:mt-0 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-all duration-200 flex items-center space-x-2"
+            disabled={isLoading}
+            className="mt-4 sm:mt-0 px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-all duration-200 flex items-center space-x-2"
           >
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-              />
-            </svg>
-            <span>Create Organization</span>
+            {isLoading ? (
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+            ) : (
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                />
+              </svg>
+            )}
+            <span>{isLoading ? "Loading..." : "Create Organization"}</span>
           </button>
         </div>
 
@@ -262,9 +305,17 @@ export default function OrganizationsClient({
             </p>
             <button
               onClick={() => setShowCreateModal(true)}
-              className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-all duration-200"
+              disabled={isLoading}
+              className="px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-all duration-200 flex items-center justify-center"
             >
-              Create Organization
+              {isLoading ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Loading...
+                </>
+              ) : (
+                "Create Organization"
+              )}
             </button>
           </div>
         ) : (
@@ -522,10 +573,24 @@ export default function OrganizationsClient({
                   </button>
                   <button
                     type="submit"
-                    disabled={isCreating || !newOrganization.name.trim()}
-                    className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
+                    disabled={
+                      isCreating || isLoading || !newOrganization.name.trim()
+                    }
+                    className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors flex items-center justify-center"
                   >
-                    {isCreating ? "Creating..." : "Create Organization"}
+                    {isLoading ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                        Loading Session...
+                      </>
+                    ) : isCreating ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                        Creating...
+                      </>
+                    ) : (
+                      "Create Organization"
+                    )}
                   </button>
                 </div>
               </form>

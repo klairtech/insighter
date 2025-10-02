@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseServer, verifyUserSession } from '@/lib/server-utils'
 import { encryptObject } from '@/lib/encryption'
-import { GoogleSheetsConnector } from '@/lib/connectors/google-sheets'
-import { GoogleDocsConnector } from '@/lib/connectors/google-docs'
+import { GoogleSheetsConnector } from '@/lib/datasources/google-sheets'
+import { GoogleDocsConnector } from '@/lib/datasources/google-docs'
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url)
     const connectionId = searchParams.get('connectionId')
-    const scopes = searchParams.get('scopes') || 'sheets,docs'
+    // const scopes = searchParams.get('scopes') || 'sheets,docs'
 
     if (!connectionId) {
       return NextResponse.json({ error: 'Connection ID is required' }, { status: 400 })
@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
     } else if (connection.type === 'google-docs') {
       authUrl = GoogleDocsConnector.getAuthUrl()
     } else if (connection.type === 'google-analytics') {
-      const { GoogleAnalyticsConnector } = await import('@/lib/connectors/google-analytics')
+      const { GoogleAnalyticsConnector } = await import('@/lib/datasources/google-analytics')
       authUrl = GoogleAnalyticsConnector.getAuthUrl()
     } else {
       return NextResponse.json({ error: 'Unsupported connection type for Google OAuth' }, { status: 400 })
@@ -114,7 +114,7 @@ export async function POST(request: NextRequest) {
       if (Date.now() - stateData.timestamp > 5 * 60 * 1000) {
         return NextResponse.json({ error: 'OAuth state expired' }, { status: 400 })
       }
-    } catch (stateError) {
+    } catch {
       return NextResponse.json({ error: 'Invalid state parameter' }, { status: 400 })
     }
 
@@ -161,7 +161,7 @@ export async function POST(request: NextRequest) {
     } else if (connection.type === 'google-docs') {
       tokens = await GoogleDocsConnector.exchangeCodeForTokens(code)
     } else if (connection.type === 'google-analytics') {
-      const { GoogleAnalyticsConnector } = await import('@/lib/connectors/google-analytics')
+      const { GoogleAnalyticsConnector } = await import('@/lib/datasources/google-analytics')
       tokens = await GoogleAnalyticsConnector.exchangeCodeForTokens(code)
     } else {
       return NextResponse.json({ error: 'Unsupported connection type for Google OAuth' }, { status: 400 })

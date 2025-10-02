@@ -37,6 +37,7 @@ export async function GET(request: NextRequest) {
       .from('organization_members')
       .select('organization_id')
       .eq('user_id', user.id)
+      .eq('status', 'active')
 
     if (memberError) {
       console.error('❌ User Organizations API: Error fetching organization memberships:', {
@@ -63,6 +64,7 @@ export async function GET(request: NextRequest) {
       .from('organizations')
       .select('*')
       .in('id', orgIds)
+      .eq('status', 'active')
       .order('created_at', { ascending: false })
 
     if (error) {

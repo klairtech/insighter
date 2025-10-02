@@ -366,7 +366,7 @@ async function fetchRedshiftColumns(config: { host: string; port: string; databa
           column.sample_values = sampleResult.rows
             .map(row => String(row[column.name]))
             .filter(val => val && val.length > 0) as string[]
-        } catch (_error) {
+        } catch {
           // If we can't get sample data, just continue
           column.sample_values = []
         }

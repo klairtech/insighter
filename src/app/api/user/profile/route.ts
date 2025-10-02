@@ -42,12 +42,13 @@ export async function PUT(request: NextRequest) {
       )
     }
 
-    const { name, avatar_path } = await request.json()
+    const { name, avatar_path, preferred_currency } = await request.json()
 
     // Update user profile in Supabase
     const updatedUser = await updateUserProfile(user.id, {
       name,
-      avatar_path
+      avatar_path,
+      preferred_currency
     })
 
     if (!updatedUser) {

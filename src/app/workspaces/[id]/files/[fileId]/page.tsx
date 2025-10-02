@@ -368,7 +368,7 @@ const FileDetailPage: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex items-center justify-center">
+      <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
           <p className="text-gray-400">Loading file details...</p>
@@ -379,7 +379,7 @@ const FileDetailPage: React.FC = () => {
 
   if (error || !file) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex items-center justify-center">
+      <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <div className="text-red-500 text-6xl mb-4">
             <svg
@@ -407,7 +407,7 @@ const FileDetailPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
+    <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8">

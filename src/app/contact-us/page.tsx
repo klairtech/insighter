@@ -63,7 +63,7 @@ const ContactUsPage: React.FC = () => {
 
   if (isSubmitted) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
+      <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="max-w-md mx-auto text-center">
           <div className="klair-card p-8">
             <div className="klair-icon-container w-16 h-16 mx-auto mb-4">
@@ -99,7 +99,7 @@ const ContactUsPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-black">
+    <div className="min-h-screen bg-background">
       {/* Hero Section */}
       <div className="relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 via-transparent to-blue-600/10"></div>

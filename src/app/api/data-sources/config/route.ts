@@ -16,7 +16,7 @@ export async function GET() {
       );
     }
 
-    // Fetch enabled data source configurations
+    // Fetch enabled data source configurations for all categories
     const { data: dataSourceConfigs, error: configError } = await supabase
       .from('data_source_config')
       .select('*')

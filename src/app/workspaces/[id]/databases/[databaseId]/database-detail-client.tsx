@@ -658,7 +658,7 @@ export default function DatabaseDetailClient({
 
   if (isLoading || !database) {
     return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+      <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
           <p className="text-gray-400">Loading database details...</p>
@@ -668,7 +668,7 @@ export default function DatabaseDetailClient({
   }
 
   return (
-    <div className="min-h-screen bg-gray-900">
+    <div className="min-h-screen bg-background">
       {/* Notification Modal */}
       <NotificationModal
         isOpen={notification.isOpen}

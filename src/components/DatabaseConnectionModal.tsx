@@ -10,7 +10,7 @@ import {
   SelectedTable,
 } from "@/types/database-schema";
 import DatabaseSetupProgressModal from "./DatabaseSetupProgressModal";
-import { useDataSourceConfig } from "@/hooks/useDataSourceConfig";
+import { useDatabaseConfig } from "@/hooks/useDatabaseConfig";
 
 // Union type for data sources (hardcoded or from database)
 type DataSource = {
@@ -384,12 +384,12 @@ export default function DatabaseConnectionModal({
   onConnectionSuccess,
   workspaceId,
 }: DatabaseConnectionModalProps) {
-  // Fetch data source configurations from database
+  // Fetch database configurations from database
   const {
     dataSources: enabledDataSources,
     loading: configLoading,
     error: configError,
-  } = useDataSourceConfig();
+  } = useDatabaseConfig();
   const { session } = useSupabaseAuth();
   const [selectedDbType, setSelectedDbType] = useState<string>("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
@@ -461,11 +461,6 @@ export default function DatabaseConnectionModal({
     "info" | "success" | "error" | "warning"
   >("info");
 
-  // Find selected database from either hardcoded or database configuration
-  const selectedDb = (
-    configLoading || configError ? DATA_SOURCE_TYPES : enabledDataSources
-  ).find((db) => db.id === selectedDbType);
-
   // Helper function to get filtered data sources based on selected category
   const getFilteredDataSources = (): DataSource[] => {
     if (configLoading || configError) {
@@ -478,7 +473,7 @@ export default function DatabaseConnectionModal({
       );
     }
 
-    // Use database configuration
+    // Use database configuration (already filtered to database types only)
     if (selectedCategory === "all") {
       return enabledDataSources;
     }
@@ -487,23 +482,10 @@ export default function DatabaseConnectionModal({
     );
   };
 
-  // Helper function to check if a data source is a traditional database
-  const isDatabaseType = (typeId: string) => {
-    const dbTypes = [
-      "postgresql",
-      "mysql",
-      "mongodb",
-      "redis",
-      "sqlite",
-      "bigquery",
-      "redshift",
-      "azure-sql",
-      "snowflake",
-      "oracle",
-      "mssql",
-    ];
-    return dbTypes.includes(typeId);
-  };
+  // Find selected database from either hardcoded or filtered database configuration
+  const selectedDb = getFilteredDataSources().find(
+    (db) => db.id === selectedDbType
+  );
 
   /**
    * Helper function to update status messages in the modal
@@ -530,13 +512,8 @@ export default function DatabaseConnectionModal({
       port: sourceType?.defaultPort || "",
     }));
 
-    // For non-database types, we might want to handle them differently
-    if (isDatabaseType(dbType)) {
-      setStep("configure");
-    } else {
-      // For other connectors like Google Sheets, etc., we might have a different flow
-      setStep("configure");
-    }
+    // Since we're using database-specific API, all types are database types
+    setStep("configure");
   };
 
   /**
@@ -547,10 +524,24 @@ export default function DatabaseConnectionModal({
     field: keyof DatabaseConfig,
     value: string | boolean
   ) => {
-    setConnectionConfig((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
+    setConnectionConfig((prev) => {
+      const newConfig = {
+        ...prev,
+        [field]: value,
+      };
+
+      // Auto-enable SSL for Supabase connections
+      if (field === "host" && typeof value === "string") {
+        const isSupabase =
+          value.includes("supabase.com") ||
+          value.includes("pooler.supabase.com");
+        if (isSupabase && !newConfig.ssl) {
+          newConfig.ssl = true;
+        }
+      }
+
+      return newConfig;
+    });
   };
 
   /**
@@ -705,12 +696,19 @@ export default function DatabaseConnectionModal({
         const errorMessage =
           result.error || result.message || "Connection test failed";
         updateStatus(`Connection failed: ${errorMessage}`, "error");
-        console.error("Connection test failed:", result);
+        console.error("Connection test failed:", {
+          result,
+          status: response.status,
+          statusText: response.statusText,
+          headers: Object.fromEntries(response.headers.entries()),
+        });
       }
     } catch (error) {
       console.error("Connection test error:", error);
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error occurred";
       updateStatus(
-        "Connection test failed. Please check your configuration.",
+        `Connection test failed: ${errorMessage}. Please check your configuration.`,
         "error"
       );
     } finally {
@@ -1462,9 +1460,7 @@ export default function DatabaseConnectionModal({
                     Configure {selectedDb.name}
                   </h3>
                   <p className="text-sm text-gray-400">
-                    {isDatabaseType(selectedDbType)
-                      ? "Enter your database connection details"
-                      : "Enter your connection details"}
+                    Enter your database connection details
                   </p>
                 </div>
               </div>
@@ -1481,36 +1477,31 @@ export default function DatabaseConnectionModal({
                       onChange={(e) =>
                         handleConfigChange("name", e.target.value)
                       }
-                      placeholder={
-                        isDatabaseType(selectedDbType)
-                          ? "e.g., Production DB, Analytics DB"
-                          : "e.g., My Google Sheets, Company Docs"
-                      }
+                      placeholder="e.g., Production DB, Analytics DB"
                       className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                   </div>
 
                   {/* Database-specific fields */}
-                  {isDatabaseType(selectedDbType) &&
-                    selectedDbType !== "sqlite" && (
-                      <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-2">
-                          Host *
-                        </label>
-                        <input
-                          type="text"
-                          value={connectionConfig.host}
-                          onChange={(e) =>
-                            handleConfigChange("host", e.target.value)
-                          }
-                          placeholder="localhost, db.example.com"
-                          className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        />
-                      </div>
-                    )}
+                  {selectedDbType !== "sqlite" && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">
+                        Host *
+                      </label>
+                      <input
+                        type="text"
+                        value={connectionConfig.host}
+                        onChange={(e) =>
+                          handleConfigChange("host", e.target.value)
+                        }
+                        placeholder="localhost, db.example.com"
+                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                    </div>
+                  )}
 
-                  {/* Non-database specific fields */}
-                  {!isDatabaseType(selectedDbType) && (
+                  {/* Non-database specific fields - removed since we only handle database types */}
+                  {false && (
                     <>
                       {selectedDbType === "google-sheets" && (
                         <div>
@@ -1804,7 +1795,7 @@ export default function DatabaseConnectionModal({
                   )}
 
                   {/* Database-specific fields - only show for database types */}
-                  {isDatabaseType(selectedDbType) && (
+                  {true && (
                     <>
                       {selectedDbType !== "sqlite" &&
                         selectedDbType !== "bigquery" && (
@@ -1877,22 +1868,47 @@ export default function DatabaseConnectionModal({
                 </div>
 
                 {/* Database-specific configuration options */}
-                {isDatabaseType(selectedDbType) && (
+                {true && (
                   <>
                     {selectedDbType === "postgresql" && (
-                      <div className="flex items-center space-x-2">
-                        <input
-                          type="checkbox"
-                          id="ssl"
-                          checked={connectionConfig.ssl}
-                          onChange={(e) =>
-                            handleConfigChange("ssl", e.target.checked)
-                          }
-                          className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
-                        />
-                        <label htmlFor="ssl" className="text-sm text-gray-300">
-                          Use SSL connection
-                        </label>
+                      <div className="space-y-2">
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type="checkbox"
+                            id="ssl"
+                            checked={connectionConfig.ssl}
+                            onChange={(e) =>
+                              handleConfigChange("ssl", e.target.checked)
+                            }
+                            className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
+                          />
+                          <label
+                            htmlFor="ssl"
+                            className="text-sm text-gray-300"
+                          >
+                            Use SSL connection
+                          </label>
+                        </div>
+                        {connectionConfig.ssl &&
+                          (connectionConfig.host.includes("supabase.com") ||
+                            connectionConfig.host.includes(
+                              "pooler.supabase.com"
+                            )) && (
+                            <p className="text-xs text-blue-400 flex items-center">
+                              <svg
+                                className="w-3 h-3 mr-1"
+                                fill="currentColor"
+                                viewBox="0 0 20 20"
+                              >
+                                <path
+                                  fillRule="evenodd"
+                                  d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                                  clipRule="evenodd"
+                                />
+                              </svg>
+                              SSL automatically enabled for Supabase connections
+                            </p>
+                          )}
                       </div>
                     )}
 
@@ -1935,8 +1951,8 @@ export default function DatabaseConnectionModal({
                   </>
                 )}
 
-                {/* Non-database specific configuration options */}
-                {!isDatabaseType(selectedDbType) && (
+                {/* Non-database specific configuration options - removed since we only handle database types */}
+                {false && (
                   <div className="bg-blue-900/20 border border-blue-700 rounded-lg p-4">
                     <div className="flex items-center space-x-2 mb-2">
                       <svg
@@ -2695,9 +2711,7 @@ export default function DatabaseConnectionModal({
                 disabled={
                   isConnecting ||
                   !connectionConfig.name ||
-                  (isDatabaseType(selectedDbType) &&
-                    !connectionConfig.database) ||
-                  (!isDatabaseType(selectedDbType) && !connectionConfig.host)
+                  !connectionConfig.database
                 }
                 className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg transition-colors flex items-center space-x-2"
               >

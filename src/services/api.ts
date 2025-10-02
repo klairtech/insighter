@@ -47,6 +47,7 @@ export interface User {
   email: string
   name?: string
   avatar_path?: string
+  preferred_currency?: string
   created_at: string
   updated_at: string
 }

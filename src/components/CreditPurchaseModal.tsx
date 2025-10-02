@@ -9,6 +9,12 @@ import {
   logPaymentError,
   type PaymentError,
 } from "@/lib/payment-error-handler";
+import {
+  calculateCreditPricing,
+  formatCurrency,
+  type SupportedCurrency,
+} from "@/lib/pricing-utils";
+import { useAnalytics } from "@/hooks/useAnalytics";
 
 // Declare Razorpay types
 interface RazorpayInstance {
@@ -51,12 +57,14 @@ interface CreditPurchaseModalProps {
   isOpen: boolean;
   onClose: () => void;
   onPurchase: (credits: number) => Promise<void>;
+  selectedCurrency?: SupportedCurrency;
 }
 
 const CreditPurchaseModal: React.FC<CreditPurchaseModalProps> = ({
   isOpen,
   onClose,
   onPurchase,
+  selectedCurrency = "INR",
 }) => {
   const [selectedCredits, setSelectedCredits] = useState(100);
   const [isLoading, setIsLoading] = useState(false);
@@ -70,16 +78,22 @@ const CreditPurchaseModal: React.FC<CreditPurchaseModalProps> = ({
     currency?: string;
   }>({});
 
+  const { trackStartSubscription, trackPurchaseSubscription, trackError } =
+    useAnalytics();
+
   if (!isOpen) return null;
 
-  const creditOptions = [
-    { credits: 100, price: 1.19, priceInr: 99, bonus: 5 },
-    { credits: 200, price: 2.38, priceInr: 198, bonus: 10 },
-    { credits: 500, price: 5.95, priceInr: 495, bonus: 25 },
-    { credits: 1000, price: 11.9, priceInr: 990, bonus: 50 },
-    { credits: 2000, price: 23.8, priceInr: 1980, bonus: 100 },
-    { credits: 5000, price: 59.5, priceInr: 4950, bonus: 250 },
-  ];
+  // Generate credit options dynamically based on selected currency
+  const creditOptions = [100, 200, 500, 1000, 2000, 5000].map((credits) => {
+    const pricing = calculateCreditPricing(credits, selectedCurrency);
+    return {
+      credits,
+      price: pricing.finalAmount / 100, // Convert from smallest unit to display format
+      priceInr: pricing.basePriceInr / 100, // Convert from paise to rupees
+      bonus: pricing.bonusCredits,
+      currency: pricing.finalCurrency,
+    };
+  });
 
   const selectedOption = creditOptions.find(
     (opt) => opt.credits === selectedCredits
@@ -87,10 +101,32 @@ const CreditPurchaseModal: React.FC<CreditPurchaseModalProps> = ({
 
   const loadRazorpayScript = () => {
     return new Promise((resolve) => {
+      // Check if Razorpay is already loaded
+      if (window.Razorpay) {
+        resolve(true);
+        return;
+      }
+
       const script = document.createElement("script");
       script.src = "https://checkout.razorpay.com/v1/checkout.js";
-      script.onload = () => resolve(true);
-      script.onerror = () => resolve(false);
+
+      // Add timeout to prevent hanging
+      const timeout = setTimeout(() => {
+        resolve(false);
+      }, 10000); // 10 second timeout
+
+      script.onload = () => {
+        clearTimeout(timeout);
+        // Note: CORS errors from Sentry CDN are expected and don't affect payment functionality
+        resolve(true);
+      };
+
+      script.onerror = (error) => {
+        clearTimeout(timeout);
+        console.error("❌ Failed to load Razorpay script:", error);
+        resolve(false);
+      };
+
       document.body.appendChild(script);
     });
   };
@@ -98,24 +134,53 @@ const CreditPurchaseModal: React.FC<CreditPurchaseModalProps> = ({
   const handlePurchase = async () => {
     if (!selectedOption) return;
 
+    // Track credit purchase start
+    trackStartSubscription("credits", selectedOption.price);
+
     setIsLoading(true);
     setPaymentStatus("processing");
     setPaymentError(null);
 
     try {
-      // Load Razorpay script
-      const res = await loadRazorpayScript();
-      if (!res) {
+      // Load Razorpay script with retry mechanism
+      let razorpayLoaded = false;
+      let retryCount = 0;
+      const maxRetries = 3;
+
+      while (!razorpayLoaded && retryCount < maxRetries) {
+        const res = await loadRazorpayScript();
+        if (res) {
+          razorpayLoaded = true;
+        } else {
+          retryCount++;
+          if (retryCount < maxRetries) {
+            console.log(
+              `🔄 Retrying Razorpay script load (attempt ${
+                retryCount + 1
+              }/${maxRetries})`
+            );
+            await new Promise((resolve) =>
+              setTimeout(resolve, 1000 * retryCount)
+            ); // Exponential backoff
+          }
+        }
+      }
+
+      if (!razorpayLoaded) {
         const error = parseRazorpayError({
-          message: "Razorpay SDK failed to load",
+          message: `Razorpay SDK failed to load after ${maxRetries} attempts. Please check your internet connection and try again.`,
         });
         setPaymentError(error);
         setPaymentStatus("failed");
-        logPaymentError(error, "sdk-load");
+        logPaymentError(error, "sdk-load-retry-failed", { retryCount });
+
+        // Track payment error
+        trackError("payment_sdk_load_failed", error.message, "credit_purchase");
         return;
       }
 
       // Create order
+      console.log("📝 Creating order for credits:", selectedOption.credits);
       const orderResponse = await fetch("/api/credits/create-order", {
         method: "POST",
         headers: {
@@ -125,6 +190,10 @@ const CreditPurchaseModal: React.FC<CreditPurchaseModalProps> = ({
       });
 
       const orderData = await orderResponse.json();
+      console.log("📊 Order creation response:", {
+        status: orderResponse.status,
+        data: orderData,
+      });
       if (!orderResponse.ok) {
         const error = parseRazorpayError({
           message: orderData.error || "Failed to create order",
@@ -152,44 +221,136 @@ const CreditPurchaseModal: React.FC<CreditPurchaseModalProps> = ({
         image: "/logo.svg",
         order_id: orderData.order.id,
         handler: async function (response: RazorpayResponse) {
+          console.log("🎉 Razorpay handler triggered!", response);
           try {
             // Verify payment and complete purchase
-            const purchaseResponse = await fetch("/api/credits/purchase", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                razorpay_order_id: response.razorpay_order_id,
-                razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_signature: response.razorpay_signature,
-                credits: orderData.credits.base,
-                bonus_credits: orderData.credits.bonus,
-                total_credits: orderData.credits.total,
-                amount_paid: orderData.order.amount,
-                currency: orderData.order.currency,
-              }),
-            });
+            console.log("🔄 Starting payment verification...");
 
-            const purchaseData = await purchaseResponse.json();
-            if (!purchaseResponse.ok) {
-              const error = parsePaymentVerificationError({
-                message: purchaseData.error || "Purchase failed",
+            // Add timeout to prevent hanging
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
+            try {
+              const purchaseResponse = await fetch("/api/credits/purchase", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  razorpay_order_id: response.razorpay_order_id,
+                  razorpay_payment_id: response.razorpay_payment_id,
+                  razorpay_signature: response.razorpay_signature,
+                  credits: orderData.credits.base,
+                  bonus_credits: orderData.credits.bonus,
+                  total_credits: orderData.credits.total,
+                  amount_paid: orderData.order.amount,
+                  currency: orderData.order.currency,
+                }),
+                signal: controller.signal,
               });
-              setPaymentError(error);
+
+              clearTimeout(timeoutId);
+              console.log("📡 Payment verification API call completed");
+
+              let purchaseData;
+              try {
+                purchaseData = await purchaseResponse.json();
+              } catch (jsonError) {
+                console.error("Failed to parse response JSON:", jsonError);
+                purchaseData = { error: "Invalid response from server" };
+              }
+
+              if (!purchaseResponse.ok) {
+                console.error("Payment verification failed:", {
+                  status: purchaseResponse.status,
+                  statusText: purchaseResponse.statusText,
+                  purchaseData,
+                });
+
+                const error = parsePaymentVerificationError({
+                  message:
+                    purchaseData?.error ||
+                    `Purchase failed (${purchaseResponse.status})`,
+                  code: purchaseData?.code || "PURCHASE_FAILED",
+                  status: purchaseResponse.status,
+                });
+                setPaymentError(error);
+                setPaymentStatus("failed");
+                logPaymentError(error, "payment-verification", {
+                  purchaseData,
+                  responseStatus: purchaseResponse.status,
+                  responseStatusText: purchaseResponse.statusText,
+                  rawResponse: purchaseData,
+                });
+                return;
+              }
+
+              // Payment successful
+              console.log("🎉 Payment verification successful!", purchaseData);
+              setPaymentStatus("success");
+
+              // Track successful purchase
+              trackPurchaseSubscription(
+                "credits",
+                selectedOption.price,
+                `credit_purchase_${selectedOption.credits}`
+              );
+
+              console.log(
+                "🔄 Calling onPurchase with credits:",
+                selectedOption.credits
+              );
+              await onPurchase(selectedOption.credits);
+              console.log("✅ onPurchase completed successfully");
+            } catch (fetchError) {
+              clearTimeout(timeoutId);
+              if (
+                fetchError instanceof Error &&
+                fetchError.name === "AbortError"
+              ) {
+                console.error(
+                  "⏰ Payment verification timed out after 30 seconds"
+                );
+                setPaymentError({
+                  code: "TIMEOUT_ERROR",
+                  message:
+                    "Payment verification timed out. Please check your credits.",
+                  type: "failed",
+                  retryable: true,
+                });
+              } else {
+                console.error(
+                  "🌐 Network error during payment verification:",
+                  fetchError
+                );
+                setPaymentError({
+                  code: "NETWORK_ERROR",
+                  message:
+                    "Network error during payment verification. Please try again.",
+                  type: "failed",
+                  retryable: true,
+                });
+              }
               setPaymentStatus("failed");
-              logPaymentError(error, "payment-verification", purchaseData);
               return;
             }
-
-            // Payment successful
-            setPaymentStatus("success");
-            await onPurchase(selectedOption.credits);
           } catch (error) {
-            const parsedError = parsePaymentVerificationError(error);
+            console.error("Payment verification catch block error:", error);
+            const parsedError = parsePaymentVerificationError({
+              message:
+                error instanceof Error
+                  ? error.message
+                  : "Unknown error occurred",
+              code: "NETWORK_ERROR",
+              status: 0,
+            });
             setPaymentError(parsedError);
             setPaymentStatus("failed");
-            logPaymentError(parsedError, "payment-verification", error);
+            logPaymentError(parsedError, "payment-verification", {
+              originalError: error,
+              errorType: typeof error,
+              errorString: String(error),
+            });
           }
         },
         prefill: {
@@ -207,13 +368,34 @@ const CreditPurchaseModal: React.FC<CreditPurchaseModalProps> = ({
         },
       };
 
+      console.log("🚀 Opening Razorpay checkout...", options);
+
+      // Verify Razorpay instance
+      if (!window.Razorpay) {
+        throw new Error("Razorpay not available");
+      }
+
       const razorpay = new window.Razorpay(options);
+      console.log("✅ Razorpay instance created successfully");
+
+      // Add error handler
+      razorpay.on("payment.failed", function (response: unknown) {
+        console.error("❌ Razorpay payment failed:", response);
+        setPaymentStatus("failed");
+        setPaymentError({
+          code: "PAYMENT_FAILED",
+          message: "Payment failed. Please try again.",
+          type: "failed",
+          retryable: true,
+        });
+      });
+
       razorpay.open();
     } catch (error) {
       const parsedError = parseRazorpayError(error);
       setPaymentError(parsedError);
       setPaymentStatus("failed");
-      logPaymentError(parsedError, "purchase-flow", error);
+      logPaymentError(parsedError, "purchase-flow", { originalError: error });
     } finally {
       setIsLoading(false);
     }
@@ -294,7 +476,7 @@ const CreditPurchaseModal: React.FC<CreditPurchaseModalProps> = ({
                     </div>
                     <div className="text-right">
                       <div className="text-white font-semibold">
-                        ${option.price}
+                        {formatCurrency(option.price * 100, option.currency)}
                       </div>
                       <div className="text-sm text-gray-400">
                         ₹{option.priceInr}
@@ -329,7 +511,11 @@ const CreditPurchaseModal: React.FC<CreditPurchaseModalProps> = ({
                   <div className="flex justify-between text-white font-medium">
                     <span>Total Price:</span>
                     <span>
-                      ${selectedOption.price} / ₹{selectedOption.priceInr}
+                      {formatCurrency(
+                        selectedOption.price * 100,
+                        selectedOption.currency
+                      )}{" "}
+                      / ₹{selectedOption.priceInr}
                     </span>
                   </div>
                 </div>

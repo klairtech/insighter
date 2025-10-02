@@ -9,13 +9,11 @@
     "lint": "next lint",
     "lint:fix": "next lint --fix",
     "type-check": "tsc --noEmit",
-    "analyze:bundle": "cross-env ANALYZE=true NODE_OPTIONS='--no-deprecation' next build",
-    "build:analyze": "cross-env ANALYZE=true NODE_OPTIONS='--no-deprecation' next build",
-    "perf": "npm run build && npm run start",
     "clean": "rm -rf .next out dist",
     "preview": "npm run build && npm run start"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.64.0",
     "@aws-sdk/client-redshift": "^3.898.0",
     "@aws-sdk/client-s3": "^3.893.0",
     "@aws-sdk/s3-request-presigner": "^3.893.0",
@@ -66,6 +64,7 @@
     "@types/oracledb": "^6.9.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/uuid": "^10.0.0",
     "cross-env": "^10.0.0",
     "eslint": "^9",
     "eslint-config-next": "15.5.3",

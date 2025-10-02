@@ -115,6 +115,23 @@ export async function POST(
       return NextResponse.json({ error: 'Only workspace owners can add data sources' }, { status: 403 })
     }
 
+    // Check if user has minimum credits (10 credits minimum) for adding data sources
+    const { checkUserCredits } = await import('@/lib/credit-service-server')
+    const minimumCreditsCheck = await checkUserCredits(user.id, 10)
+    
+    if (!minimumCreditsCheck.hasCredits) {
+      console.log(`❌ File Upload API: User has insufficient credits for adding data sources. User has ${minimumCreditsCheck.currentCredits}, needs minimum 10 credits`)
+      return NextResponse.json(
+        { 
+          error: 'Insufficient credits to add data sources',
+          currentCredits: minimumCreditsCheck.currentCredits,
+          requiredCredits: 10,
+          message: 'You need at least 10 credits to add new data sources. Please purchase more credits to continue.'
+        },
+        { status: 402 } // Payment Required
+      )
+    }
+
     // Rate limiting
     const clientIP = request.headers.get('x-real-ip') || request.headers.get('x-forwarded-for') || 'unknown'
     const rateLimit = checkRateLimit(`${clientIP}-file-upload`, 20, 60 * 60 * 1000)

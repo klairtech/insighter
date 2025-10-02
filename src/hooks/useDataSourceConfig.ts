@@ -37,7 +37,6 @@ export function useDataSourceConfig() {
         const data: DataSourceConfigResponse = await response.json();
         setDataSources(data.dataSources);
       } catch (err) {
-        console.error('Error fetching data source config:', err);
         setError(err instanceof Error ? err.message : 'Unknown error');
         // Fallback to empty array if API fails
         setDataSources([]);
@@ -63,7 +62,6 @@ export function useDataSourceConfig() {
       const data: DataSourceConfigResponse = await response.json();
       setDataSources(data.dataSources);
     } catch (err) {
-      console.error('Error refetching data source config:', err);
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);

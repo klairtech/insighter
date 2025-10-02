@@ -138,15 +138,15 @@ function generateInvoice(purchase: { id: string; purchase_date: string; insighte
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
             line-height: 1.6;
-            color: #ffffff;
-            background: #000000;
+            color: #000000;
+            background: #ffffff;
         }
         
         .invoice-container {
             max-width: 800px;
             margin: 0 auto;
             padding: 40px 20px;
-            background: #000000;
+            background: #ffffff;
         }
         
         .header {
@@ -155,25 +155,25 @@ function generateInvoice(purchase: { id: string; purchase_date: string; insighte
             align-items: flex-start;
             margin-bottom: 40px;
             padding-bottom: 20px;
-            border-bottom: 2px solid #3b82f6;
+            border-bottom: 2px solid #000000;
         }
         
         .company-info h1 {
-            color: #60a5fa;
+            color: #000000;
             font-size: 28px;
             font-weight: 700;
             margin-bottom: 8px;
         }
         
         .company-info .tagline {
-            color: #9ca3af;
+            color: #666666;
             font-size: 14px;
             font-weight: 500;
             margin-bottom: 16px;
         }
         
         .company-details {
-            color: #d1d5db;
+            color: #333333;
             font-size: 14px;
             line-height: 1.5;
         }
@@ -185,17 +185,17 @@ function generateInvoice(purchase: { id: string; purchase_date: string; insighte
         .invoice-title {
             font-size: 32px;
             font-weight: 700;
-            color: #60a5fa;
+            color: #000000;
             margin-bottom: 8px;
         }
         
         .invoice-number {
-            color: #9ca3af;
+            color: #666666;
             font-size: 16px;
         }
         
         .invoice-date {
-            color: #9ca3af;
+            color: #666666;
             font-size: 14px;
             margin-top: 4px;
         }
@@ -211,14 +211,14 @@ function generateInvoice(purchase: { id: string; purchase_date: string; insighte
         }
         
         .bill-to h3 {
-            color: #60a5fa;
+            color: #000000;
             font-size: 18px;
             font-weight: 600;
             margin-bottom: 12px;
         }
         
         .bill-to p {
-            color: #d1d5db;
+            color: #333333;
             font-size: 14px;
             margin-bottom: 4px;
         }
@@ -227,15 +227,15 @@ function generateInvoice(purchase: { id: string; purchase_date: string; insighte
             width: 100%;
             border-collapse: collapse;
             margin-bottom: 30px;
-            background: #111827;
+            background: #ffffff;
             border-radius: 8px;
             overflow: hidden;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-            border: 1px solid #374151;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            border: 1px solid #000000;
         }
         
         .items-table th {
-            background: #3b82f6;
+            background: #000000;
             color: white;
             padding: 16px;
             text-align: left;
@@ -245,7 +245,7 @@ function generateInvoice(purchase: { id: string; purchase_date: string; insighte
         
         .items-table td {
             padding: 16px;
-            border-bottom: 1px solid #374151;
+            border-bottom: 1px solid #cccccc;
             font-size: 14px;
         }
         
@@ -254,22 +254,22 @@ function generateInvoice(purchase: { id: string; purchase_date: string; insighte
         }
         
         .items-table tr:nth-child(even) {
-            background: #1f2937;
+            background: #f9f9f9;
         }
         
         .description {
-            color: #ffffff;
+            color: #000000;
             font-weight: 500;
         }
         
         .quantity, .unit-price, .total {
             text-align: right;
-            color: #d1d5db;
+            color: #333333;
         }
         
         .total {
             font-weight: 600;
-            color: #60a5fa;
+            color: #000000;
         }
         
         .totals-section {
@@ -286,18 +286,18 @@ function generateInvoice(purchase: { id: string; purchase_date: string; insighte
             display: flex;
             justify-content: space-between;
             padding: 8px 0;
-            border-bottom: 1px solid #374151;
+            border-bottom: 1px solid #cccccc;
         }
         
         .totals-table tr:last-child {
-            border-bottom: 2px solid #3b82f6;
+            border-bottom: 2px solid #000000;
             font-weight: 700;
             font-size: 16px;
-            color: #60a5fa;
+            color: #000000;
         }
         
         .totals-table td:first-child {
-            color: #9ca3af;
+            color: #666666;
         }
         
         .totals-table td:last-child {
@@ -305,22 +305,22 @@ function generateInvoice(purchase: { id: string; purchase_date: string; insighte
         }
         
         .payment-info {
-            background: #1f2937;
+            background: #f9f9f9;
             padding: 20px;
             border-radius: 8px;
-            border-left: 4px solid #3b82f6;
-            border: 1px solid #374151;
+            border-left: 4px solid #000000;
+            border: 1px solid #cccccc;
         }
         
         .payment-info h3 {
-            color: #60a5fa;
+            color: #000000;
             font-size: 16px;
             font-weight: 600;
             margin-bottom: 12px;
         }
         
         .payment-info p {
-            color: #d1d5db;
+            color: #333333;
             font-size: 14px;
             margin-bottom: 4px;
         }
@@ -328,14 +328,14 @@ function generateInvoice(purchase: { id: string; purchase_date: string; insighte
         .footer {
             margin-top: 40px;
             padding-top: 20px;
-            border-top: 1px solid #374151;
+            border-top: 1px solid #cccccc;
             text-align: center;
-            color: #9ca3af;
+            color: #666666;
             font-size: 14px;
         }
         
         .footer .brand {
-            color: #60a5fa;
+            color: #000000;
             font-weight: 600;
         }
         

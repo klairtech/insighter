@@ -19,6 +19,12 @@ export const EXCHANGE_RATES = {
   'GBP': 0.0095, // 1 INR = 0.0095 GBP
 } as const;
 
+// Premium Plan pricing in INR
+export const PREMIUM_PLAN_PRICING = {
+  monthly: 1599.00, // ₹1599.00/month
+  annual: 15350.40, // ₹15350.40/year (20% discount)
+} as const;
+
 export type SupportedCurrency = keyof typeof EXCHANGE_RATES;
 
 /**
@@ -146,6 +152,36 @@ export function formatCurrency(amount: number, currency: string): string {
   const displayAmount = amount / 100; // Convert to display format
   
   return `${symbol}${displayAmount.toFixed(2)}`;
+}
+
+/**
+ * Convert Premium Plan pricing to different currencies
+ * @param currency - Target currency
+ * @returns Premium plan pricing in target currency
+ */
+export function getPremiumPlanPricing(currency: SupportedCurrency): {
+  monthly: number;
+  annual: number;
+  currency: string;
+  symbol: string;
+} {
+  const rate = EXCHANGE_RATES[currency];
+  const monthlyPrice = PREMIUM_PLAN_PRICING.monthly * rate;
+  const annualPrice = PREMIUM_PLAN_PRICING.annual * rate;
+  
+  const symbols = {
+    'INR': '₹',
+    'USD': '$',
+    'EUR': '€',
+    'GBP': '£',
+  };
+  
+  return {
+    monthly: Math.round(monthlyPrice * 100) / 100, // Round to 2 decimal places
+    annual: Math.round(annualPrice * 100) / 100,
+    currency,
+    symbol: symbols[currency],
+  };
 }
 
 /**

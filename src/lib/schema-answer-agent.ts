@@ -21,7 +21,6 @@ export interface SchemaAnswerResponse {
 export async function schemaAnswerAgent(
   userQuery: string,
   databaseConnection: {id: string, name: string, type: string, schema_info_encrypted?: string},
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _conversationHistory: Array<{sender_type: string, content: string, created_at: string}>
 ): Promise<SchemaAnswerResponse> {
   try {

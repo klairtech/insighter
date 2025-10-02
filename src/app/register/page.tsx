@@ -111,7 +111,7 @@ const RegisterPage: React.FC = () => {
   // Show loading while checking authentication
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center pt-24">
+      <div className="min-h-screen bg-background flex items-center justify-center pt-24">
         <div className="flex flex-col items-center space-y-4">
           <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
           <p className="text-gray-300 text-sm">Loading...</p>
@@ -126,7 +126,7 @@ const RegisterPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-black flex items-center justify-center p-4 pt-24">
+    <div className="min-h-screen bg-background flex items-center justify-center p-4 pt-24">
       {/* Background Effects */}
       <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 via-transparent to-purple-500/10"></div>
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-blue-500/5 via-transparent to-transparent"></div>

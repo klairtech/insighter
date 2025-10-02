@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Coins } from "lucide-react";
+import { useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
 
 interface CreditBalanceProps {
   className?: string;
@@ -10,27 +11,44 @@ interface CreditBalanceProps {
 const CreditBalance: React.FC<CreditBalanceProps> = ({ className = "" }) => {
   const [balance, setBalance] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const { user, session } = useSupabaseAuth();
 
-  useEffect(() => {
-    fetchCreditBalance();
-  }, []);
-
-  const fetchCreditBalance = async () => {
+  const fetchCreditBalance = useCallback(async () => {
     try {
-      const response = await fetch("/api/credits/balance");
+      if (!session?.access_token) {
+        setIsLoading(false);
+        return;
+      }
+
+      const response = await fetch("/api/credits/balance", {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
       const data = await response.json();
 
       if (response.ok) {
         setBalance(data.balance);
       } else {
-        console.error("Failed to fetch credit balance:", data.error);
       }
-    } catch (error) {
-      console.error("Error fetching credit balance:", error);
+    } catch (_error) {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [session]);
+
+  useEffect(() => {
+    if (user && session) {
+      fetchCreditBalance();
+    } else {
+      setIsLoading(false);
+    }
+  }, [user, session, fetchCreditBalance]);
+
+  // Don't render if user is not authenticated
+  if (!user) {
+    return null;
+  }
 
   if (isLoading) {
     return (

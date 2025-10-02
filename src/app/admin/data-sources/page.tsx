@@ -87,7 +87,7 @@ export default function DataSourceAdminPage() {
 
   if (!session) {
     return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+      <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-white">Please log in to access this page.</div>
       </div>
     );
@@ -95,14 +95,14 @@ export default function DataSourceAdminPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+      <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-white">Loading data sources...</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white p-8">
+    <div className="min-h-screen bg-background text-white p-8">
       <div className="max-w-6xl mx-auto">
         <div className="mb-8">
           <h1 className="text-3xl font-bold mb-2">Data Source Configuration</h1>

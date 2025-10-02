@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get user's preferred currency
-    const { data: userData, error: userError } = await supabase
+    const { data: userData } = await supabase
       .from('users')
       .select('preferred_currency')
       .eq('id', user.id)

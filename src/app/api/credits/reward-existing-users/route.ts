@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
         // Create reward credit batch
         const batchCode = `${rewardType}_${user.id}_${Date.now()}`;
         
-        const { data: batch, error: batchError } = await supabaseServer
+        const { error: batchError } = await supabaseServer
           .from('insighter_credit_batches')
           .insert({
             user_id: user.id,

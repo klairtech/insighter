@@ -18,6 +18,30 @@ function D3VisualizationContainer({
   const containerRef = useRef<HTMLDivElement>(null);
   const [, setIsLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+
+  // Track container size changes for responsive D3.js
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const updateSize = () => {
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        setContainerSize({ width: rect.width, height: rect.height });
+      }
+    };
+
+    // Initial size
+    updateSize();
+
+    // Create resize observer
+    const resizeObserver = new ResizeObserver(updateSize);
+    resizeObserver.observe(containerRef.current);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, []);
 
   useEffect(() => {
     if (!containerRef.current || !htmlContent) return;
@@ -28,13 +52,6 @@ function D3VisualizationContainer({
 
       // Clean the HTML content to remove only specific unwanted patterns
       let cleanedHtmlContent = htmlContent;
-
-      console.log("🔍 D3VisualizationContainer: Original HTML content:", {
-        length: htmlContent.length,
-        preview: htmlContent.substring(0, 200),
-        startsWithCodeBlock: htmlContent.trim().startsWith("```html"),
-        endsWithCodeBlock: htmlContent.trim().endsWith("```"),
-      });
 
       // Only remove markdown code blocks that wrap the entire content
       // Check if the content starts and ends with code blocks
@@ -65,21 +82,8 @@ function D3VisualizationContainer({
         .replace(/\n\s*\n\s*\n/g, "\n\n") // Clean up multiple line breaks
         .trim();
 
-      console.log("🔍 D3VisualizationContainer: Cleaned HTML content:", {
-        originalLength: htmlContent.length,
-        cleanedLength: cleanedHtmlContent.length,
-        preview: cleanedHtmlContent.substring(0, 200),
-      });
-
       // Only proceed if we have meaningful HTML content after cleaning
       if (!cleanedHtmlContent || cleanedHtmlContent.length < 20) {
-        console.warn(
-          "🔍 D3VisualizationContainer: Insufficient HTML content after cleaning",
-          {
-            originalLength: htmlContent.length,
-            cleanedLength: cleanedHtmlContent.length,
-          }
-        );
         setError("No valid visualization content available");
         return;
       }
@@ -89,10 +93,9 @@ function D3VisualizationContainer({
       d3Container.innerHTML = cleanedHtmlContent;
       d3Container.style.width = "100%";
       d3Container.style.height = "100%";
-      d3Container.style.overflow = "hidden";
-      d3Container.style.display = "flex";
-      d3Container.style.alignItems = "center";
-      d3Container.style.justifyContent = "center";
+      d3Container.style.overflow = "visible"; // Allow interactive elements to be accessible
+      d3Container.style.position = "relative"; // Better positioning for interactive elements
+      d3Container.style.display = "block"; // Use block instead of flex for better D3.js compatibility
 
       // Make D3.js and Chart.js available globally for the generated code
       (window as typeof window & { d3: typeof d3; Chart: typeof Chart }).d3 =
@@ -103,21 +106,43 @@ function D3VisualizationContainer({
       // Append the content
       containerRef.current.appendChild(d3Container);
 
-      // Force resize of any SVG elements to fit container
+      // Force resize of any SVG elements to fit container and ensure interactivity
       const svgElements = d3Container.querySelectorAll("svg");
       svgElements.forEach((svg) => {
+        // Set responsive dimensions
         svg.style.width = "100%";
-        svg.style.height = "100%";
+        svg.style.height = "auto"; // Use auto for better aspect ratio preservation
         svg.style.maxWidth = "100%";
         svg.style.maxHeight = "100%";
         svg.style.overflow = "visible";
 
-        // Ensure the SVG viewBox is set properly
+        // Ensure pointer events work for interactivity
+        svg.style.pointerEvents = "auto";
+
+        // Ensure the SVG viewBox is set properly for responsiveness
         if (!svg.getAttribute("viewBox")) {
           const width = svg.getAttribute("width") || "800";
           const height = svg.getAttribute("height") || "400";
           svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
         }
+
+        // Remove fixed width/height attributes to allow responsive behavior
+        svg.removeAttribute("width");
+        svg.removeAttribute("height");
+
+        // Ensure all interactive elements have proper pointer events
+        const interactiveElements = svg.querySelectorAll(
+          "g, circle, rect, path, line, text"
+        );
+        interactiveElements.forEach((element) => {
+          const style = element.getAttribute("style");
+          if (!style || !style.includes("pointer-events")) {
+            element.setAttribute(
+              "style",
+              (element.getAttribute("style") || "") + "; pointer-events: auto;"
+            );
+          }
+        });
       });
 
       // Also handle any canvas elements
@@ -131,19 +156,78 @@ function D3VisualizationContainer({
 
       // Execute any script tags in the content with a safer approach
       const scripts = d3Container.querySelectorAll("script");
+
       scripts.forEach((script, index) => {
         try {
           // Create a unique function wrapper to avoid variable conflicts
           const scriptContent = script.textContent || "";
-          if (!scriptContent.trim()) return;
+          if (!scriptContent.trim()) {
+            return;
+          }
 
-          // Wrap the script in an IIFE to create a new scope
+          // Wrap the script in an IIFE to create a new scope and make it responsive
+          // Properly escape the script content to avoid syntax errors
+          const escapedScriptContent = scriptContent
+            .replace(/\\/g, "\\\\") // Escape backslashes
+            .replace(/`/g, "\\`") // Escape backticks
+            .replace(/\$/g, "\\$") // Escape dollar signs
+            .replace(/\n/g, "\\n") // Escape newlines
+            .replace(/\r/g, "\\r") // Escape carriage returns
+            .replace(/\t/g, "\\t"); // Escape tabs
+
           const wrappedScript = `
             (function() {
               try {
-                ${scriptContent}
-              } catch (error) {
-                console.error('D3.js script error:', error);
+                
+                // Make D3.js responsive to container size and ensure interactivity
+                const container = document.getElementById('d3-container');
+                if (container) {
+                  const rect = container.getBoundingClientRect();
+                  window.d3ContainerWidth = rect.width;
+                  window.d3ContainerHeight = rect.height;
+                  
+                  // Set responsive dimensions for D3.js
+                  window.d3Width = Math.max(rect.width - 40, 300);
+                  window.d3Height = Math.max(rect.height - 40, 200);
+                  
+                  // Ensure container allows pointer events for interactivity
+                  container.style.pointerEvents = 'auto';
+                  container.style.overflow = 'visible';
+                  
+                    containerWidth: rect.width,
+                    containerHeight: rect.height
+                  });
+                }
+                
+                // Execute the script content using eval to avoid template literal conflicts
+                eval(\`${escapedScriptContent}\`);
+                
+                // Add resize handler for responsive behavior
+                let resizeTimeout;
+                const handleResize = () => {
+                  clearTimeout(resizeTimeout);
+                  resizeTimeout = setTimeout(() => {
+                    if (container) {
+                      const rect = container.getBoundingClientRect();
+                      window.d3ContainerWidth = rect.width;
+                      window.d3ContainerHeight = rect.height;
+                      window.d3Width = Math.max(rect.width - 40, 300);
+                      window.d3Height = Math.max(rect.height - 40, 200);
+                      
+                      });
+                      
+                      // Re-run the visualization with new dimensions
+                      try {
+                        eval(\`${escapedScriptContent}\`);
+                      } catch (resizeError) {
+                      }
+                    }
+                  }, 100);
+                };
+                
+                window.addEventListener('resize', handleResize);
+                
+              } catch (_error) {
               }
             })();
           `;
@@ -154,27 +238,23 @@ function D3VisualizationContainer({
           newScript.id = `d3-script-${Date.now()}-${index}`;
           document.head.appendChild(newScript);
 
-          // Clean up after execution
+          // Clean up after execution - give more time for D3.js to render
           setTimeout(() => {
             const scriptElement = document.getElementById(newScript.id);
             if (scriptElement) {
               document.head.removeChild(scriptElement);
             }
-          }, 100);
-        } catch (scriptError) {
-          console.error("❌ Error executing script:", scriptError);
-        }
+          }, 2000); // Increased from 100ms to 2 seconds
+        } catch (_scriptError) {}
       });
 
       setIsLoaded(true);
       setError(null);
-      console.log("✅ D3.js visualization loaded successfully");
     } catch (err) {
-      console.error("❌ D3.js visualization failed to load:", err);
       setError(err instanceof Error ? err.message : "Unknown error");
       setIsLoaded(false);
     }
-  }, [htmlContent]);
+  }, [htmlContent, containerSize]);
 
   if (error) {
     return (
@@ -190,10 +270,17 @@ function D3VisualizationContainer({
   return (
     <div
       ref={containerRef}
-      className="w-full h-full overflow-hidden flex items-center justify-center"
+      id="d3-container"
+      className="w-full h-full"
       aria-label={altText}
       role="img"
-      style={{ minHeight: "200px" }}
+      style={{
+        minHeight: "200px",
+        width: "100%",
+        height: "100%",
+        overflow: "visible", // Allow interactive elements to be accessible
+        position: "relative", // Better positioning for interactive elements
+      }}
     />
   );
 }
@@ -233,13 +320,16 @@ interface VisualizationDisplayProps {
 export default function VisualizationDisplay({
   graphData,
   className = "",
-  title = "Data Visualization",
+  title: _title = "Data Visualization",
 }: VisualizationDisplayProps) {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isVisible, setIsVisible] = useState(false);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const chartRef = useRef<HTMLCanvasElement>(null);
   const chartInstanceRef = useRef<Chart | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const observerRef = useRef<IntersectionObserver | null>(null);
 
   // Check if visualization is available
   const hasVisualization =
@@ -255,6 +345,35 @@ export default function VisualizationDisplay({
     !visualization.html_content.includes("Error generating visualization") &&
     !visualization.html_content.includes("No visualization data available") &&
     visualization.html_content.length > 20; // Ensure we have some content
+
+  // Set up intersection observer for lazy loading
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    observerRef.current = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting && !hasLoaded) {
+            setIsVisible(true);
+            setHasLoaded(true);
+            // Disconnect observer after first load
+            if (observerRef.current) {
+              observerRef.current.disconnect();
+            }
+          }
+        });
+      },
+      { threshold: 0.1 } // Load when 10% visible
+    );
+
+    observerRef.current.observe(containerRef.current);
+
+    return () => {
+      if (observerRef.current) {
+        observerRef.current.disconnect();
+      }
+    };
+  }, [hasLoaded]);
 
   // Create Chart.js configuration from the data
   const createChartConfig = useCallback((): ChartConfiguration => {
@@ -321,8 +440,12 @@ export default function VisualizationDisplay({
             } Chart`,
             color: "#E5E7EB",
             font: {
-              size: 16,
+              size: 18,
               weight: "bold",
+            },
+            padding: {
+              top: 20,
+              bottom: 20,
             },
           },
           legend: {
@@ -345,18 +468,40 @@ export default function VisualizationDisplay({
                 x: {
                   ticks: {
                     color: "#9CA3AF",
+                    font: {
+                      size: 12,
+                    },
                   },
                   grid: {
                     color: "#374151",
+                  },
+                  title: {
+                    display: true,
+                    color: "#E5E7EB",
+                    font: {
+                      size: 14,
+                      weight: "bold",
+                    },
                   },
                 },
                 y: {
                   beginAtZero: true,
                   ticks: {
                     color: "#9CA3AF",
+                    font: {
+                      size: 12,
+                    },
                   },
                   grid: {
                     color: "#374151",
+                  },
+                  title: {
+                    display: true,
+                    color: "#E5E7EB",
+                    font: {
+                      size: 14,
+                      weight: "bold",
+                    },
                   },
                 },
               }
@@ -379,11 +524,104 @@ export default function VisualizationDisplay({
       if (hasHtmlContent) {
         // Dynamic import to avoid SSR issues
         const html2canvas = (await import("html2canvas")).default;
-        const canvas = await html2canvas(containerRef.current, {
-          backgroundColor: "#1f2937",
-          scale: 2,
-          useCORS: true,
-          allowTaint: true,
+
+        // Pre-process the container to fix color compatibility issues
+        const container = containerRef.current;
+        const originalStyles: { [key: string]: string } = {};
+
+        // Temporarily replace unsupported color functions with compatible ones
+        const elementsWithColors = container.querySelectorAll("*");
+        elementsWithColors.forEach((element) => {
+          const htmlElement = element as HTMLElement;
+          const computedStyle = window.getComputedStyle(htmlElement);
+
+          // Check for problematic color properties
+          [
+            "color",
+            "fill",
+            "stroke",
+            "background-color",
+            "border-color",
+          ].forEach((prop) => {
+            const value = computedStyle.getPropertyValue(prop);
+            if (
+              value &&
+              (value.includes("oklab") ||
+                value.includes("oklch") ||
+                value.includes("color-mix"))
+            ) {
+              // Store original style
+              originalStyles[`${element.tagName}-${prop}`] =
+                htmlElement.style.getPropertyValue(prop);
+
+              // Replace with compatible color
+              if (prop === "color" || prop === "fill") {
+                htmlElement.style.setProperty(prop, "#e5e7eb", "important");
+              } else if (prop === "stroke") {
+                htmlElement.style.setProperty(prop, "#6b7280", "important");
+              } else if (prop === "background-color") {
+                htmlElement.style.setProperty(prop, "#1f2937", "important");
+              }
+            }
+          });
+        });
+
+        let canvas;
+        try {
+          canvas = await html2canvas(container, {
+            backgroundColor: "#1f2937",
+            scale: 2,
+            useCORS: true,
+            allowTaint: true,
+            ignoreElements: (element) => {
+              // Skip elements that might cause color parsing issues
+              return (
+                element.tagName === "SCRIPT" || element.tagName === "STYLE"
+              );
+            },
+            onclone: (clonedDoc) => {
+              // Additional processing on the cloned document
+              const clonedContainer = clonedDoc.querySelector("#d3-container");
+              if (clonedContainer) {
+                // Ensure all text elements have compatible colors
+                const textElements =
+                  clonedContainer.querySelectorAll("text, tspan, title");
+                textElements.forEach((textEl) => {
+                  const htmlTextEl = textEl as SVGTextElement;
+                  if (
+                    !htmlTextEl.getAttribute("fill") ||
+                    htmlTextEl.getAttribute("fill")?.includes("oklab")
+                  ) {
+                    htmlTextEl.setAttribute("fill", "#e5e7eb");
+                  }
+                });
+              }
+            },
+          });
+        } catch (_html2canvasError) {
+          // Fallback: try with minimal options
+          canvas = await html2canvas(container, {
+            backgroundColor: "#1f2937",
+            scale: 1,
+            useCORS: false,
+            allowTaint: false,
+            ignoreElements: (element) => {
+              return (
+                element.tagName === "SCRIPT" || element.tagName === "STYLE"
+              );
+            },
+          });
+        }
+
+        // Restore original styles
+        elementsWithColors.forEach((element) => {
+          const htmlElement = element as HTMLElement;
+          Object.keys(originalStyles).forEach((key) => {
+            const [tagName, prop] = key.split("-");
+            if (element.tagName === tagName) {
+              htmlElement.style.setProperty(prop, originalStyles[key]);
+            }
+          });
         });
 
         const link = document.createElement("a");
@@ -397,8 +635,7 @@ export default function VisualizationDisplay({
         link.href = chartInstanceRef.current.toBase64Image("image/png", 1);
         link.click();
       }
-    } catch (error) {
-      console.error("Error downloading image:", error);
+    } catch (_error) {
     } finally {
       setIsDownloading(false);
     }
@@ -478,9 +715,7 @@ export default function VisualizationDisplay({
     try {
       const config = createChartConfig();
       chartInstanceRef.current = new Chart(chartRef.current, config);
-    } catch (error) {
-      console.error("Error creating chart:", error);
-    }
+    } catch (_error) {}
 
     // Cleanup function
     return () => {
@@ -510,11 +745,7 @@ export default function VisualizationDisplay({
         }`}
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-3 border-b border-gray-600/50">
-          <div className="flex items-center space-x-2">
-            <div className="w-2 h-2 bg-purple-400 rounded-full"></div>
-            <span className="text-sm font-medium text-gray-300">{title}</span>
-          </div>
+        <div className="flex items-center justify-end p-3 border-b border-gray-600/50">
           <div className="flex items-center space-x-1">
             {/* Download Button */}
             <button
@@ -606,10 +837,23 @@ export default function VisualizationDisplay({
             }}
           >
             {hasHtmlContent ? (
-              <D3VisualizationContainer
-                htmlContent={visualization.html_content || ""}
-                altText={visualization?.alt_text || "Data visualization chart"}
-              />
+              isVisible ? (
+                <D3VisualizationContainer
+                  htmlContent={visualization.html_content || ""}
+                  altText={
+                    visualization?.alt_text || "Data visualization chart"
+                  }
+                />
+              ) : (
+                <div className="flex items-center justify-center h-full bg-gray-800/30 rounded-lg">
+                  <div className="text-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400 mx-auto mb-2"></div>
+                    <p className="text-sm text-gray-400">
+                      Loading visualization...
+                    </p>
+                  </div>
+                </div>
+              )
             ) : (
               <canvas
                 ref={chartRef}
@@ -620,40 +864,6 @@ export default function VisualizationDisplay({
                 role="img"
               />
             )}
-          </div>
-
-          {/* Overlay with chart info */}
-          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-gray-900/80 to-transparent p-3">
-            <div className="flex items-center justify-between">
-              <div className="text-xs text-gray-300">
-                {(() => {
-                  if (hasHtmlContent) {
-                    // For D3.js visualizations, try to extract data count from HTML
-                    const htmlContent = visualization?.html_content || "";
-                    const dataMatches =
-                      htmlContent.match(/data\s*:\s*\[(.*?)\]/g);
-                    if (dataMatches) {
-                      return `${dataMatches.length} data series`;
-                    }
-                    return "Data visualization";
-                  } else {
-                    // For Chart.js visualizations
-                    const labels =
-                      (visualization?.chart_data?.labels as string[])?.length ||
-                      0;
-                    const values =
-                      (visualization?.chart_data?.values as number[])?.length ||
-                      0;
-                    return `${Math.max(labels, values)} data points`;
-                  }
-                })()}
-              </div>
-              <div className="text-xs text-gray-400 truncate max-w-48">
-                {visualDecision?.chart_type
-                  ? `${visualDecision.chart_type}`
-                  : "Visualization"}
-              </div>
-            </div>
           </div>
         </div>
       </div>

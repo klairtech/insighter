@@ -191,7 +191,7 @@ export function hasMinimumRole(
 export function getEffectiveWorkspaceRole(orgRole: OrganizationRole): WorkspaceRole {
   switch (orgRole) {
     case 'owner':
-      return 'admin';
+      return 'owner'; // Organization owners should have full workspace permissions
     case 'member':
       return 'member';
     case 'viewer':

@@ -3,10 +3,47 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import CreditPurchaseModal from "@/components/CreditPurchaseModal";
+import PremiumMembershipStatus from "@/components/PremiumMembershipStatus";
+import PaymentSuccessModal from "@/components/PaymentSuccessModal";
+import { usePremiumMembership } from "@/hooks/usePremiumMembership";
+import { useAnalytics } from "@/hooks/useAnalytics";
+import {
+  getPremiumPlanPricing,
+  type SupportedCurrency,
+} from "@/lib/pricing-utils";
 
 const PricingPage: React.FC = () => {
   const [isAnnual, setIsAnnual] = useState(true); // Annual as default
   const [isCreditModalOpen, setIsCreditModalOpen] = useState(false);
+  const [selectedCurrency, setSelectedCurrency] =
+    useState<SupportedCurrency>("INR");
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successData, setSuccessData] = useState<{
+    planName: string;
+    credits: number;
+    isAnnual: boolean;
+  } | null>(null);
+
+  const {
+    isPremium,
+    membership,
+    isLoading: membershipLoading,
+    error: membershipError,
+  } = usePremiumMembership();
+
+  const {
+    trackViewPricing,
+    trackStartSubscription,
+    trackPurchaseSubscription,
+  } = useAnalytics();
+
+  // Track pricing page view
+  React.useEffect(() => {
+    trackViewPricing();
+  }, [trackViewPricing]);
+
+  // Get Premium plan pricing in selected currency
+  const premiumPricing = getPremiumPlanPricing(selectedCurrency);
 
   const plans = [
     {
@@ -41,14 +78,14 @@ const PricingPage: React.FC = () => {
     {
       name: "Premium",
       description: "For advanced analytics and large teams",
-      monthlyPrice: 19,
-      annualPrice: 205, // 10% discount: (19 * 12 * 0.9) = 205.2 ≈ 205
+      monthlyPrice: premiumPricing.monthly,
+      annualPrice: premiumPricing.annual,
       credits: 2500,
       features: [
         "2,500 credits per month",
         "Priority support",
         "Fastest processing speed",
-        "10% discount on annual billing",
+        "20% discount on annual billing",
       ],
       cta: "Subscribe",
       popular: true,
@@ -72,33 +109,40 @@ const PricingPage: React.FC = () => {
   ];
 
   const handleCreditPurchase = async (credits: number) => {
+    // Track credit purchase
+    trackPurchaseSubscription(
+      "credits",
+      credits * 0.01,
+      `credit_purchase_${credits}`
+    );
+
+    // This function is called after successful payment processing
+    // The actual payment was already processed by CreditPurchaseModal
+    // We just need to redirect to a success page or dashboard
     try {
-      const response = await fetch("/api/credits/purchase", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ credits }),
-      });
+      // Wait a moment to let users see the success message
+      setTimeout(() => {
+        // Close the credit modal
+        setIsCreditModalOpen(false);
 
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || "Purchase failed");
-      }
-
-      // Show success message (you can add a toast notification here)
-      alert(
-        `Successfully purchased ${result.credits.total} credits (${result.credits.base} + ${result.credits.bonus} bonus)!`
-      );
+        // Redirect to dashboard or profile page to show updated credits
+        window.location.href = "/profile";
+      }, 2000); // 2 second delay
     } catch (error) {
-      console.error("Purchase error:", error);
-      alert("Purchase failed. Please try again.");
+      console.error("Redirect error:", error);
+      // Fallback: just close the modal
+      setIsCreditModalOpen(false);
     }
   };
 
   const handlePremiumPurchase = async (plan: { name: string; cta: string }) => {
     try {
+      // Track subscription start
+      const planPrice = isAnnual
+        ? premiumPricing.annual
+        : premiumPricing.monthly;
+      trackStartSubscription(plan.name.toLowerCase(), planPrice);
+
       // Create order for Premium plan
       const orderResponse = await fetch("/api/credits/create-premium-order", {
         method: "POST",
@@ -120,6 +164,10 @@ const PricingPage: React.FC = () => {
       const script = document.createElement("script");
       script.src = "https://checkout.razorpay.com/v1/checkout.js";
       script.onload = () => {
+        // Note: CORS errors from browser.sentry-cdn.com are from Razorpay's internal error tracking
+        console.log(
+          "ℹ️ Note: Any CORS errors from browser.sentry-cdn.com are from Razorpay's internal error tracking and don't affect payments"
+        );
         const options = {
           key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID!,
           amount: orderData.order.amount,
@@ -154,17 +202,49 @@ const PricingPage: React.FC = () => {
                 }
               );
 
-              const purchaseData = await purchaseResponse.json();
-              if (!purchaseResponse.ok) {
-                throw new Error(purchaseData.error || "Purchase failed");
+              let purchaseData;
+              try {
+                purchaseData = await purchaseResponse.json();
+              } catch (jsonError) {
+                console.error("❌ Failed to parse response JSON:", jsonError);
+                const responseText = await purchaseResponse.text();
+                console.error("❌ Raw response:", responseText);
+                purchaseData = {
+                  error: "Invalid response from server",
+                  rawResponse: responseText,
+                };
               }
 
-              alert(
-                `Successfully subscribed to ${plan.name} plan! You now have ${orderData.credits} credits.`
+              console.log(
+                "🔍 Purchase response:",
+                purchaseResponse.status,
+                purchaseData
               );
+
+              if (!purchaseResponse.ok) {
+                console.error("❌ Purchase failed:", purchaseData);
+                throw new Error(
+                  purchaseData.error ||
+                    `Purchase failed with status ${purchaseResponse.status}`
+                );
+              }
+
+              // Show success modal instead of alert
+              setSuccessData({
+                planName: plan.name,
+                credits: orderData.credits,
+                isAnnual: isAnnual,
+              });
+              setShowSuccessModal(true);
             } catch (error) {
               console.error("Payment verification failed:", error);
-              alert("Payment verification failed. Please contact support.");
+              const errorMessage =
+                error instanceof Error
+                  ? error.message
+                  : "Unknown error occurred";
+              alert(
+                `Payment verification failed: ${errorMessage}. Please check the console for more details and contact support if the issue persists.`
+              );
             }
           },
           prefill: {
@@ -187,7 +267,7 @@ const PricingPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-black">
+    <div className="min-h-screen bg-background">
       {/* Hero Section */}
       <div className="relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 via-transparent to-blue-600/10"></div>
@@ -274,6 +354,25 @@ const PricingPage: React.FC = () => {
               </div>
             </div>
 
+            {/* Currency Selector */}
+            <div className="flex items-center justify-center mb-4">
+              <div className="flex items-center space-x-2">
+                <span className="text-sm text-gray-400">Currency:</span>
+                <select
+                  value={selectedCurrency}
+                  onChange={(e) =>
+                    setSelectedCurrency(e.target.value as SupportedCurrency)
+                  }
+                  className="bg-gray-800 border border-gray-600 text-white text-sm rounded-lg px-3 py-1 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="INR">₹ INR</option>
+                  <option value="USD">$ USD</option>
+                  <option value="EUR">€ EUR</option>
+                  <option value="GBP">£ GBP</option>
+                </select>
+              </div>
+            </div>
+
             {/* Billing Toggle - Compact */}
             <div className="flex items-center justify-center mb-4 md:mb-6">
               <span
@@ -304,13 +403,51 @@ const PricingPage: React.FC = () => {
               </span>
               {isAnnual && (
                 <span className="ml-1 md:ml-2 text-xs md:text-sm text-green-400 font-medium">
-                  Save 10%
+                  Save 20%
                 </span>
               )}
             </div>
           </div>
         </div>
       </div>
+
+      {/* Premium Membership Status */}
+      {!membershipLoading && isPremium && (
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <PremiumMembershipStatus />
+        </div>
+      )}
+
+      {/* Membership Error Display */}
+      {membershipError && (
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <div className="bg-red-900/20 border border-red-500/30 rounded-lg p-4">
+            <div className="flex items-center">
+              <svg
+                className="w-5 h-5 text-red-400 mr-2"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                  clipRule="evenodd"
+                />
+              </svg>
+              <h3 className="text-red-300 font-medium">
+                Membership Status Error
+              </h3>
+            </div>
+            <p className="text-red-200 text-sm mt-2">
+              Unable to load membership information: {membershipError}
+            </p>
+            <p className="text-red-200 text-sm mt-1">
+              You can still purchase plans, but some features may not work
+              correctly.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Pricing Cards */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12">
@@ -352,23 +489,30 @@ const PricingPage: React.FC = () => {
                         <div className="flex flex-col items-center">
                           <div className="flex items-center gap-1 mb-1">
                             <span className="text-2xl md:text-3xl font-bold text-white">
-                              ${Math.round(plan.annualPrice / 12)}
+                              {premiumPricing.symbol}
+                              {(plan.annualPrice / 12).toFixed(2)}
                             </span>
                             <span className="text-sm md:text-base text-gray-400">
                               /month
                             </span>
                           </div>
                           <div className="text-xs text-gray-500 line-through">
-                            ${plan.annualPrice}/year
+                            {premiumPricing.symbol}
+                            {plan.annualPrice}/year
                           </div>
                           <div className="text-xs text-green-400 font-medium">
-                            Save ${plan.monthlyPrice * 12 - plan.annualPrice}
+                            Save {premiumPricing.symbol}
+                            {(
+                              plan.monthlyPrice * 12 -
+                              plan.annualPrice
+                            ).toFixed(2)}
                           </div>
                         </div>
                       ) : (
                         <div className="flex items-center gap-1">
                           <span className="text-2xl md:text-3xl font-bold text-white">
-                            ${plan.monthlyPrice}
+                            {premiumPricing.symbol}
+                            {plan.monthlyPrice}
                           </span>
                           <span className="text-sm md:text-base text-gray-400">
                             /month
@@ -423,14 +567,63 @@ const PricingPage: React.FC = () => {
                     </button>
                   ) : plan.cta === "Subscribe" ? (
                     <button
-                      onClick={() => handlePremiumPurchase(plan)}
+                      onClick={() => {
+                        // Handle all edge cases for premium purchases
+                        if (!isPremium || !membership) {
+                          // Free users or users with membership errors
+                          handlePremiumPurchase(plan);
+                        } else if (
+                          membership.plan_type === "premium" &&
+                          !membership.is_annual &&
+                          isAnnual
+                        ) {
+                          // Monthly premium users upgrading to annual
+                          handlePremiumPurchase(plan);
+                        } else if (
+                          membership.plan_type === "premium" &&
+                          membership.is_annual
+                        ) {
+                          // Annual premium users can renew early
+                          handlePremiumPurchase(plan);
+                        } else if (membership.plan_type !== "premium") {
+                          // Enterprise or other plan users
+                          handlePremiumPurchase(plan);
+                        }
+                        // Monthly premium users selecting monthly are blocked (handled by disabled state)
+                      }}
+                      disabled={
+                        isPremium &&
+                        membership?.plan_type === "premium" &&
+                        !membership?.is_annual &&
+                        !isAnnual
+                      }
                       className={`w-full py-3 px-6 rounded-lg font-semibold transition-all duration-200 text-sm md:text-base min-h-[48px] flex items-center justify-center ${
-                        plan.popular
+                        isPremium &&
+                        membership?.plan_type === "premium" &&
+                        !membership?.is_annual &&
+                        !isAnnual
+                          ? "bg-gray-100 text-gray-500 cursor-not-allowed"
+                          : plan.popular
                           ? "klair-button-primary"
                           : "klair-button-secondary"
                       }`}
                     >
-                      {plan.cta}
+                      {isPremium && membership
+                        ? membership.plan_type === "premium" &&
+                          !membership.is_annual &&
+                          isAnnual
+                          ? "Upgrade to Annual"
+                          : membership.plan_type === "premium" &&
+                            membership.is_annual
+                          ? "Renew Early"
+                          : membership.plan_type === "premium" &&
+                            !membership.is_annual &&
+                            !isAnnual
+                          ? "Already Premium"
+                          : membership.plan_type !== "premium"
+                          ? plan.cta
+                          : "Already Premium"
+                        : plan.cta}
                     </button>
                   ) : (
                     <Link
@@ -561,6 +754,20 @@ const PricingPage: React.FC = () => {
         onClose={() => setIsCreditModalOpen(false)}
         onPurchase={handleCreditPurchase}
       />
+
+      {/* Payment Success Modal */}
+      {successData && (
+        <PaymentSuccessModal
+          isOpen={showSuccessModal}
+          onClose={() => {
+            setShowSuccessModal(false);
+            setSuccessData(null);
+          }}
+          planName={successData.planName}
+          credits={successData.credits}
+          isAnnual={successData.isAnnual}
+        />
+      )}
     </div>
   );
 };

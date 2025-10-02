@@ -57,6 +57,9 @@ const nextConfig = {
       "*.supabase.co",
       "*.amazonaws.com",
       "*.s3.amazonaws.com",
+      "upload.wikimedia.org",
+      "www.googletagmanager.com",
+      "www.google-analytics.com",
     ],
     formats: ["image/webp", "image/avif"],
     deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
@@ -70,6 +73,8 @@ const nextConfig = {
   // Environment variables
   env: {
     CUSTOM_KEY: process.env.CUSTOM_KEY,
+    NEXT_PUBLIC_GA_MEASUREMENT_ID: process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID,
+    NEXT_PUBLIC_GTM_ID: process.env.NEXT_PUBLIC_GTM_ID,
   },
 
   // Webpack configuration for bundle optimization

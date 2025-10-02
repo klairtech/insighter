@@ -81,12 +81,16 @@ export async function POST(request: NextRequest) {
     }
 
     // Test the database connection
-    const connectionResult = await testDatabaseConnection(config, fetchSchema, schemaName) as {
-      success: boolean;
-      details?: Record<string, unknown>;
-      schema?: DatabaseSchema;
-      error?: string;
+    console.log('🔍 Starting database connection test for:', config.type)
+    if (config.type === 'postgresql' && ((config.host as string)?.includes('supabase.com') || (config.host as string)?.includes('pooler.supabase.com'))) {
+      console.log('🔐 Supabase connection detected - SSL will be enforced')
     }
+    const connectionResult = await testDatabaseConnection(config, fetchSchema, schemaName)
+    console.log('🔍 Connection test result:', {
+      success: connectionResult.success,
+      hasError: !!connectionResult.error,
+      errorMessage: connectionResult.error
+    })
 
     if (connectionResult.success) {
       const response: {
@@ -118,7 +122,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function testDatabaseConnection(config: Record<string, unknown>, fetchSchema = false, schemaName = 'public') {
+async function testDatabaseConnection(config: Record<string, unknown>, fetchSchema = false, schemaName = 'public'): Promise<{ success: boolean; error?: string; schema?: DatabaseSchema; details?: Record<string, unknown> }> {
   try {
     switch (config.type) {
       case 'postgresql':
@@ -157,7 +161,14 @@ async function testDatabaseConnection(config: Record<string, unknown>, fetchSche
   }
 }
 
-async function testPostgreSQLConnection(config: Record<string, unknown>, fetchSchema = false, schemaName = 'public') {
+async function testPostgreSQLConnection(config: Record<string, unknown>, fetchSchema = false, schemaName = 'public'): Promise<{ success: boolean; error?: string; schema?: DatabaseSchema; details?: Record<string, unknown> }> {
+  // Check if this is a Supabase connection and force SSL
+  const isSupabase = (config.host as string)?.includes('supabase.com') || 
+                     (config.host as string)?.includes('pooler.supabase.com')
+  
+  if (isSupabase) {
+    console.log('🔐 Detected Supabase connection - forcing SSL')
+  }
   
   const client = new Client({
     host: config.host as string,
@@ -165,7 +176,7 @@ async function testPostgreSQLConnection(config: Record<string, unknown>, fetchSc
     database: config.database as string,
     user: config.username as string,
     password: config.password as string,
-    ssl: config.ssl ? { rejectUnauthorized: false } : false,
+    ssl: isSupabase ? { rejectUnauthorized: false } : (config.ssl ? { rejectUnauthorized: false } : false),
     connectionTimeoutMillis: 10000, // 10 second timeout
   })
 
@@ -208,8 +219,8 @@ async function testPostgreSQLConnection(config: Record<string, unknown>, fetchSc
       // Ignore close errors
     }
     
-    console.error('PostgreSQL connection error:', error)
-    console.error('Connection config:', {
+    console.error('❌ PostgreSQL connection error:', error)
+    console.error('🔧 Connection config:', {
       host: config.host,
       port: config.port,
       database: config.database,
@@ -217,6 +228,15 @@ async function testPostgreSQLConnection(config: Record<string, unknown>, fetchSc
       password: config.password ? '[REDACTED]' : 'undefined',
       ssl: config.ssl
     })
+    
+    // Log the specific error type and message
+    if (error instanceof Error) {
+      console.error('📋 Error details:', {
+        name: error.name,
+        message: error.message,
+        stack: error.stack?.split('\n').slice(0, 3).join('\n') // First 3 lines of stack
+      })
+    }
     
     // Provide more specific error messages
     if (error instanceof Error) {
@@ -255,7 +275,7 @@ async function testPostgreSQLConnection(config: Record<string, unknown>, fetchSc
   }
 }
 
-async function testMySQLConnection(config: Record<string, unknown>, fetchSchema = false, schemaName = 'public') {
+async function testMySQLConnection(config: Record<string, unknown>, fetchSchema = false, schemaName = 'public'): Promise<{ success: boolean; error?: string; schema?: DatabaseSchema; details?: Record<string, unknown> }> {
   try {
     const connection = await mysql.createConnection({
       host: config.host as string,
@@ -335,7 +355,7 @@ async function testMySQLConnection(config: Record<string, unknown>, fetchSchema 
   }
 }
 
-async function testMongoDBConnection(config: Record<string, unknown>) {
+async function testMongoDBConnection(config: Record<string, unknown>): Promise<{ success: boolean; error?: string; details?: Record<string, unknown> }> {
   return new Promise((resolve) => {
     setTimeout(() => {
       if (config.host && config.port && config.database && config.username && config.password) {
@@ -358,7 +378,7 @@ async function testMongoDBConnection(config: Record<string, unknown>) {
   })
 }
 
-async function testRedisConnection(config: Record<string, unknown>) {
+async function testRedisConnection(config: Record<string, unknown>): Promise<{ success: boolean; error?: string; details?: Record<string, unknown> }> {
   return new Promise((resolve) => {
     setTimeout(() => {
       if (config.host && config.port && config.password) {
@@ -380,7 +400,7 @@ async function testRedisConnection(config: Record<string, unknown>) {
   })
 }
 
-async function testSQLiteConnection(config: Record<string, unknown>) {
+async function testSQLiteConnection(config: Record<string, unknown>): Promise<{ success: boolean; error?: string; details?: Record<string, unknown> }> {
   return new Promise((resolve) => {
     setTimeout(() => {
       if (config.host) { // For SQLite, host is the file path
@@ -401,7 +421,7 @@ async function testSQLiteConnection(config: Record<string, unknown>) {
   })
 }
 
-async function testBigQueryConnection(config: Record<string, unknown>) {
+async function testBigQueryConnection(config: Record<string, unknown>): Promise<{ success: boolean; error?: string; details?: Record<string, unknown> }> {
   return new Promise((resolve) => {
     setTimeout(() => {
       if (config.connectionString) {
@@ -791,7 +811,7 @@ async function fetchMySQLTableNamesOnly(connection: mysql.Connection, databaseNa
 */
 
 // Amazon Redshift Connection Test
-async function testRedshiftConnection(config: Record<string, unknown>, fetchSchema = false, schemaName = 'public') {
+async function testRedshiftConnection(config: Record<string, unknown>, fetchSchema = false, schemaName = 'public'): Promise<{ success: boolean; error?: string; schema?: DatabaseSchema; details?: Record<string, unknown> }> {
   try {
     // Redshift uses PostgreSQL protocol, so we can use the pg client
     const client = new Client({
@@ -868,7 +888,7 @@ async function testRedshiftConnection(config: Record<string, unknown>, fetchSche
 }
 
 // Azure SQL Database Connection Test
-async function testAzureSQLConnection(config: Record<string, unknown>, fetchSchema = false, schemaName = 'dbo') {
+async function testAzureSQLConnection(config: Record<string, unknown>, fetchSchema = false, schemaName = 'dbo'): Promise<{ success: boolean; error?: string; schema?: DatabaseSchema; details?: Record<string, unknown> }> {
   try {
     const sqlConfig = {
       server: config.host as string,
@@ -956,7 +976,7 @@ async function testAzureSQLConnection(config: Record<string, unknown>, fetchSche
 }
 
 // Snowflake Connection Test
-async function testSnowflakeConnection(config: Record<string, unknown>, fetchSchema = false, schemaName = 'PUBLIC') {
+async function testSnowflakeConnection(config: Record<string, unknown>, fetchSchema = false, schemaName = 'PUBLIC'): Promise<{ success: boolean; error?: string; schema?: DatabaseSchema; details?: Record<string, unknown> }> {
   try {
     const connectionConfig = {
       account: config.account as string || config.host as string,
@@ -1083,7 +1103,7 @@ async function testSnowflakeConnection(config: Record<string, unknown>, fetchSch
 }
 
 // Oracle Database Connection Test
-async function testOracleConnection(config: Record<string, unknown>, fetchSchema = false, schemaName = 'PUBLIC') {
+async function testOracleConnection(config: Record<string, unknown>, fetchSchema = false, schemaName = 'PUBLIC'): Promise<{ success: boolean; error?: string; schema?: DatabaseSchema; details?: Record<string, unknown> }> {
   try {
     // Oracle connection configuration
     const connectionConfig = {
@@ -1232,7 +1252,7 @@ async function testOracleConnection(config: Record<string, unknown>, fetchSchema
 }
 
 // Microsoft SQL Server Connection Test
-async function testMSSQLConnection(config: Record<string, unknown>, fetchSchema = false, schemaName = 'dbo') {
+async function testMSSQLConnection(config: Record<string, unknown>, fetchSchema = false, schemaName = 'dbo'): Promise<{ success: boolean; error?: string; schema?: DatabaseSchema; details?: Record<string, unknown> }> {
   try {
     const sqlConfig = {
       server: config.host as string,

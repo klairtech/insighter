@@ -118,7 +118,7 @@ const Footer: React.FC = () => {
             <p className="text-neutral-400 text-sm">
               © 2024 Insighter. All rights reserved.
             </p>
-            <div className="flex space-x-6 mt-4 md:mt-0">
+            <div className="flex flex-wrap gap-4 mt-4 md:mt-0">
               <Link
                 href="/privacy"
                 className="text-gray-400 hover:text-blue-400 text-sm transition-colors"
@@ -136,6 +136,18 @@ const Footer: React.FC = () => {
                 className="text-gray-400 hover:text-blue-400 text-sm transition-colors"
               >
                 Cookies Policy
+              </Link>
+              <Link
+                href="/refund"
+                className="text-gray-400 hover:text-blue-400 text-sm transition-colors"
+              >
+                Refund Policy
+              </Link>
+              <Link
+                href="/cancellation"
+                className="text-gray-400 hover:text-blue-400 text-sm transition-colors"
+              >
+                Cancellation Policy
               </Link>
             </div>
           </div>

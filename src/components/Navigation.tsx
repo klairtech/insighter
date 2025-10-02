@@ -18,6 +18,7 @@ import {
   CreditCard,
 } from "lucide-react";
 import CreditBalance from "./CreditBalance";
+import { usePremiumMembership } from "@/hooks/usePremiumMembership";
 
 interface Workspace {
   id: string;
@@ -49,14 +50,24 @@ interface Organization {
 
 const Navigation: React.FC = () => {
   const pathname = usePathname();
-  const { user, session, profile, signOut } = useSupabaseAuth();
+  const authContext = useSupabaseAuth();
+  const { user, session, profile, signOut } = authContext || {};
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isOrgDropdownOpen, setIsOrgDropdownOpen] = useState(false);
   const [isResourcesDropdownOpen, setIsResourcesDropdownOpen] = useState(false);
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [, setIsLoading] = useState(false);
+  const [isClient, setIsClient] = useState(false);
   const [pendingInvitations, setPendingInvitations] = useState(0);
+
+  // Premium membership status
+  const { isPremium, membership: _membership } = usePremiumMembership();
+
+  // Handle hydration
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   // Create Supabase client
   const supabase = createBrowserClient(
@@ -83,16 +94,6 @@ const Navigation: React.FC = () => {
           .eq("status", "active");
 
         if (memberError) {
-          console.warn(
-            "⚠️ Navigation: Direct Supabase query failed, trying API fallback:",
-            {
-              error: memberError,
-              message: memberError.message,
-              details: memberError.details,
-              hint: memberError.hint,
-              code: memberError.code,
-            }
-          );
           throw memberError; // This will trigger the API fallback
         }
 
@@ -113,16 +114,6 @@ const Navigation: React.FC = () => {
           .order("created_at", { ascending: false });
 
         if (error) {
-          console.warn(
-            "⚠️ Navigation: Error fetching organizations, trying API fallback:",
-            {
-              error: error,
-              message: error.message,
-              details: error.details,
-              hint: error.hint,
-              code: error.code,
-            }
-          );
           throw error; // This will trigger the API fallback
         }
 
@@ -168,11 +159,6 @@ const Navigation: React.FC = () => {
         });
 
         if (!response.ok) {
-          console.error(
-            "❌ Navigation: API fallback also failed:",
-            response.status,
-            response.statusText
-          );
           setOrganizations([]);
           return;
         }
@@ -180,11 +166,7 @@ const Navigation: React.FC = () => {
         const apiOrgs = await response.json();
         setOrganizations(apiOrgs);
       }
-    } catch (error) {
-      console.error(
-        "❌ Navigation: Unexpected error loading user data:",
-        error
-      );
+    } catch (_error) {
       setOrganizations([]);
     } finally {
       setIsLoading(false);
@@ -202,7 +184,6 @@ const Navigation: React.FC = () => {
       const token = session?.access_token;
 
       if (!token) {
-        console.warn("No valid token found in session");
         return;
       }
 
@@ -216,32 +197,22 @@ const Navigation: React.FC = () => {
         const invitations = await response.json();
         setPendingInvitations(invitations.length);
       } else {
-        console.warn(
-          "Failed to load invitations:",
-          response.status,
-          response.statusText
-        );
         // Try to get more details about the error
         try {
-          const errorData = await response.json();
-          console.warn("Error details:", errorData);
-        } catch {
-          console.warn("Could not parse error response");
-        }
+          const _errorData = await response.json();
+        } catch {}
       }
-    } catch (error) {
-      console.error("Error loading pending invitations:", error);
-    }
+    } catch (_error) {}
   }, [user, session]);
 
   useEffect(() => {
-    if (user) {
+    if (user && session) {
       loadUserData();
       loadPendingInvitations();
     }
-  }, [user, loadUserData, loadPendingInvitations]);
+  }, [user, session, loadUserData, loadPendingInvitations]);
 
-  const handleLogout = () => {
+  const _handleLogout = () => {
     signOut();
     setIsMenuOpen(false);
     setIsOrgDropdownOpen(false);
@@ -250,7 +221,7 @@ const Navigation: React.FC = () => {
   };
 
   return (
-    <header className="fixed top-0 w-full bg-black/80 backdrop-blur-md border-b border-white/10 z-50">
+    <header className="fixed top-0 w-full bg-background backdrop-blur-md border-b border-white/10 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
@@ -274,7 +245,7 @@ const Navigation: React.FC = () => {
               Home
             </Link>
 
-            {user ? (
+            {isClient && user ? (
               <>
                 <div className="relative">
                   <button
@@ -331,7 +302,14 @@ const Navigation: React.FC = () => {
                         ))
                       ) : (
                         <div className="px-4 py-2 text-sm text-gray-300">
-                          No organizations found
+                          <div className="mb-2">No organizations found</div>
+                          <Link
+                            href="/organizations"
+                            className="text-blue-400 hover:text-blue-300 text-xs underline"
+                            onClick={() => setIsOrgDropdownOpen(false)}
+                          >
+                            Create your first organization
+                          </Link>
                         </div>
                       )}
                     </div>
@@ -360,100 +338,134 @@ const Navigation: React.FC = () => {
                   Chat
                 </Link>
 
-                {/* Credit Balance */}
-                <CreditBalance className="px-3 py-2" />
+                {/* Credit Balance - only show if authenticated */}
+                {user && session && <CreditBalance className="px-3 py-2" />}
 
-                <div className="relative">
-                  <button
-                    onClick={() =>
-                      setIsProfileDropdownOpen(!isProfileDropdownOpen)
-                    }
-                    className="flex items-center space-x-2 text-white/80 hover:text-white px-3 py-2 rounded-lg transition-colors duration-200 hover:bg-white/10"
-                  >
-                    <div className="w-8 h-8 rounded-full flex items-center justify-center shadow-lg overflow-hidden">
-                      {profile?.avatar_path ? (
-                        <Image
-                          src={profile.avatar_path}
-                          alt="Profile"
-                          width={32}
-                          height={32}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center">
-                          <User className="w-4 h-4 text-white" />
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex flex-col items-start">
-                      <span className="text-sm font-medium">
-                        {profile?.name || user?.email?.split("@")[0] || "User"}
-                      </span>
-                      <span className="text-xs text-neutral-400">
-                        {user?.email}
-                      </span>
-                    </div>
-                    <ChevronDown className="w-4 h-4" />
-                  </button>
-
-                  {isProfileDropdownOpen && (
-                    <div className="absolute right-0 mt-2 w-48 bg-black/95 backdrop-blur-md border border-white/10 rounded-lg shadow-xl z-50">
-                      <div className="py-2">
-                        <div className="px-4 py-2 border-b border-white/10">
-                          <p className="text-sm text-white/80">{user?.email}</p>
-                        </div>
-                        <Link
-                          href="/profile"
-                          className="flex items-center px-4 py-3 text-white/80 hover:text-white hover:bg-white/10 transition-colors"
-                          onClick={() => setIsProfileDropdownOpen(false)}
-                        >
-                          <User className="w-4 h-4 mr-3" />
-                          Profile
-                        </Link>
-                        <Link
-                          href="/profile"
-                          className="flex items-center px-4 py-3 text-white/80 hover:text-white hover:bg-white/10 transition-colors"
-                          onClick={() => setIsProfileDropdownOpen(false)}
-                        >
-                          <Settings className="w-4 h-4 mr-3" />
-                          Settings
-                        </Link>
-                        <Link
-                          href="/billing"
-                          className="flex items-center px-4 py-3 text-white/80 hover:text-white hover:bg-white/10 transition-colors"
-                          onClick={() => setIsProfileDropdownOpen(false)}
-                        >
-                          <CreditCard className="w-4 h-4 mr-3" />
-                          Billing & Credits
-                        </Link>
-                        <Link
-                          href="/invitations"
-                          className="flex items-center px-4 py-3 text-white/80 hover:text-white hover:bg-white/10 transition-colors"
-                          onClick={() => setIsProfileDropdownOpen(false)}
-                        >
-                          <Bell className="w-4 h-4 mr-3" />
-                          Invitations
-                          {pendingInvitations > 0 && (
-                            <span className="ml-auto bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
-                              {pendingInvitations > 9
-                                ? "9+"
-                                : pendingInvitations}
+                {/* User Profile or Login Button */}
+                {user && session ? (
+                  <div className="relative">
+                    <button
+                      onClick={() =>
+                        setIsProfileDropdownOpen(!isProfileDropdownOpen)
+                      }
+                      className="flex items-center space-x-2 text-white/80 hover:text-white px-3 py-2 rounded-lg transition-colors duration-200 hover:bg-white/10"
+                    >
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center shadow-lg overflow-hidden">
+                        {profile?.avatar_path ? (
+                          <Image
+                            src={profile.avatar_path}
+                            alt="Profile"
+                            width={32}
+                            height={32}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center">
+                            <User className="w-4 h-4 text-white" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex flex-col items-start">
+                        <div className="flex items-center space-x-2">
+                          <span className="text-sm font-medium">
+                            {profile?.name ||
+                              user?.email?.split("@")[0] ||
+                              "User"}
+                          </span>
+                          {isPremium && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gradient-to-r from-blue-500 to-blue-600 text-white border border-blue-400/30">
+                              <svg
+                                className="w-3 h-3 mr-1"
+                                fill="currentColor"
+                                viewBox="0 0 20 20"
+                              >
+                                <path
+                                  fillRule="evenodd"
+                                  d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                                  clipRule="evenodd"
+                                />
+                              </svg>
+                              Premium
                             </span>
                           )}
-                        </Link>
-                        <button
-                          onClick={handleLogout}
-                          className="flex items-center w-full px-4 py-3 text-white/80 hover:text-white hover:bg-white/10 transition-colors"
-                        >
-                          <LogOut className="w-4 h-4 mr-3" />
-                          Sign Out
-                        </button>
+                        </div>
+                        <span className="text-xs text-neutral-400">
+                          {user?.email}
+                        </span>
                       </div>
-                    </div>
-                  )}
-                </div>
+                      <ChevronDown className="w-4 h-4" />
+                    </button>
+
+                    {/* Profile Dropdown - only show if authenticated */}
+                    {isProfileDropdownOpen && (
+                      <div className="absolute right-0 mt-2 w-48 bg-black/95 backdrop-blur-md border border-white/10 rounded-lg shadow-xl z-50">
+                        <div className="py-2">
+                          <div className="px-4 py-2 border-b border-white/10">
+                            <p className="text-sm text-white/80">
+                              {user?.email}
+                            </p>
+                          </div>
+                          <Link
+                            href="/profile"
+                            className="flex items-center px-4 py-3 text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+                            onClick={() => setIsProfileDropdownOpen(false)}
+                          >
+                            <User className="w-4 h-4 mr-3" />
+                            Profile
+                          </Link>
+                          <Link
+                            href="/profile"
+                            className="flex items-center px-4 py-3 text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+                            onClick={() => setIsProfileDropdownOpen(false)}
+                          >
+                            <Settings className="w-4 h-4 mr-3" />
+                            Settings
+                          </Link>
+                          <Link
+                            href="/billing"
+                            className="flex items-center px-4 py-3 text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+                            onClick={() => setIsProfileDropdownOpen(false)}
+                          >
+                            <CreditCard className="w-4 h-4 mr-3" />
+                            Billing & Credits
+                          </Link>
+                          <Link
+                            href="/invitations"
+                            className="flex items-center px-4 py-3 text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+                            onClick={() => setIsProfileDropdownOpen(false)}
+                          >
+                            <Bell className="w-4 h-4 mr-3" />
+                            Invitations
+                            {pendingInvitations > 0 && (
+                              <span className="ml-auto bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                                {pendingInvitations > 9
+                                  ? "9+"
+                                  : pendingInvitations}
+                              </span>
+                            )}
+                          </Link>
+                          <button
+                            onClick={signOut}
+                            className="flex items-center w-full px-4 py-3 text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+                          >
+                            <LogOut className="w-4 h-4 mr-3" />
+                            Sign Out
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <Link
+                    href="/login"
+                    className="flex items-center space-x-2 text-white/80 hover:text-white px-3 py-2 rounded-lg border border-white/20 hover:border-white/40 transition-colors duration-200"
+                  >
+                    <LogIn className="w-4 h-4" />
+                    <span className="text-sm font-medium">Login</span>
+                  </Link>
+                )}
               </>
-            ) : (
+            ) : isClient ? (
               <>
                 <div className="relative">
                   <button
@@ -527,7 +539,7 @@ const Navigation: React.FC = () => {
                   </Link>
                 </div>
               </>
-            )}
+            ) : null}
           </nav>
 
           {/* Mobile menu button */}
@@ -561,7 +573,7 @@ const Navigation: React.FC = () => {
                 Home
               </Link>
 
-              {user ? (
+              {user && session ? (
                 <>
                   <Link
                     href="/organizations"
@@ -604,7 +616,7 @@ const Navigation: React.FC = () => {
                     Profile
                   </Link>
                   <button
-                    onClick={handleLogout}
+                    onClick={signOut}
                     className="block w-full text-left px-3 py-2 rounded-md text-base font-medium text-gray-300 hover:text-white hover:bg-white/10"
                   >
                     Sign Out

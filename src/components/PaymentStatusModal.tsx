@@ -8,7 +8,7 @@ import {
   AlertTriangle,
   RefreshCw,
   X,
-  CreditCard,
+  CreditCard as _CreditCard,
   Wifi,
   WifiOff,
 } from "lucide-react";

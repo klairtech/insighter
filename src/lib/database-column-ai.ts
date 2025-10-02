@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import { trackAISummaryUsage } from './agent-token-tracking';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -29,7 +30,8 @@ export async function generateColumnAIDefinition(
   databaseName: string,
   foreignTable?: string,
   foreignColumn?: string,
-  sampleValues: string[] = []
+  sampleValues: string[] = [],
+  userId?: string
 ): Promise<AIGenerationResult<ColumnAIDefinition>> {
   try {
     const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
@@ -87,6 +89,31 @@ Focus on practical, actionable information that helps users understand and work 
     }
 
     const parsed = JSON.parse(content);
+    
+    // Track AI summary usage
+    if (userId) {
+      await trackAISummaryUsage(
+        userId,
+        'column_definition',
+        {
+          model_used: model,
+          model_provider: 'openai',
+          fallback_used: false,
+          tokens_used: response.usage?.total_tokens || 0,
+          input_tokens: response.usage?.prompt_tokens || 0,
+          output_tokens: response.usage?.completion_tokens || 0
+        },
+        {
+          column_name: columnName,
+          table_name: tableName,
+          database_name: databaseName,
+          column_type: columnType,
+          is_primary_key: isPrimaryKey,
+          is_foreign_key: isForeignKey,
+          sample_values_count: sampleValues.length
+        }
+      );
+    }
     
     return {
       result: {

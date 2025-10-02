@@ -58,12 +58,24 @@ export async function deductCredits(
     // Handle different possible return structures
     let remainingCredits: number | undefined
     
-    if (typeof data === 'object' && data !== null) {
+    // The function returns an array with the result object
+    const result = Array.isArray(data) ? data[0] : data
+    
+    if (typeof result === 'object' && result !== null) {
       // Check for different possible field names
-      remainingCredits = data.remaining_credits || data.remainingCredits || data.total_credits || data.balance
-    } else if (typeof data === 'number') {
+      remainingCredits = result.remaining_credits || result.remainingCredits || result.total_credits || result.balance
+      
+      // Also check if the result has success field to validate the operation
+      if (result.success === false) {
+        console.error('❌ Credit deduction failed:', result.error || result.error_message)
+        return { 
+          success: false, 
+          error: result.error || result.error_message || 'Credit deduction failed' 
+        }
+      }
+    } else if (typeof result === 'number') {
       // If the function returns just a number
-      remainingCredits = data
+      remainingCredits = result
     }
 
     // If we still don't have remaining credits, try to get it from the balance API
@@ -98,46 +110,15 @@ export async function deductCredits(
 
 /**
  * Check if user has sufficient credits
+ * @deprecated Use checkUserCredits from @/lib/credit-service instead
  */
 export async function checkUserCredits(
   userId: string, 
   requiredCredits: number
 ): Promise<{ hasCredits: boolean; currentCredits: number; error?: string }> {
-  try {
-    console.log(`💳 Checking credits for user ${userId}. Required: ${requiredCredits}`)
-    
-    // Call the database function to get user's credit balance
-    const { data, error } = await supabaseServer.rpc('get_user_credit_balance', {
-      p_user_id: userId
-    })
-
-    if (error) {
-      console.error('❌ Credit check error:', error)
-      return { 
-        hasCredits: false, 
-        currentCredits: 0,
-        error: `Failed to check credits: ${error.message}` 
-      }
-    }
-
-    const currentCredits = data?.total_credits || 0
-    const hasCredits = currentCredits >= requiredCredits
-
-    console.log(`💳 User ${userId} has ${currentCredits} credits. Required: ${requiredCredits}. Has enough: ${hasCredits}`)
-    
-    return {
-      hasCredits,
-      currentCredits
-    }
-
-  } catch (error) {
-    console.error('❌ Credit check error:', error)
-    return { 
-      hasCredits: false, 
-      currentCredits: 0,
-      error: `Credit check failed: ${error instanceof Error ? error.message : 'Unknown error'}` 
-    }
-  }
+  // Use centralized credit service
+  const { checkUserCredits: centralizedCheck } = await import('./credit-service-server');
+  return centralizedCheck(userId, requiredCredits);
 }
 
 /**
@@ -156,7 +137,15 @@ export async function logCreditUsage(
   conversationId: string,
   tokensUsed: number,
   creditsUsed: number,
-  description: string = 'AI Agent Usage'
+  description: string = 'AI Agent Usage',
+  modelInfo?: {
+    model_used: string;
+    model_provider: string;
+    model_version: string;
+    fallback_used: boolean;
+    input_tokens: number;
+    output_tokens: number;
+  }
 ): Promise<void> {
   try {
     console.log(`📊 Logging credit usage: User ${userId}, Agent ${agentId}, ${tokensUsed} tokens, ${creditsUsed} credits`)
@@ -201,7 +190,19 @@ export async function logCreditUsage(
       .insert({
         user_id: userId,
         tokens_used: tokensUsed,
-        action: 'chat'
+        action: 'chat',
+        model_used: modelInfo?.model_used,
+        model_provider: modelInfo?.model_provider,
+        model_version: modelInfo?.model_version,
+        fallback_used: modelInfo?.fallback_used || false,
+        input_tokens: modelInfo?.input_tokens,
+        output_tokens: modelInfo?.output_tokens,
+        metadata: {
+          agent_id: agentId,
+          conversation_id: conversationId,
+          description: description,
+          model_info: modelInfo
+        }
       })
 
     if (tokenError) {

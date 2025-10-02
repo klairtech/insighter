@@ -5,7 +5,7 @@ import { useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
 import {
   CreditCard,
   Download,
-  Calendar,
+  // Calendar,
   Coins,
   TrendingUp,
   CheckCircle,
@@ -22,7 +22,11 @@ import {
 import Link from "next/link";
 import CreditPurchaseModal from "@/components/CreditPurchaseModal";
 import CurrencySelector from "@/components/CurrencySelector";
-import { formatCurrency, getCurrencySymbol } from "@/lib/pricing-utils";
+import {
+  formatCurrency,
+  // getCurrencySymbol,
+  type SupportedCurrency,
+} from "@/lib/pricing-utils";
 
 interface CreditBalance {
   balance: number;
@@ -105,15 +109,59 @@ const BillingPage: React.FC = () => {
     useState<CreditStatement | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreditModalOpen, setIsCreditModalOpen] = useState(false);
+  const [selectedCurrency, setSelectedCurrency] =
+    useState<SupportedCurrency>("INR");
+  const [userCurrencyLoaded, setUserCurrencyLoaded] = useState(false);
   const [activeTab, setActiveTab] = useState<"statement" | "purchases">(
     "statement"
   );
 
   useEffect(() => {
     if (user) {
+      loadUserCurrencyPreference();
       fetchBillingData();
     }
   }, [user]);
+
+  const loadUserCurrencyPreference = async () => {
+    try {
+      const response = await fetch("/api/user/currency");
+      if (response.ok) {
+        const data = await response.json();
+        setSelectedCurrency(
+          (data.preferred_currency || "INR") as SupportedCurrency
+        );
+      }
+    } catch (error) {
+      console.error("Error loading user currency preference:", error);
+    } finally {
+      setUserCurrencyLoaded(true);
+    }
+  };
+
+  const handleCurrencyChange = async (currency: string) => {
+    setSelectedCurrency(currency as SupportedCurrency);
+
+    // Save the currency preference to the user's profile
+    try {
+      const response = await fetch("/api/user/currency", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ preferred_currency: currency }),
+      });
+
+      if (!response.ok) {
+        console.error("Failed to save currency preference");
+      }
+    } catch (error) {
+      console.error("Error saving currency preference:", error);
+    }
+
+    // Refresh billing data to show updated currency
+    fetchBillingData();
+  };
 
   const fetchBillingData = async () => {
     try {
@@ -153,7 +201,7 @@ const BillingPage: React.FC = () => {
     }
   };
 
-  const handleCreditPurchase = async (credits: number) => {
+  const _handleCreditPurchase = async (credits: number) => {
     try {
       // Create order
       const orderResponse = await fetch("/api/credits/create-order", {
@@ -226,7 +274,7 @@ const BillingPage: React.FC = () => {
     }
   };
 
-  const handlePurchaseSuccess = async (credits: number) => {
+  const handlePurchaseSuccess = async (_credits: number) => {
     // This function is called after successful payment to refresh data
     await fetchBillingData();
   };
@@ -285,14 +333,14 @@ const BillingPage: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+      <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-white">Loading billing information...</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
+    <div className="min-h-screen bg-background text-white">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8">
@@ -305,7 +353,12 @@ const BillingPage: React.FC = () => {
                 Manage your credits, view invoices, and subscription details
               </p>
             </div>
-            <CurrencySelector />
+            {userCurrencyLoaded && (
+              <CurrencySelector
+                onCurrencyChange={handleCurrencyChange}
+                initialCurrency={selectedCurrency}
+              />
+            )}
           </div>
         </div>
 
@@ -738,6 +791,7 @@ const BillingPage: React.FC = () => {
           isOpen={isCreditModalOpen}
           onClose={() => setIsCreditModalOpen(false)}
           onPurchase={handlePurchaseSuccess}
+          selectedCurrency={selectedCurrency}
         />
       </div>
     </div>

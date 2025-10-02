@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import ReactMarkdown from "react-markdown";
@@ -8,6 +8,11 @@ import remarkGfm from "remark-gfm";
 import SQLQueryDisplay from "@/components/SQLQueryDisplay";
 import VisualizationDisplay from "@/components/VisualizationDisplay";
 import LiveAgentStatus from "@/components/LiveAgentStatus";
+import DataSourceFilter from "@/components/DataSourceFilter";
+import StreamingProgress from "@/components/StreamingProgress";
+import StreamingChatToggle from "@/components/StreamingChatToggle";
+import { useStreamingChat } from "@/hooks/useStreamingChat";
+import { useAnalytics } from "@/hooks/useAnalytics";
 
 // MessageContent component with "See More" functionality
 function MessageContent({ content }: { content: string }) {
@@ -46,12 +51,6 @@ function MessageContent({ content }: { content: string }) {
       contentRef.current.style.maxHeight = originalMaxHeight;
 
       setShouldTruncate(actualHeight > maxHeight);
-      console.log("🔍 MessageContent: Height check:", {
-        actualHeight,
-        maxHeight,
-        shouldTruncate: actualHeight > maxHeight,
-        contentLength: filteredContent.length,
-      });
     }
   }, [filteredContent]);
 
@@ -177,6 +176,7 @@ interface ChatClientProps {
     avatar_url?: string;
   };
   initialAgentId?: string;
+  userCredits?: number;
 }
 
 function getUserAvatar(user: {
@@ -233,8 +233,10 @@ export default function ChatClient({
   initialAgents,
   user,
   initialAgentId,
+  userCredits = 0,
 }: ChatClientProps) {
   const router = useRouter();
+  const { trackSendMessage, trackAIResponse } = useAnalytics();
   const [agents] = useState<Agent[]>(initialAgents);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
   const [currentConversation, setCurrentConversation] =
@@ -257,12 +259,28 @@ export default function ChatClient({
     }[]
   >([]);
   const [showLiveStatus, setShowLiveStatus] = useState(false);
+  const [selectedDataSources, setSelectedDataSources] = useState<string[]>([]);
+  const [isStreamingEnabled, setIsStreamingEnabled] = useState(false);
+
+  // Streaming chat hook
+  const streamingChat = useStreamingChat({
+    onProgress: (_progress, _message) => {},
+    onAgentStart: (_agentName) => {},
+    onAgentComplete: (_agentName) => {},
+    onError: (_error) => {
+      setIsLoading(false);
+    },
+    onComplete: (_response) => {
+      setIsLoading(false);
+    },
+  });
 
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollPositionRef = useRef<number>(0);
+  const initialAgentSelectedRef = useRef<boolean>(false);
 
-  // Generate realistic agent activities based on user query
+  // Generate natural thinking activities based on user query
   const generateAgentActivities = (
     userQuery: string
   ): {
@@ -280,12 +298,40 @@ export default function ChatClient({
       progress?: number;
     }[] = [];
 
-    // Always start with Guardrails Agent
+    // Message pools for variety
+    const initialMessages = [
+      "Let me understand what you're asking...",
+      "Processing your request...",
+      "Analyzing your question...",
+      "Breaking down your query...",
+      "Understanding the requirements...",
+    ];
+
+    const contextMessages = [
+      "Analyzing the context and conversation history...",
+      "Reviewing previous conversation context...",
+      "Considering the conversation flow...",
+      "Checking for relevant context...",
+      "Understanding the background...",
+    ];
+
+    // Always start with initial analysis
     activities.push({
-      id: "guardrails",
-      name: "Guardrails Agent",
+      id: "initial",
+      name: "Initial Analysis",
       status: "thinking",
-      message: "Analyzing your request for safety and appropriateness...",
+      message:
+        initialMessages[Math.floor(Math.random() * initialMessages.length)],
+      progress: 0,
+    });
+
+    // Add context analysis
+    activities.push({
+      id: "context",
+      name: "Context Analysis",
+      status: "thinking",
+      message:
+        contextMessages[Math.floor(Math.random() * contextMessages.length)],
       progress: 0,
     });
 
@@ -293,22 +339,41 @@ export default function ChatClient({
     if (
       userQuery.toLowerCase().includes("visual") ||
       userQuery.toLowerCase().includes("chart") ||
-      userQuery.toLowerCase().includes("graph")
+      userQuery.toLowerCase().includes("graph") ||
+      userQuery.toLowerCase().includes("trend") ||
+      userQuery.toLowerCase().includes("show me")
     ) {
+      const visualMessages = [
+        "A chart or graph might help illustrate this better...",
+        "Determining the best visualization approach...",
+        "Considering visual representation options...",
+        "Evaluating chart types for this data...",
+        "Planning the visualization strategy...",
+      ];
+
+      const graphMessages = [
+        "Creating an interactive visualization for you...",
+        "Generating the chart with your data...",
+        "Building the interactive graph...",
+        "Rendering the visualization...",
+        "Preparing the chart display...",
+      ];
+
       activities.push({
         id: "visual",
-        name: "Visual Agent",
+        name: "Visual Analysis",
         status: "thinking",
         message:
-          "Determining if a visualization would help answer your question...",
+          visualMessages[Math.floor(Math.random() * visualMessages.length)],
         progress: 0,
       });
 
       activities.push({
         id: "graph",
-        name: "Graph Agent",
-        status: "thinking",
-        message: "Preparing to create an interactive visualization...",
+        name: "Graph Generation",
+        status: "working",
+        message:
+          graphMessages[Math.floor(Math.random() * graphMessages.length)],
         progress: 0,
       });
     }
@@ -316,33 +381,115 @@ export default function ChatClient({
     if (
       userQuery.toLowerCase().includes("sql") ||
       userQuery.toLowerCase().includes("query") ||
-      userQuery.toLowerCase().includes("data")
+      userQuery.toLowerCase().includes("data") ||
+      userQuery.toLowerCase().includes("how many") ||
+      userQuery.toLowerCase().includes("count") ||
+      userQuery.toLowerCase().includes("donations")
     ) {
+      const databaseMessages = [
+        "Connecting to your data and preparing the analysis...",
+        "Accessing the database and setting up queries...",
+        "Establishing connection to your data sources...",
+        "Preparing to query your database...",
+        "Initializing data connection...",
+      ];
+
+      const queryMessages = [
+        "Executing database queries to fetch the data...",
+        "Running SQL queries to retrieve the information...",
+        "Processing database requests...",
+        "Fetching data from your sources...",
+        "Querying the database for results...",
+      ];
+
       activities.push({
         id: "database",
-        name: "Database Agent",
+        name: "Data Processing",
         status: "working",
-        message: "Connecting to your data sources and preparing queries...",
+        message:
+          databaseMessages[Math.floor(Math.random() * databaseMessages.length)],
+        progress: 0,
+      });
+
+      activities.push({
+        id: "query",
+        name: "Query Execution",
+        status: "working",
+        message:
+          queryMessages[Math.floor(Math.random() * queryMessages.length)],
         progress: 0,
       });
     }
 
-    // Always include Q&A Agent
+    // Add data analysis step
+    const analysisMessages = [
+      "Analyzing the results and identifying key insights...",
+      "Processing the data to extract meaningful patterns...",
+      "Examining the results for important trends...",
+      "Reviewing the data to find key insights...",
+      "Interpreting the results and patterns...",
+    ];
+
     activities.push({
-      id: "qa",
-      name: "Q&A Agent",
+      id: "analysis",
+      name: "Data Analysis",
       status: "analyzing",
       message:
-        "Processing your question and preparing a comprehensive response...",
+        analysisMessages[Math.floor(Math.random() * analysisMessages.length)],
       progress: 0,
     });
 
-    // Add Follow-up Agent
+    // Always include response generation
+    const responseMessages = [
+      "Crafting a comprehensive answer for you...",
+      "Formulating the response with key insights...",
+      "Preparing a detailed explanation...",
+      "Structuring the answer for clarity...",
+      "Compiling the findings into a response...",
+    ];
+
+    activities.push({
+      id: "response",
+      name: "Response Generation",
+      status: "analyzing",
+      message:
+        responseMessages[Math.floor(Math.random() * responseMessages.length)],
+      progress: 0,
+    });
+
+    // Add quality check
+    const qualityMessages = [
+      "Reviewing the response for accuracy and completeness...",
+      "Double-checking the information for correctness...",
+      "Validating the response quality...",
+      "Ensuring the answer is comprehensive...",
+      "Finalizing the response details...",
+    ];
+
+    activities.push({
+      id: "quality",
+      name: "Quality Check",
+      status: "analyzing",
+      message:
+        qualityMessages[Math.floor(Math.random() * qualityMessages.length)],
+      progress: 0,
+    });
+
+    // Add follow-up suggestions
+    const followupMessages = [
+      "Thinking of related questions you might find helpful...",
+      "Considering follow-up questions for deeper insights...",
+      "Preparing additional questions you might want to explore...",
+      "Generating suggestions for further analysis...",
+      "Brainstorming related topics of interest...",
+    ];
+
     activities.push({
       id: "followup",
-      name: "Follow-up Agent",
+      name: "Follow-up Suggestions",
       status: "generating",
-      message: "Generating helpful follow-up questions and suggestions...",
+      message:
+        followupMessages[Math.floor(Math.random() * followupMessages.length)],
       progress: 0,
     });
 
@@ -357,12 +504,6 @@ export default function ChatClient({
       !isRestoringScroll &&
       !isUserScrolling
     ) {
-      console.log("🔍 Chat Client: Auto-scrolling to bottom", {
-        messageCount: currentConversation?.messages?.length,
-        isLoadingMoreMessages,
-        isRestoringScroll,
-        isUserScrolling,
-      });
       // Add a small delay to ensure DOM is updated
       setTimeout(() => {
         if (messagesEndRef.current && !isRestoringScroll && !isUserScrolling) {
@@ -379,12 +520,10 @@ export default function ChatClient({
 
   // Handle agent selection
   const handleAgentSelect = useCallback(async (agent: Agent) => {
-    console.log("Selecting agent:", agent.name, agent.id);
     setSelectedAgent(agent);
     setIsLoadingMessages(true);
     setMessagesPage(1);
     setHasMoreMessages(false);
-    console.log("🔄 Loading conversations for agent:", agent.id);
 
     try {
       // Load conversations for this agent with pagination
@@ -393,11 +532,6 @@ export default function ChatClient({
       );
       if (response.ok) {
         const data = await response.json();
-        console.log("📊 Conversations API response:", {
-          hasConversations: !!data.conversations,
-          conversationsLength: data.conversations?.length || 0,
-          data: data,
-        });
 
         if (data.conversations && data.conversations.length > 0) {
           // Use the first conversation or create a new one
@@ -408,13 +542,6 @@ export default function ChatClient({
             conversation.messages = deduplicateMessages(conversation.messages);
           }
 
-          console.log(
-            "✅ Found existing conversation:",
-            conversation.id,
-            "with",
-            conversation.messages.length,
-            "messages"
-          );
           setCurrentConversation(conversation);
           // Set pagination metadata
           setHasMoreMessages(
@@ -432,43 +559,59 @@ export default function ChatClient({
             agent: agent,
             messages: [],
           };
-          console.log(
-            "🆕 Created new conversation object:",
-            newConversation.id
-          );
           setCurrentConversation(newConversation);
           setHasMoreMessages(false);
           setMessagesPage(1);
         }
       } else {
-        console.error("Failed to load conversations:", response.statusText);
       }
-    } catch (error) {
-      console.error("Error loading conversations:", error);
     } finally {
       setIsLoadingMessages(false);
     }
   }, []);
 
-  // Auto-select agent from URL
+  // Handle streaming connection when enabled
   useEffect(() => {
+    if (isStreamingEnabled && currentConversation && selectedAgent) {
+      const sessionId = `chat-${currentConversation.id}-${Date.now()}`;
+      const clientId = `client-${Date.now()}`;
+
+      streamingChat.connect(sessionId, clientId);
+
+      return () => {
+        streamingChat.disconnect();
+      };
+    }
+  }, [isStreamingEnabled, currentConversation, selectedAgent, streamingChat]);
+
+  // Auto-select agent from URL (only on initial load)
+  useEffect(() => {
+    // Skip if we've already made the initial selection
+    if (initialAgentSelectedRef.current) {
+      return;
+    }
+
     if (initialAgentId && agents.length > 0) {
       const agent = agents.find((a) => a.id === initialAgentId);
       if (agent) {
-        console.log("🔍 Auto-select effect triggered:", {
-          initialAgentId,
-          agentsCount: agents.length,
-          agentIds: agents.map((a) => a.id),
-        });
-        console.log("✅ Auto-selecting agent from URL:", agent.name, agent.id);
         handleAgentSelect(agent);
+        initialAgentSelectedRef.current = true;
+      } else {
+        initialAgentSelectedRef.current = true; // Mark as attempted even if failed
       }
+    } else if (agents.length > 0 && !selectedAgent) {
+      // Auto-select first available agent if no specific agent ID provided
+      handleAgentSelect(agents[0]);
+      initialAgentSelectedRef.current = true;
     }
-  }, [initialAgentId, agents, handleAgentSelect]);
+  }, [initialAgentId, agents, handleAgentSelect, selectedAgent]);
 
   // Handle sending messages
   const handleSendMessage = useCallback(async () => {
     if (!message.trim() || !selectedAgent || isLoading) return;
+
+    // Track message sending
+    trackSendMessage(message.trim().length, false);
 
     const userMessage = {
       content: message.trim(),
@@ -482,6 +625,10 @@ export default function ChatClient({
 
     setMessage("");
     setIsLoading(true);
+
+    // Set start time for response tracking
+    (window as unknown as { messageStartTime?: number }).messageStartTime =
+      Date.now();
 
     // Generate and show live agent activities
     const activities = generateAgentActivities(userMessage.content);
@@ -532,36 +679,27 @@ export default function ChatClient({
           agentId: selectedAgent.id,
           content: userMessage.content,
           message_type: "text",
-          stream: false,
+          stream: isStreamingEnabled,
+          selectedDataSources:
+            selectedDataSources.length > 0 ? selectedDataSources : undefined,
         }),
       });
 
       if (response.ok) {
         const data = await response.json();
-        console.log("📊 Chat API response:", {
-          success: data.success,
-          hasConversation: !!data.conversation,
-          hasMessages: !!data.conversation?.messages,
-          messageCount: data.conversation?.messages?.length || 0,
-          lastMessageMetadata:
-            data.conversation?.messages?.[data.conversation.messages.length - 1]
-              ?.metadata,
-          allMessages: data.conversation?.messages?.map(
-            (msg: {
-              id: string;
-              role: string;
-              content: string;
-              created_at: string;
-            }) => ({
-              id: msg.id,
-              role: msg.role,
-              content: msg.content?.substring(0, 100) + "...",
-              created_at: msg.created_at,
-            })
-          ),
-        });
 
         if (data.success && data.conversation) {
+          // Track AI response
+          const responseTime =
+            Date.now() -
+            ((window as unknown as { messageStartTime?: number })
+              .messageStartTime || 0);
+          trackAIResponse(responseTime, selectedAgent?.name || "unknown");
+
+          // Hide thinking notes immediately when response arrives
+          setShowLiveStatus(false);
+          setAgentActivities([]);
+
           // Replace the entire conversation with the API response
           // This ensures we get the correct user message with the proper ID
           setCurrentConversation((prev) => {
@@ -583,10 +721,91 @@ export default function ChatClient({
           });
         }
       } else {
-        console.error("Failed to send message:", response.statusText);
+        // Handle specific error cases
+        if (response.status === 402) {
+          // Payment Required - insufficient credits
+          const errorData = await response.json().catch(() => ({}));
+
+          // Show user-friendly error message
+          const isMinimumCreditsError = errorData.requiredCredits === 10;
+          const errorMessage = {
+            content: isMinimumCreditsError
+              ? `❌ **Insufficient Credits for Chat**\n\nYou need at least 10 credits to use the chat feature.\n\n**Current Credits:** ${
+                  errorData.currentCredits || 0
+                }\n**Minimum Required:** 10 credits\n\nPlease purchase more credits to continue using the AI agent.`
+              : `❌ **Insufficient Credits**\n\nYou don't have enough credits to process this request.\n\n**Current Credits:** ${
+                  errorData.currentCredits || 0
+                }\n**Required Credits:** ${
+                  errorData.requiredCredits || 50
+                }\n\nPlease purchase more credits to continue using the AI agent.`,
+            role: "assistant" as const,
+            id: `error-${Date.now()}`,
+            created_at: new Date().toISOString(),
+            metadata: {
+              isError: true,
+              errorType: isMinimumCreditsError
+                ? "minimum_credits_required"
+                : "insufficient_credits",
+              currentCredits: errorData.currentCredits,
+              requiredCredits: errorData.requiredCredits,
+            },
+          };
+
+          // Add error message to conversation
+          setCurrentConversation((prev) => {
+            if (!prev) return null;
+            return {
+              ...prev,
+              messages: [...prev.messages, errorMessage],
+            };
+          });
+        } else {
+          // Show generic error message
+          const errorMessage = {
+            content: `❌ **Error**\n\nFailed to send message. Please try again.`,
+            role: "assistant" as const,
+            id: `error-${Date.now()}`,
+            created_at: new Date().toISOString(),
+            metadata: {
+              isError: true,
+              errorType: "generic_error",
+              status: response.status,
+              statusText: response.statusText,
+            },
+          };
+
+          // Add error message to conversation
+          setCurrentConversation((prev) => {
+            if (!prev) return null;
+            return {
+              ...prev,
+              messages: [...prev.messages, errorMessage],
+            };
+          });
+        }
       }
-    } catch (error) {
-      console.error("Error sending message:", error);
+    } catch (_error) {
+      // Show network error message
+      const errorMessage = {
+        content: `❌ **Network Error**\n\nFailed to connect to the server. Please check your internet connection and try again.`,
+        role: "assistant" as const,
+        id: `error-${Date.now()}`,
+        created_at: new Date().toISOString(),
+        metadata: {
+          isError: true,
+          errorType: "network_error",
+          error: _error instanceof Error ? _error.message : "Unknown error",
+        },
+      };
+
+      // Add error message to conversation
+      setCurrentConversation((prev) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          messages: [...prev.messages, errorMessage],
+        };
+      });
     } finally {
       setIsLoading(false);
       // Keep live status visible for a minimum duration to show agent activities
@@ -595,7 +814,16 @@ export default function ChatClient({
         setAgentActivities([]);
       }, 3000); // Show for at least 3 seconds
     }
-  }, [message, selectedAgent, isLoading, currentConversation]);
+  }, [
+    message,
+    selectedAgent,
+    isLoading,
+    currentConversation,
+    selectedDataSources,
+    isStreamingEnabled,
+    trackAIResponse,
+    trackSendMessage,
+  ]);
 
   // Handle key press
   const handleKeyPress = useCallback(
@@ -612,20 +840,14 @@ export default function ChatClient({
   const handleWorkspaceNavigation = useCallback(() => {
     try {
       if (currentConversation?.agent?.workspace_id) {
-        console.log(
-          "Navigating to workspace:",
-          currentConversation.agent.workspace_id
-        );
         router.push(`/workspaces/${currentConversation.agent.workspace_id}`);
       } else if (selectedAgent?.workspace_id) {
-        console.log("Navigating to workspace:", selectedAgent.workspace_id);
         router.push(`/workspaces/${selectedAgent.workspace_id}`);
       } else {
-        console.warn("No workspace ID available for navigation");
         // You could show a toast notification here
       }
-    } catch (error) {
-      console.error("Error navigating to workspace:", error);
+    } catch {
+      // Handle any errors silently
     }
   }, [
     currentConversation?.agent?.workspace_id,
@@ -679,13 +901,6 @@ export default function ChatClient({
                 new Date(b.created_at).getTime()
             );
 
-            console.log("🔍 Chat Client: Setting conversation messages", {
-              messageCount: deduplicatedMerged.length,
-              firstMessage: deduplicatedMerged[0]?.created_at,
-              lastMessage:
-                deduplicatedMerged[deduplicatedMerged.length - 1]?.created_at,
-            });
-
             setCurrentConversation((prev) =>
               prev
                 ? {
@@ -709,20 +924,12 @@ export default function ChatClient({
                 container.scrollHeight -
                 (container.clientHeight - scrollPositionRef.current);
               container.scrollTop = Math.max(0, newScrollTop);
-              console.log("🔍 Chat Client: Restored scroll position", {
-                originalPosition: scrollPositionRef.current,
-                newPosition: container.scrollTop,
-                containerHeight: container.clientHeight,
-                scrollHeight: container.scrollHeight,
-              });
               // Reset the flag after scroll restoration
               setTimeout(() => setIsRestoringScroll(false), 100);
             }
           }, 150); // Slightly longer delay to ensure DOM is fully updated
         }
       }
-    } catch (error) {
-      console.error("Error loading more messages:", error);
     } finally {
       setIsLoadingMoreMessages(false);
     }
@@ -763,9 +970,14 @@ export default function ChatClient({
         {/* Header */}
         <div className="bg-gray-700 px-4 py-3 border-b border-gray-600">
           <div className="flex items-center justify-between">
-            <h1 className="text-lg font-semibold text-white">
-              Your Data Agents
-            </h1>
+            <div className="flex items-center space-x-2">
+              <h1 className="text-lg font-semibold text-white">
+                Your Data Agents
+              </h1>
+              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800 border border-orange-200">
+                BETA
+              </span>
+            </div>
           </div>
         </div>
 
@@ -795,6 +1007,7 @@ export default function ChatClient({
 
         {/* Agents List */}
         <div className="flex-1 overflow-y-auto">
+          {/* Agents List - Debug logging removed to reduce console spam */}
           {agents.map((agent) => (
             <div
               key={agent.id}
@@ -809,24 +1022,31 @@ export default function ChatClient({
                   const avatar = getAgentAvatar(agent);
                   return (
                     <div className="w-12 h-12 rounded-full overflow-hidden shadow-lg ring-2 ring-gray-600">
-                      <Image
-                        src={
-                          avatar.src ||
-                          `https://ui-avatars.com/api/?name=${encodeURIComponent(
-                            agent.name
-                          )}&background=6366f1&color=fff&size=150`
-                        }
-                        alt={`${agent.name} avatar`}
-                        width={48}
-                        height={48}
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          // Fallback to a default avatar if image fails to load
-                          e.currentTarget.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(
-                            agent.name
-                          )}&background=6366f1&color=fff&size=150`;
-                        }}
-                      />
+                      {avatar.type === "image" && avatar.src ? (
+                        <Image
+                          src={avatar.src}
+                          alt={avatar.alt || `${agent.name} avatar`}
+                          width={48}
+                          height={48}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            // Fallback to initials avatar if image fails to load
+                            e.currentTarget.style.display = "none";
+                            e.currentTarget.nextElementSibling?.classList.remove(
+                              "hidden"
+                            );
+                          }}
+                        />
+                      ) : null}
+                      <div
+                        className={`w-full h-full flex items-center justify-center bg-indigo-600 text-white font-semibold text-xl ${
+                          avatar.type === "image" && avatar.src ? "hidden" : ""
+                        }`}
+                      >
+                        {avatar.type === "initials"
+                          ? avatar.initials
+                          : agent.name.substring(0, 2).toUpperCase()}
+                      </div>
                     </div>
                   );
                 })()}
@@ -863,62 +1083,93 @@ export default function ChatClient({
                   const avatar = getAgentAvatar(currentConversation.agent);
                   return (
                     <div className="w-10 h-10 rounded-full overflow-hidden shadow-lg ring-2 ring-gray-600">
-                      <Image
-                        src={
-                          avatar.src ||
-                          `https://ui-avatars.com/api/?name=${encodeURIComponent(
-                            currentConversation.agent.name
-                          )}&background=6366f1&color=fff&size=150`
-                        }
-                        alt={`${currentConversation.agent.name} avatar`}
-                        width={40}
-                        height={40}
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          // Fallback to a default avatar if image fails to load
-                          e.currentTarget.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(
-                            currentConversation.agent.name
-                          )}&background=6366f1&color=fff&size=150`;
-                        }}
-                      />
+                      {avatar.type === "image" && avatar.src ? (
+                        <Image
+                          src={avatar.src}
+                          alt={
+                            avatar.alt ||
+                            `${currentConversation.agent.name} avatar`
+                          }
+                          width={40}
+                          height={40}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            // Fallback to initials avatar if image fails to load
+                            e.currentTarget.style.display = "none";
+                            e.currentTarget.nextElementSibling?.classList.remove(
+                              "hidden"
+                            );
+                          }}
+                        />
+                      ) : null}
+                      <div
+                        className={`w-full h-full flex items-center justify-center bg-indigo-600 text-white font-semibold text-lg ${
+                          avatar.type === "image" && avatar.src ? "hidden" : ""
+                        }`}
+                      >
+                        {avatar.type === "initials"
+                          ? avatar.initials
+                          : currentConversation.agent.name
+                              .substring(0, 2)
+                              .toUpperCase()}
+                      </div>
                     </div>
                   );
                 })()}
                 <div>
-                  <h2 className="text-sm font-semibold text-white">
-                    {currentConversation.agent.name}
-                  </h2>
+                  <div className="flex items-center space-x-2">
+                    <h2 className="text-sm font-semibold text-white">
+                      {currentConversation.agent.name}
+                    </h2>
+                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800 border border-orange-200">
+                      BETA
+                    </span>
+                  </div>
                   <div className="flex items-center space-x-2">
                     <div className="w-2 h-2 bg-green-400 rounded-full"></div>
                     <span className="text-xs text-green-400">Online</span>
                   </div>
                 </div>
               </div>
-              <button
-                onClick={handleWorkspaceNavigation}
-                disabled={!currentConversation?.agent?.workspace_id}
-                className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                title={
-                  currentConversation?.agent?.workspace_id
-                    ? `Go to ${currentConversation.agent.name}'s workspace`
-                    : "No workspace available"
-                }
-              >
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
+              <div className="flex items-center space-x-3">
+                {/* Data Source Filter */}
+                {currentConversation?.agent?.workspace_id && (
+                  <DataSourceFilter
+                    workspaceId={currentConversation.agent.workspace_id}
+                    selectedSources={selectedDataSources}
+                    onSelectionChange={setSelectedDataSources}
+                    className=""
+                    userCredits={userCredits}
                   />
-                </svg>
-                <span>Workspace</span>
-              </button>
+                )}
+
+                {/* Workspace Button */}
+                <button
+                  onClick={handleWorkspaceNavigation}
+                  disabled={!currentConversation?.agent?.workspace_id}
+                  className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  title={
+                    currentConversation?.agent?.workspace_id
+                      ? `Go to ${currentConversation.agent.name}'s workspace`
+                      : "No workspace available"
+                  }
+                >
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
+                    />
+                  </svg>
+                  <span>Workspace</span>
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -964,12 +1215,6 @@ export default function ChatClient({
             </div>
           )}
 
-          {/* Live Agent Status */}
-          <LiveAgentStatus
-            activities={agentActivities}
-            isVisible={showLiveStatus}
-          />
-
           {currentConversation && currentConversation.messages.length > 0 ? (
             currentConversation.messages.map((msg, index) => {
               const userAvatar = getUserAvatar(user);
@@ -979,13 +1224,6 @@ export default function ChatClient({
                 (m) => m.id === msg.id
               );
               if (duplicateIds.length > 1) {
-                console.warn("⚠️ Duplicate message ID found:", {
-                  messageId: msg.id,
-                  duplicateCount: duplicateIds.length,
-                  messageIndex: index,
-                  messageRole: msg.role,
-                  messageContent: msg.content?.substring(0, 50) + "...",
-                });
               }
 
               return (
@@ -1001,29 +1239,64 @@ export default function ChatClient({
                       {/* Agent Avatar */}
                       <div className="flex-shrink-0 mr-2">
                         {(() => {
+                          if (msg.metadata?.isError) {
+                            // Show error icon for error messages
+                            return (
+                              <div className="w-8 h-8 rounded-full bg-red-600 flex items-center justify-center shadow-lg ring-1 ring-red-500">
+                                <svg
+                                  className="w-5 h-5 text-white"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
+                                  />
+                                </svg>
+                              </div>
+                            );
+                          }
+
                           const avatar = getAgentAvatar(
                             currentConversation.agent
                           );
                           return (
                             <div className="w-8 h-8 rounded-full overflow-hidden shadow-lg ring-1 ring-gray-600">
-                              <Image
-                                src={
-                                  avatar.src ||
-                                  `https://ui-avatars.com/api/?name=${encodeURIComponent(
-                                    currentConversation.agent.name
-                                  )}&background=6366f1&color=fff&size=150`
-                                }
-                                alt={`${currentConversation.agent.name} avatar`}
-                                width={32}
-                                height={32}
-                                className="w-full h-full object-cover"
-                                onError={(e) => {
-                                  // Fallback to a default avatar if image fails to load
-                                  e.currentTarget.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(
-                                    currentConversation.agent.name
-                                  )}&background=6366f1&color=fff&size=150`;
-                                }}
-                              />
+                              {avatar.type === "image" && avatar.src ? (
+                                <Image
+                                  src={avatar.src}
+                                  alt={
+                                    avatar.alt ||
+                                    `${currentConversation.agent.name} avatar`
+                                  }
+                                  width={32}
+                                  height={32}
+                                  className="w-full h-full object-cover"
+                                  onError={(e) => {
+                                    // Fallback to initials avatar if image fails to load
+                                    e.currentTarget.style.display = "none";
+                                    e.currentTarget.nextElementSibling?.classList.remove(
+                                      "hidden"
+                                    );
+                                  }}
+                                />
+                              ) : null}
+                              <div
+                                className={`w-full h-full flex items-center justify-center bg-indigo-600 text-white font-semibold text-sm ${
+                                  avatar.type === "image" && avatar.src
+                                    ? "hidden"
+                                    : ""
+                                }`}
+                              >
+                                {avatar.type === "initials"
+                                  ? avatar.initials
+                                  : currentConversation.agent.name
+                                      .substring(0, 2)
+                                      .toUpperCase()}
+                              </div>
                             </div>
                           );
                         })()}
@@ -1043,25 +1316,22 @@ export default function ChatClient({
                               };
                             };
 
-                            // Debug logging
-
-                            if (
+                            // Simplified visualization conditions
+                            const hasValidVisualization =
                               graphData &&
                               typeof graphData === "object" &&
                               Object.keys(graphData).length > 0 &&
-                              graphData.visual_decision
-                                ?.visualization_required &&
                               graphData.visualization?.html_content &&
+                              graphData.visualization.html_content.length >
+                                50 &&
                               !graphData.visualization.html_content.includes(
                                 "Error generating visualization"
                               ) &&
                               !graphData.visualization.html_content.includes(
                                 "No visualization data available"
-                              )
-                            ) {
-                              console.log(
-                                "✅ Chat Client: Rendering visualization"
                               );
+
+                            if (hasValidVisualization) {
                               return (
                                 <div className="mb-2">
                                   <VisualizationDisplay
@@ -1088,16 +1358,25 @@ export default function ChatClient({
                                 </div>
                               );
                             } else {
-                              console.log(
-                                "❌ Chat Client: Not rendering visualization - conditions not met"
-                              );
+                              // Only log when there's actually graph data but conditions aren't met
+                              if (
+                                graphData &&
+                                Object.keys(graphData).length > 0
+                              ) {
+                              }
                             }
                           }
                           return null;
                         })()}
 
                         {/* Message Bubble */}
-                        <div className="px-4 py-2 bg-gray-700 text-white shadow-sm rounded-2xl rounded-bl-sm transition-all duration-300">
+                        <div
+                          className={`px-4 py-2 shadow-sm rounded-2xl rounded-bl-sm transition-all duration-300 ${
+                            msg.metadata?.isError
+                              ? "bg-red-900 border border-red-700 text-red-100"
+                              : "bg-gray-700 text-white"
+                          }`}
+                        >
                           {msg.metadata?.isProcessing ? (
                             <div className="flex items-center space-x-2">
                               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
@@ -1298,7 +1577,92 @@ export default function ChatClient({
               </div>
             </div>
           )}
+
+          {/* Live Agent Status - Show below messages */}
+          <LiveAgentStatus
+            activities={agentActivities}
+            isVisible={showLiveStatus}
+          />
+
           <div ref={messagesEndRef} />
+        </div>
+
+        {/* Data Source Filter Status */}
+        {selectedDataSources.length > 0 && (
+          <div className="border-t border-gray-700 px-4 py-2 bg-blue-900/20">
+            <div className="flex items-center space-x-2 text-sm text-blue-300">
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
+                />
+              </svg>
+              <span>
+                Filtered to {selectedDataSources.length} data source
+                {selectedDataSources.length === 1 ? "" : "s"}
+              </span>
+              <button
+                onClick={() => setSelectedDataSources([])}
+                className="text-blue-400 hover:text-blue-300 underline"
+              >
+                Clear filter
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Credit Restriction Message */}
+        {userCredits < 10 && (
+          <div className="border-t border-gray-700 px-4 py-3 bg-yellow-900/20">
+            <div className="flex items-center space-x-2 text-yellow-300">
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
+                />
+              </svg>
+              <div>
+                <p className="text-sm font-medium">Credits Required for Chat</p>
+                <p className="text-xs text-yellow-400">
+                  You need at least 10 credits to use the chat feature. Current:{" "}
+                  {userCredits} credits
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Streaming Progress */}
+        {isStreamingEnabled && (
+          <StreamingProgress
+            isStreaming={streamingChat.isStreaming}
+            overallProgress={streamingChat.overallProgress}
+            currentMessage={streamingChat.currentMessage}
+            agentStatuses={streamingChat.agentStatuses}
+          />
+        )}
+
+        {/* Streaming Toggle */}
+        <div className="border-t border-gray-700 px-4 py-2">
+          <StreamingChatToggle
+            isStreamingEnabled={isStreamingEnabled}
+            onToggle={setIsStreamingEnabled}
+            disabled={isLoading}
+          />
         </div>
 
         {/* Message Input */}
@@ -1309,8 +1673,17 @@ export default function ChatClient({
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 onKeyPress={handleKeyPress}
-                placeholder="Type your message..."
-                className="w-full px-3 py-2 bg-gray-700 text-white rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                placeholder={
+                  userCredits < 10
+                    ? "Need at least 10 credits to chat..."
+                    : "Type your message..."
+                }
+                disabled={userCredits < 10}
+                className={`w-full px-3 py-2 rounded-lg border resize-none ${
+                  userCredits < 10
+                    ? "bg-gray-600 text-gray-400 border-gray-700 cursor-not-allowed"
+                    : "bg-gray-700 text-white border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                }`}
                 rows={1}
                 style={{
                   minHeight: "45px",
@@ -1326,7 +1699,7 @@ export default function ChatClient({
             </div>
             <button
               onClick={handleSendMessage}
-              disabled={!message.trim() || isLoading}
+              disabled={!message.trim() || isLoading || userCredits < 10}
               className="px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center h-[40px] w-[40px]"
             >
               {isLoading ? (

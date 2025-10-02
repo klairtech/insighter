@@ -1,6 +1,7 @@
 import { createServerSupabaseClient, supabaseServer } from "@/lib/server-utils";
 import { redirect } from "next/navigation";
 import ChatClient from "./chat-client";
+import { getUserCreditBalance } from "@/lib/credit-service-server";
 
 interface Agent {
   id: string;
@@ -50,8 +51,13 @@ interface ConversationData {
 async function getChatData(userId: string): Promise<{
   agents: Agent[];
   conversations: Conversation[];
+  userCredits: number;
 }> {
   try {
+    // Get user credits using centralized service
+    const creditBalance = await getUserCreditBalance(userId);
+    const currentCredits = creditBalance.balance;
+
     // Get user's accessible agents through agent_access
     const { data: agentAccess, error: agentAccessError } = await supabaseServer
       .from("agent_access")
@@ -77,7 +83,6 @@ async function getChatData(userId: string): Promise<{
       .eq("user_id", userId);
 
     if (agentAccessError) {
-      console.error("Error fetching agent access:", agentAccessError);
     }
 
     // Also get agents from workspaces the user has access to
@@ -121,21 +126,51 @@ async function getChatData(userId: string): Promise<{
           .in("workspace_id", workspaceIds)
           .eq("status", "active");
 
-        workspaceAgents = agents || [];
+        // Filter agents to only include those from workspaces with data sources
+        const agentsWithDataSources = [];
+        for (const agent of agents || []) {
+          // Check if workspace has any data sources (files, database connections, or external connections)
+          const { data: files } = await supabaseServer
+            .from("workspace_files")
+            .select("id")
+            .eq("workspace_id", agent.workspace_id)
+            .limit(1);
+
+          const { data: databaseConnections } = await supabaseServer
+            .from("database_connections")
+            .select("id")
+            .eq("workspace_id", agent.workspace_id)
+            .limit(1);
+
+          const { data: externalConnections } = await supabaseServer
+            .from("external_connections")
+            .select("id")
+            .eq("workspace_id", agent.workspace_id)
+            .limit(1);
+
+          // Only include agent if workspace has at least one data source
+          if (
+            (files?.length || 0) > 0 ||
+            (databaseConnections?.length || 0) > 0 ||
+            (externalConnections?.length || 0) > 0
+          ) {
+            agentsWithDataSources.push(agent);
+          }
+        }
+
+        workspaceAgents = agentsWithDataSources;
       }
     }
 
     // Get conversations for the user
-    console.log("🔍 Querying conversations for user:", userId);
 
     // Debug: Check if the agent exists
-    const { data: agentCheck, error: agentError } = await supabaseServer
+    const { data: _agentCheck, error: _agentError } = await supabaseServer
       .from("ai_agents")
       .select("id, name, status")
       .eq("id", "60acb191-c2b5-4abc-8732-e74f3469a985");
-    console.log("🔍 Agent check:", { agentCheck, agentError });
     // Try a different approach - get conversations first, then get agents separately
-    const { data: conversations, error: conversationsError } =
+    const { data: conversations, error: _conversationsError } =
       await supabaseServer
         .from("conversations")
         .select(
@@ -157,12 +192,10 @@ async function getChatData(userId: string): Promise<{
     let conversationsWithAgents: unknown[] = [];
     if (conversations && conversations.length > 0) {
       const agentIds = conversations.map((c) => c.agent_id);
-      const { data: agents, error: agentsError } = await supabaseServer
+      const { data: agents, error: _agentsError } = await supabaseServer
         .from("ai_agents")
         .select("*")
         .in("id", agentIds);
-
-      console.log("🔍 Agents for conversations:", { agents, agentsError });
 
       // Manually join conversations with agents
       conversationsWithAgents = conversations.map((conv) => ({
@@ -173,12 +206,6 @@ async function getChatData(userId: string): Promise<{
 
     // Note: conversationsError might be an empty object {} when no conversations exist
     // This is normal behavior, not an actual error
-    console.log("🔍 Conversations query result:", {
-      conversationsCount: conversations?.length || 0,
-      conversationsError: conversationsError,
-      userId,
-      conversationsWithAgents: conversationsWithAgents.length,
-    });
 
     // Transform agents data from both sources
     const accessAgents = (agentAccess || [])
@@ -208,13 +235,6 @@ async function getChatData(userId: string): Promise<{
     );
 
     // Debug: Log agent details
-    console.log("🔍 Processed agents:", {
-      accessAgentsCount: accessAgents.length,
-      workspaceAgentsCount: workspaceAgentsList.length,
-      totalAgentsCount: allAgents.length,
-      uniqueAgentsCount: uniqueAgents.length,
-      agentIds: uniqueAgents.map((a) => ({ id: a.id, name: a.name })),
-    });
 
     // Transform conversations data and filter out conversations with null agents
     const transformedConversations = (conversationsWithAgents || [])
@@ -235,10 +255,10 @@ async function getChatData(userId: string): Promise<{
     return {
       agents: uniqueAgents,
       conversations: transformedConversations,
+      userCredits: currentCredits,
     };
-  } catch (error) {
-    console.error("Error in getChatData:", error);
-    return { agents: [], conversations: [] };
+  } catch (_error) {
+    return { agents: [], conversations: [], userCredits: 0 };
   }
 }
 
@@ -262,13 +282,9 @@ export default async function ChatPage({
 
   // Get search parameters
   const { agentId } = await searchParams;
-  console.log("🔍 Chat page search params:", {
-    agentId,
-    userEmail: user.email,
-  });
 
   // Fetch chat data on server side
-  const { agents } = await getChatData(user.id);
+  const { agents, userCredits } = await getChatData(user.id);
 
   // Get user profile information
   const userProfile = {
@@ -284,6 +300,7 @@ export default async function ChatPage({
       initialAgents={agents}
       user={userProfile}
       initialAgentId={agentId}
+      userCredits={userCredits}
     />
   );
 }
