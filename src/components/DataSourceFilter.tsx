@@ -19,6 +19,7 @@ interface DataSourceFilterProps {
   onSelectionChange: (selectedSources: string[]) => void;
   className?: string;
   userCredits?: number;
+  onDataSourcesLoaded?: (dataSources: string[]) => void;
 }
 
 export default function DataSourceFilter({
@@ -27,6 +28,7 @@ export default function DataSourceFilter({
   onSelectionChange,
   className = "",
   userCredits = 0,
+  onDataSourcesLoaded,
 }: DataSourceFilterProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [dataSources, setDataSources] = useState<DataSource[]>([]);
@@ -66,6 +68,14 @@ export default function DataSourceFilter({
   useEffect(() => {
     fetchDataSources();
   }, [fetchDataSources]);
+
+  // Notify parent when data sources are loaded
+  useEffect(() => {
+    if (dataSources.length > 0 && onDataSourcesLoaded) {
+      const sourceIds = dataSources.map(source => source.id);
+      onDataSourcesLoaded(sourceIds);
+    }
+  }, [dataSources, onDataSourcesLoaded]);
 
   const handleSourceToggle = (sourceId: string) => {
     const newSelection = selectedSources.includes(sourceId)

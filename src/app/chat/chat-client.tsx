@@ -6,7 +6,6 @@ import Image from "next/image";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import SQLQueryDisplay from "@/components/SQLQueryDisplay";
-import VisualizationDisplay from "@/components/VisualizationDisplay";
 import LiveAgentStatus from "@/components/LiveAgentStatus";
 import DataSourceFilter from "@/components/DataSourceFilter";
 import { useAnalytics } from "@/hooks/useAnalytics";
@@ -25,11 +24,6 @@ function MessageContent({ content }: { content: string }) {
     .replace(/<svg[\s\S]*?<\/svg>/g, "") // Remove SVG content
     .replace(/<div[\s\S]*?<\/div>/g, "") // Remove div content
     .replace(/<[^>]*>/g, "") // Remove any remaining HTML tags
-    .replace(/Interactive visualization/gi, "") // Remove this specific text (case insensitive)
-    .replace(/A bar chart would help compare the[\s\S]*?\./g, "") // Remove reasoning text
-    .replace(/Chart title reads as[\s\S]*?\./g, "") // Remove chart title text
-    .replace(/Chart visualization/gi, "") // Remove chart visualization text
-    .replace(/table chart/gi, "") // Remove table chart text
     .replace(/\n\s*\n/g, "\n") // Remove extra line breaks
     .trim();
 
@@ -265,6 +259,9 @@ export default function ChatClient({
   >([]);
   const [showLiveStatus, setShowLiveStatus] = useState(false);
   const [selectedDataSources, setSelectedDataSources] = useState<string[]>([]);
+  const [_availableDataSources, setAvailableDataSources] = useState<string[]>(
+    []
+  );
 
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -327,47 +324,6 @@ export default function ChatClient({
     });
 
     // Add activities based on query content
-    if (
-      userQuery.toLowerCase().includes("visual") ||
-      userQuery.toLowerCase().includes("chart") ||
-      userQuery.toLowerCase().includes("graph") ||
-      userQuery.toLowerCase().includes("trend") ||
-      userQuery.toLowerCase().includes("show me")
-    ) {
-      const visualMessages = [
-        "A chart or graph might help illustrate this better...",
-        "Determining the best visualization approach...",
-        "Considering visual representation options...",
-        "Evaluating chart types for this data...",
-        "Planning the visualization strategy...",
-      ];
-
-      const graphMessages = [
-        "Creating an interactive visualization for you...",
-        "Generating the chart with your data...",
-        "Building the interactive graph...",
-        "Rendering the visualization...",
-        "Preparing the chart display...",
-      ];
-
-      activities.push({
-        id: "visual",
-        name: "Visual Analysis",
-        status: "thinking",
-        message:
-          visualMessages[Math.floor(Math.random() * visualMessages.length)],
-        progress: 0,
-      });
-
-      activities.push({
-        id: "graph",
-        name: "Graph Generation",
-        status: "working",
-        message:
-          graphMessages[Math.floor(Math.random() * graphMessages.length)],
-        progress: 0,
-      });
-    }
 
     if (
       userQuery.toLowerCase().includes("sql") ||
@@ -560,7 +516,6 @@ export default function ChatClient({
       setIsLoadingMessages(false);
     }
   }, []);
-
 
   // Auto-select agent from URL (only on initial load)
   useEffect(() => {
@@ -1115,6 +1070,13 @@ export default function ChatClient({
                     workspaceId={currentConversation.agent.workspace_id}
                     selectedSources={selectedDataSources}
                     onSelectionChange={setSelectedDataSources}
+                    onDataSourcesLoaded={(dataSources) => {
+                      setAvailableDataSources(dataSources);
+                      // Auto-select all data sources by default if none are selected
+                      if (selectedDataSources.length === 0) {
+                        setSelectedDataSources(dataSources);
+                      }
+                    }}
                     className=""
                     userCredits={userCredits}
                   />
@@ -1281,71 +1243,6 @@ export default function ChatClient({
 
                       {/* Agent Message Container */}
                       <div className="max-w-xs lg:max-w-md">
-                        {/* Visualization Display - Above message like WhatsApp image */}
-                        {(() => {
-                          if (msg.metadata && msg.metadata.graph_data) {
-                            const graphData = msg.metadata.graph_data as {
-                              visualization?: {
-                                html_content?: string;
-                              };
-                              visual_decision?: {
-                                visualization_required?: boolean;
-                              };
-                            };
-
-                            // Simplified visualization conditions
-                            const hasValidVisualization =
-                              graphData &&
-                              typeof graphData === "object" &&
-                              Object.keys(graphData).length > 0 &&
-                              graphData.visualization?.html_content &&
-                              graphData.visualization.html_content.length >
-                                50 &&
-                              !graphData.visualization.html_content.includes(
-                                "Error generating visualization"
-                              ) &&
-                              !graphData.visualization.html_content.includes(
-                                "No visualization data available"
-                              );
-
-                            if (hasValidVisualization) {
-                              return (
-                                <div className="mb-2">
-                                  <VisualizationDisplay
-                                    graphData={graphData}
-                                    className="ml-0"
-                                    title={
-                                      (
-                                        graphData.visualization as {
-                                          alt_text?: string;
-                                        }
-                                      )?.alt_text ||
-                                      (
-                                        graphData.visual_decision as {
-                                          chart_type?: string;
-                                        }
-                                      )?.chart_type
-                                        ?.replace(/_/g, " ")
-                                        .replace(/\b\w/g, (l: string) =>
-                                          l.toUpperCase()
-                                        ) ||
-                                      "Data Visualization"
-                                    }
-                                  />
-                                </div>
-                              );
-                            } else {
-                              // Only log when there's actually graph data but conditions aren't met
-                              if (
-                                graphData &&
-                                Object.keys(graphData).length > 0
-                              ) {
-                              }
-                            }
-                          }
-                          return null;
-                        })()}
-
                         {/* Message Bubble */}
                         <div
                           className={`px-4 py-2 shadow-sm rounded-2xl rounded-bl-sm transition-all duration-300 ${
@@ -1622,7 +1519,6 @@ export default function ChatClient({
             </div>
           </div>
         )}
-
 
         {/* Message Input */}
         <div className="border-t border-gray-700 p-4">

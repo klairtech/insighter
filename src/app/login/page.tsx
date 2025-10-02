@@ -10,6 +10,7 @@ const LoginPage: React.FC = () => {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [isClient, setIsClient] = useState(false);
   const authContext = useSupabaseAuth();
   const {
     signIn,
@@ -19,6 +20,11 @@ const LoginPage: React.FC = () => {
   } = authContext || {};
   const router = useRouter();
   const pathname = usePathname();
+
+  // Handle hydration
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -98,8 +104,8 @@ const LoginPage: React.FC = () => {
     }
   };
 
-  // Show loading while checking authentication
-  if (authLoading) {
+  // Show loading while checking authentication or during hydration
+  if (authLoading || !isClient) {
     return (
       <div className="fixed inset-0 bg-background flex items-center justify-center">
         <div className="flex flex-col items-center space-y-4">
@@ -111,7 +117,8 @@ const LoginPage: React.FC = () => {
   }
 
   // Don't render if user is authenticated (will redirect)
-  if (user) {
+  // But only check this after client hydration to prevent mismatch
+  if (isClient && user) {
     return null;
   }
 

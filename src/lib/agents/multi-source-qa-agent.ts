@@ -6,6 +6,7 @@
 
 import { BaseAgent, AgentContext, AgentResponse, MultiSourceQAResponse, DatabaseExecutionResult } from './types';
 import { callAIWithOpenAIPrimary } from '../ai-utils';
+import { AgentUtils } from './AgentUtils';
 
 export class MultiSourceQAAgent implements BaseAgent {
   name = 'Multi-Source Q&A Agent';
@@ -19,11 +20,71 @@ export class MultiSourceQAAgent implements BaseAgent {
       
       const { userQuery, conversationHistory, sourceResults } = context;
       
-      // Check if we have any data
-      const hasAnyData = sourceResults.some(result => result.success && result.data && result.data.length > 0);
+      console.log('🤖 Multi-Source Q&A Agent: Source results summary:', {
+        total_sources: sourceResults.length,
+        successful_sources: sourceResults.filter(r => r.success).length,
+        sources_with_data: sourceResults.filter(r => r.success && r.data).length,
+        source_details: sourceResults.map(r => ({
+          source_name: r.source_name,
+          success: r.success,
+          has_data: !!r.data,
+          data_type: r.data ? typeof r.data : 'none',
+          data_length: Array.isArray(r.data) ? r.data.length : (typeof r.data === 'object' ? Object.keys(r.data).length : 'N/A')
+        }))
+      });
+      
+      // Check if we have any data - be more flexible with data structure
+      const hasAnyData = sourceResults.some(result => {
+        if (!result.success) return false;
+        if (!result.data) return false;
+        // Check if data is an array with length > 0, or if it's an object with content
+        if (Array.isArray(result.data)) {
+          return result.data.length > 0;
+        }
+        // For non-array data, check if it has meaningful content
+        if (typeof result.data === 'object') {
+          return Object.keys(result.data).length > 0;
+        }
+        return false;
+      });
       
       if (!hasAnyData) {
-        throw new Error('All data sources returned empty results - no data available to answer the query');
+        console.log('🤖 Multi-Source Q&A Agent: No data found in any source, providing helpful response');
+        
+        // Instead of throwing an error, provide a helpful response
+        return AgentUtils.createSuccessResponse({
+          answer: `I searched through your available data sources but couldn't find any data related to "${userQuery}". This could mean:
+
+1. **No matching data exists** in your connected sources
+2. **The query needs to be more specific** - try being more detailed about what you're looking for
+3. **Data might be in a different format** than expected
+
+**Suggestions:**
+- Try rephrasing your question with more specific terms
+- Check if your data sources contain the type of information you're looking for
+- Consider uploading additional data files if needed
+
+**Available data sources:** ${sourceResults.map(r => r.source_name).join(', ')}`,
+          confidence: 0.1,
+          sources_used: sourceResults.map(r => r.source_id),
+          reasoning: 'No data found in any connected data sources for the given query',
+          follow_up_suggestions: [
+            'What data sources do I have available?',
+            'Show me a sample of data from my sources',
+            'How can I upload more data?',
+            'What types of questions can I ask about my data?'
+          ],
+          data_summary: {
+            total_records: 0,
+            sources_analyzed: sourceResults.length,
+            key_insights: ['No data found matching the query criteria']
+          },
+          metadata: {
+            processing_time_ms: Date.now() - startTime,
+            tokens_used: 0,
+            estimated_credits: 0
+          }
+        }, startTime, 0, 0.1);
       }
       
       // Analyze conversation context

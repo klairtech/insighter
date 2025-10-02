@@ -61,12 +61,6 @@ export default function OrganizationsClient({
 
   // Debug session loading
   useEffect(() => {
-    console.log("OrganizationsClient - Session state changed:", {
-      isLoading,
-      hasSession: !!session,
-      hasAccessToken: !!session?.access_token,
-      userEmail: session?.user?.email,
-    });
 
     // Clear any existing error when session loads successfully
     if (
@@ -119,7 +113,6 @@ export default function OrganizationsClient({
       return;
     }
 
-    console.log("Session check passed, proceeding with organization creation");
 
     setIsCreating(true);
     setError("");
@@ -136,10 +129,6 @@ export default function OrganizationsClient({
 
       if (!response.ok) {
         let errorMessage = "Failed to create organization";
-        console.log(
-          "Response headers:",
-          Object.fromEntries(response.headers.entries())
-        );
 
         // Track organization creation error
         trackFeatureUsage("organization_creation_error", {

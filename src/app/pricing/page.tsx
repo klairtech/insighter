@@ -165,9 +165,6 @@ const PricingPage: React.FC = () => {
       script.src = "https://checkout.razorpay.com/v1/checkout.js";
       script.onload = () => {
         // Note: CORS errors from browser.sentry-cdn.com are from Razorpay's internal error tracking
-        console.log(
-          "ℹ️ Note: Any CORS errors from browser.sentry-cdn.com are from Razorpay's internal error tracking and don't affect payments"
-        );
         const options = {
           key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID!,
           amount: orderData.order.amount,
@@ -216,11 +213,6 @@ const PricingPage: React.FC = () => {
                 };
               }
 
-              console.log(
-                "🔍 Purchase response:",
-                purchaseResponse.status,
-                purchaseData
-              );
 
               if (!purchaseResponse.ok) {
                 console.error("❌ Purchase failed:", purchaseData);

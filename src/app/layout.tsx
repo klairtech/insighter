@@ -38,13 +38,13 @@ export const metadata: Metadata = {
   icons: {
     icon: [
       {
-        url: "https://uvbtwtqmtsbdwmcrtdcx.supabase.co/storage/v1/object/public/website/public/Logos/Insighter/Insighter%20Logos%20(svg)/favicon.svg?v=2",
+        url: "/favicon.svg",
         type: "image/svg+xml",
       },
-      { url: "/favicon.ico?v=2", sizes: "any" },
+      { url: "/favicon.ico", sizes: "any" },
     ],
     apple: {
-      url: "https://uvbtwtqmtsbdwmcrtdcx.supabase.co/storage/v1/object/public/website/public/Logos/Insighter/Insighter%20Logos%20(svg)/favicon.svg?v=2",
+      url: "/favicon.svg",
       type: "image/svg+xml",
     },
   },
@@ -80,12 +80,8 @@ export default function RootLayout({
         <link rel="dns-prefetch" href="//fonts.gstatic.com" />
         <link rel="dns-prefetch" href="//www.googletagmanager.com" />
         <link rel="dns-prefetch" href="//www.google-analytics.com" />
-        <link
-          rel="icon"
-          type="image/svg+xml"
-          href="https://uvbtwtqmtsbdwmcrtdcx.supabase.co/storage/v1/object/public/website/public/Logos/Insighter/Insighter%20Logos%20(svg)/favicon.svg?v=2"
-        />
-        <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico?v=2" />
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+        <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico" />
         <GoogleTagManager />
       </head>
       <body

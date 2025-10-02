@@ -1028,7 +1028,12 @@ const ClientHome: React.FC = () => {
               </div>
             </div>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              {isAuthenticated ? (
+              {!isClient ? (
+                // Show loading state during hydration
+                <div className="inline-flex items-center px-8 py-4 bg-gradient-to-r from-blue-500 to-purple-500 text-white font-semibold rounded-lg">
+                  Loading...
+                </div>
+              ) : isAuthenticated ? (
                 <Link
                   href="/organizations"
                   className="inline-flex items-center px-8 py-4 bg-gradient-to-r from-blue-500 to-purple-500 text-white font-semibold rounded-lg hover:from-blue-600 hover:to-purple-600 transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-blue-500/25"

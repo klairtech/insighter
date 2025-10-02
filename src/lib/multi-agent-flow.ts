@@ -105,7 +105,8 @@ export class MultiAgentFlow {
         workspaceId,
         conversationHistory: filteredConversationHistory,
         userId,
-        selectedDataSources
+        selectedDataSources,
+        contextAnalysis
       };
       
       // Step 1-3: Parallel Initial Processing (Optimization)

@@ -23,11 +23,11 @@ export default function LogoRobust({
   const getLogoSrc = useCallback(() => {
     switch (variant) {
       case "white":
-        return "https://uvbtwtqmtsbdwmcrtdcx.supabase.co/storage/v1/object/public/website/public/Logos/Insighter/Insighter%20Logos%20(svg)/logo-white.svg";
+        return "/logo-white.svg";
       case "blue":
-        return "https://uvbtwtqmtsbdwmcrtdcx.supabase.co/storage/v1/object/public/website/public/Logos/Insighter/Insighter%20Logos%20(svg)/logo-blue.svg";
+        return "/logo-blue.svg";
       default:
-        return "https://uvbtwtqmtsbdwmcrtdcx.supabase.co/storage/v1/object/public/website/public/Logos/Insighter/Insighter%20Logos%20(svg)/logo.svg";
+        return "/logo.svg";
     }
   }, [variant]);
 
@@ -66,16 +66,8 @@ export default function LogoRobust({
     const img = new window.Image();
     img.onload = () => {
       setImageLoading(false);
-      // Only log in development
-      // if (process.env.NODE_ENV === "development") {
-      //   console.log(`Logo loaded successfully: ${getLogoSrc()}`);
-      // }
     };
     img.onerror = () => {
-      // Only log in development and only once per variant
-      // if (process.env.NODE_ENV === "development") {
-      //   console.warn(`Logo file not found, using fallback: ${getLogoSrc()}`);
-      // }
       setImageError(true);
       setUseInline(true);
       setImageLoading(false);
@@ -206,11 +198,6 @@ export default function LogoRobust({
           height={60}
           className="w-full h-full object-contain"
           onError={() => {
-            if (process.env.NODE_ENV === "development") {
-              console.warn(
-                `Final fallback: img tag failed for ${getLogoSrc()}`
-              );
-            }
             setImageError(true);
           }}
           style={{

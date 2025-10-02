@@ -91,16 +91,39 @@ export class DataSourceFilterAgent implements BaseAgent {
       // Use AI to analyze and rank sources
       const aiAnalysisResult = await this.performAIAnalysis(userQuery, sourcesWithEmbeddings);
       
+      console.log('🔍 AI Analysis Result:', {
+        filtered_sources_count: (aiAnalysisResult.filtered_sources as any[])?.length || 0,
+        confidence_score: aiAnalysisResult.confidence_score,
+        filter_criteria: aiAnalysisResult.filter_criteria,
+        ai_scores: (aiAnalysisResult.filtered_sources as any[])?.map((f: any) => ({
+          id: f.id,
+          relevance_score: f.relevance_score,
+          reasoning: f.reasoning
+        }))
+      });
+      
       // Combine semantic similarity with AI analysis
-      const finalSources = sourcesWithEmbeddings
+      const sourcesWithCombinedScores = sourcesWithEmbeddings
         .map(source => {
           const aiInfo = (aiAnalysisResult.filtered_sources as any[])?.find((f: any) => f.id === (source as any).id);
+          const combinedScore = (source.relevance_score + ((aiInfo?.relevance_score as number) || 0.1)) / 2;
           return {
             ...source,
-            relevance_score: (source.relevance_score + ((aiInfo?.relevance_score as number) || 0.1)) / 2
+            relevance_score: combinedScore,
+            semantic_score: source.relevance_score,
+            ai_score: (aiInfo?.relevance_score as number) || 0.1
           };
-        })
-        .filter(source => source.relevance_score > 0.3) // Filter out low relevance sources
+        });
+      
+      console.log('🔍 Source relevance scores:', sourcesWithCombinedScores.map(s => ({
+        name: (s as any).name,
+        semantic_score: s.semantic_score,
+        ai_score: s.ai_score,
+        combined_score: s.relevance_score
+      })));
+      
+      const finalSources = sourcesWithCombinedScores
+        .filter(source => source.relevance_score > 0.1) // Filter out very low relevance sources
         .sort((a, b) => b.relevance_score - a.relevance_score)
         .slice(0, 10); // Limit to top 10 sources
       

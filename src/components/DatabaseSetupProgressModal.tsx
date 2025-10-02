@@ -30,12 +30,6 @@ export default function DatabaseSetupProgressModal({
   estimatedTotalTime,
   onCancel,
 }: DatabaseSetupProgressModalProps) {
-  console.log("🔍 Progress Modal Props:", {
-    isOpen,
-    connectionName,
-    stepsLength: steps.length,
-    overallProgress,
-  });
   const [elapsedTime, setElapsedTime] = useState(0);
   const [remainingTime, setRemainingTime] = useState(estimatedTotalTime);
 

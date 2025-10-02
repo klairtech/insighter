@@ -249,10 +249,12 @@ FILE DETAILS:
 - File Name: ${fileUpload.original_filename}
 - File Type: ${fileUpload.file_type}
 - File Summary: ${fileSummary.summary}
+- Key Points: ${fileSummary.key_points ? JSON.stringify(fileSummary.key_points) : 'None'}
+- Tags: ${fileSummary.tags ? JSON.stringify(fileSummary.tags) : 'None'}
 
 USER QUERY: "${optimizedQuery}"
 
-Extract data that directly answers the user's question. Return as JSON array of objects.
+Extract data that directly answers the user's question. Use the file summary, key points, and tags to understand what information is available in the file. Return as JSON array of objects.
 
 If the file contains the requested data, respond with JSON array:
 [
@@ -267,7 +269,7 @@ If the file does NOT contain the requested data, respond with:
       const response = await callAIWithOpenAIPrimary([
         {
           role: 'system',
-          content: 'You are a file data extraction expert. Extract ONLY factual data from files. Do not hallucinate or make up data. Respond with valid JSON array only.'
+          content: 'You are a file data extraction expert. Extract ONLY factual data from files based on the provided summary, key points, and tags. For document-based queries (like "feedback points", "findings", "summary", "report"), use the available information to provide relevant data. Do not hallucinate or make up data. If the file contains relevant information, extract it as structured data. Respond with valid JSON array only.'
         },
         {
           role: 'user',
@@ -275,8 +277,7 @@ If the file does NOT contain the requested data, respond with:
         }
       ], {
         temperature: 0.1,
-        max_tokens: 1000,
-        response_format: { type: 'json_object' }
+        max_tokens: 1000
       });
 
       const extractedData = JSON.parse(response.content);

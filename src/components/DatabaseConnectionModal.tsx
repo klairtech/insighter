@@ -748,7 +748,6 @@ export default function DatabaseConnectionModal({
     updateStatus(`Validating schema '${schemaName}'...`, "info");
 
     try {
-      console.log("Validating schema:", schemaName);
       const validationResponse = await fetch(
         "/api/database-connections/validate-schema",
         {
@@ -807,7 +806,6 @@ export default function DatabaseConnectionModal({
 
     try {
       // Step 6: Fetch tables from the validated schema
-      console.log("Fetching tables from validated schema:", schemaName);
 
       const response = await fetch("/api/database-connections/test", {
         method: "POST",
@@ -919,11 +917,9 @@ export default function DatabaseConnectionModal({
     setEstimatedTotalTime(
       steps.reduce((total, step) => total + (step.estimatedTime || 0), 0)
     );
-    console.log("🚀 Setting up progress modal with steps:", steps);
     setShowProgressModal(true);
     setStep("processing");
     setIsConnecting(true);
-    console.log("✅ Progress modal should now be visible");
 
     try {
       // Step 1: Validating Connection

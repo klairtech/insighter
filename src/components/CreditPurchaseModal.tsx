@@ -154,11 +154,6 @@ const CreditPurchaseModal: React.FC<CreditPurchaseModalProps> = ({
         } else {
           retryCount++;
           if (retryCount < maxRetries) {
-            console.log(
-              `🔄 Retrying Razorpay script load (attempt ${
-                retryCount + 1
-              }/${maxRetries})`
-            );
             await new Promise((resolve) =>
               setTimeout(resolve, 1000 * retryCount)
             ); // Exponential backoff
@@ -180,7 +175,6 @@ const CreditPurchaseModal: React.FC<CreditPurchaseModalProps> = ({
       }
 
       // Create order
-      console.log("📝 Creating order for credits:", selectedOption.credits);
       const orderResponse = await fetch("/api/credits/create-order", {
         method: "POST",
         headers: {
@@ -190,10 +184,6 @@ const CreditPurchaseModal: React.FC<CreditPurchaseModalProps> = ({
       });
 
       const orderData = await orderResponse.json();
-      console.log("📊 Order creation response:", {
-        status: orderResponse.status,
-        data: orderData,
-      });
       if (!orderResponse.ok) {
         const error = parseRazorpayError({
           message: orderData.error || "Failed to create order",
@@ -222,10 +212,8 @@ const CreditPurchaseModal: React.FC<CreditPurchaseModalProps> = ({
           "https://uvbtwtqmtsbdwmcrtdcx.supabase.co/storage/v1/object/public/website/public/Logos/Insighter/Insighter%20Logos%20(svg)/logo.svg",
         order_id: orderData.order.id,
         handler: async function (response: RazorpayResponse) {
-          console.log("🎉 Razorpay handler triggered!", response);
           try {
             // Verify payment and complete purchase
-            console.log("🔄 Starting payment verification...");
 
             // Add timeout to prevent hanging
             const controller = new AbortController();
@@ -251,7 +239,6 @@ const CreditPurchaseModal: React.FC<CreditPurchaseModalProps> = ({
               });
 
               clearTimeout(timeoutId);
-              console.log("📡 Payment verification API call completed");
 
               let purchaseData;
               try {
@@ -287,7 +274,6 @@ const CreditPurchaseModal: React.FC<CreditPurchaseModalProps> = ({
               }
 
               // Payment successful
-              console.log("🎉 Payment verification successful!", purchaseData);
               setPaymentStatus("success");
 
               // Track successful purchase
@@ -297,12 +283,7 @@ const CreditPurchaseModal: React.FC<CreditPurchaseModalProps> = ({
                 `credit_purchase_${selectedOption.credits}`
               );
 
-              console.log(
-                "🔄 Calling onPurchase with credits:",
-                selectedOption.credits
-              );
               await onPurchase(selectedOption.credits);
-              console.log("✅ onPurchase completed successfully");
             } catch (fetchError) {
               clearTimeout(timeoutId);
               if (
@@ -369,7 +350,6 @@ const CreditPurchaseModal: React.FC<CreditPurchaseModalProps> = ({
         },
       };
 
-      console.log("🚀 Opening Razorpay checkout...", options);
 
       // Verify Razorpay instance
       if (!window.Razorpay) {
@@ -377,7 +357,6 @@ const CreditPurchaseModal: React.FC<CreditPurchaseModalProps> = ({
       }
 
       const razorpay = new window.Razorpay(options);
-      console.log("✅ Razorpay instance created successfully");
 
       // Add error handler
       razorpay.on("payment.failed", function (response: unknown) {
