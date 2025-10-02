@@ -134,6 +134,11 @@ async function logApiUsage(
   errorMessage: string | null = null,
   request: NextRequest
 ) {
+  if (!supabaseServer) {
+    console.error('Database not configured for API usage logging');
+    return;
+  }
+
   const ipAddress = request.headers.get('x-forwarded-for') || 
                    request.headers.get('x-real-ip') || 
                    'unknown';
