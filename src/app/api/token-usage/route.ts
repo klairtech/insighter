@@ -4,6 +4,13 @@ import { getUserTokenUsage } from '@/lib/token-utils-server'
 
 export async function GET(request: NextRequest) {
   try {
+    if (!supabaseServer) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      );
+    }
+
     // Get the current user
     const { data: { session }, error: sessionError } = await supabaseServer.auth.getSession()
     

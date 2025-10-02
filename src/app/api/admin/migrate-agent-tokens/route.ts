@@ -101,6 +101,13 @@ export async function POST(request: NextRequest) {
 export async function GET() {
   // Get status of agents without API tokens
   try {
+    if (!supabaseServer) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      );
+    }
+
     const { data: agentsWithoutTokens, error } = await supabaseServer
       .from('ai_agents')
       .select('id, name, workspace_id, status, api_token, api_enabled')

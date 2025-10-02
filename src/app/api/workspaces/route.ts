@@ -6,6 +6,10 @@ import { addOrganizationMembersToWorkspace } from '@/lib/workspace-inheritance'
 // Helper function to create agent for new workspace
 async function createWorkspaceAgent(workspaceId: string, userId: string, workspaceName: string) {
   try {
+    if (!supabaseServer) {
+      throw new Error('Database not configured');
+    }
+
     // Get a random avatar for the new agent
     const randomAvatar = getRandomAgentAvatar()
     
@@ -172,6 +176,13 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    if (!supabaseServer) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      );
+    }
+
     // Verify user session
     const user = await verifyUserSession(request)
     if (!user) {
