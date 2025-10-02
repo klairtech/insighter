@@ -213,7 +213,6 @@ const PricingPage: React.FC = () => {
                 };
               }
 
-
               if (!purchaseResponse.ok) {
                 console.error("❌ Purchase failed:", purchaseData);
                 throw new Error(

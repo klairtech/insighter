@@ -350,7 +350,6 @@ const CreditPurchaseModal: React.FC<CreditPurchaseModalProps> = ({
         },
       };
 
-
       // Verify Razorpay instance
       if (!window.Razorpay) {
         throw new Error("Razorpay not available");
