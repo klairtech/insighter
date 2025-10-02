@@ -8,6 +8,68 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
+// Type definitions for ML models
+interface MLRule {
+  threshold: number;
+  strategy: string;
+  confidence: number;
+}
+
+interface MLRules {
+  high_complexity: MLRule;
+  multiple_failures: MLRule;
+  high_context_similarity: MLRule;
+  new_user: MLRule;
+}
+
+interface TrainingData {
+  query_complexity: number;
+  failure_count: number;
+  confidence_score: number;
+  data_quality_score: number;
+  context_similarity: number;
+  user_experience_level: number;
+  agent_id?: string;
+  success?: boolean;
+  execution_time_ms?: number;
+  data_sources_used?: string[];
+  features_vector?: {
+    context_similarity: number;
+  };
+  expected_strategy: string;
+}
+
+interface AgentMetrics {
+  total_queries: number;
+  successful_queries: number;
+  failed_queries: number;
+  total_execution_time: number;
+}
+
+interface SourceMetrics {
+  total_queries: number;
+  successful_queries: number;
+  total_relevance_score: number;
+}
+
+interface ModelMetrics {
+  accuracy: number;
+  precision: number;
+  recall: number;
+  f1_score: number;
+  training_time_ms: number;
+  validation_accuracy: number;
+}
+
+interface _TrainingResult {
+  success: boolean;
+  model_version: string;
+  metrics: ModelMetrics;
+  training_data_count: number;
+  validation_data_count: number;
+  error?: string;
+}
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -17,7 +79,7 @@ const supabase = createClient(
  * Simple ML model for strategy prediction
  */
 class SimpleMLModel {
-  private rules: any
+  private rules: MLRules
 
   constructor() {
     this.rules = {
@@ -48,7 +110,7 @@ class SimpleMLModel {
     return this.rules
   }
 
-  predict(features: any) {
+  predict(features: TrainingData) {
     const predictions = []
 
     if (features.query_complexity > this.rules.high_complexity.threshold) {
@@ -59,7 +121,7 @@ class SimpleMLModel {
       })
     }
 
-    if (features.previous_failures >= this.rules.multiple_failures.threshold) {
+    if (features.failure_count >= this.rules.multiple_failures.threshold) {
       predictions.push({
         strategy: this.rules.multiple_failures.strategy,
         confidence: this.rules.multiple_failures.confidence,
@@ -96,18 +158,18 @@ class SimpleMLModel {
     )
   }
 
-  updateRules(trainingData: any[]) {
+  updateRules(trainingData: TrainingData[]) {
     const successfulStrategies = trainingData
-      .filter(d => d.success)
-      .reduce((acc: any, d: any) => {
-        acc[d.processing_strategy] = (acc[d.processing_strategy] || 0) + 1
+      .filter(d => d.expected_strategy)
+      .reduce((acc: Record<string, number>, d: TrainingData) => {
+        acc[d.expected_strategy] = (acc[d.expected_strategy] || 0) + 1
         return acc
       }, {})
 
     const failedStrategies = trainingData
-      .filter(d => !d.success)
-      .reduce((acc: any, d: any) => {
-        acc[d.processing_strategy] = (acc[d.processing_strategy] || 0) + 1
+      .filter(d => !d.expected_strategy)
+      .reduce((acc: Record<string, number>, d: TrainingData) => {
+        acc[d.expected_strategy] = (acc[d.expected_strategy] || 0) + 1
         return acc
       }, {})
 
@@ -127,9 +189,10 @@ class SimpleMLModel {
 
   private updateRuleConfidence(strategy: string, adjustment: number) {
     Object.keys(this.rules).forEach(ruleKey => {
-      if (this.rules[ruleKey].strategy === strategy) {
-        this.rules[ruleKey].confidence = Math.max(0.1, Math.min(1.0, 
-          this.rules[ruleKey].confidence + adjustment
+      const key = ruleKey as keyof MLRules;
+      if (this.rules[key].strategy === strategy) {
+        this.rules[key].confidence = Math.max(0.1, Math.min(1.0, 
+          this.rules[key].confidence + adjustment
         ))
       }
     })
@@ -205,10 +268,10 @@ async function trainMLModels() {
   }
 }
 
-async function updateAgentPerformanceMetrics(trainingData: any[]) {
+async function updateAgentPerformanceMetrics(trainingData: TrainingData[]) {
   console.log('📈 Updating agent performance metrics...')
 
-  const agentMetrics = trainingData.reduce((acc: any, interaction: any) => {
+  const agentMetrics = trainingData.reduce((acc: Record<string, AgentMetrics>, interaction: TrainingData) => {
     const agentType = interaction.agent_id || 'unknown'
     
     if (!acc[agentType]) {
@@ -232,18 +295,17 @@ async function updateAgentPerformanceMetrics(trainingData: any[]) {
   }, {})
 
   for (const [agentType, metrics] of Object.entries(agentMetrics)) {
-    const metricsData = metrics as any
-    const successRate = metricsData.successful_queries / metricsData.total_queries
-    const avgExecutionTime = metricsData.total_execution_time / metricsData.total_queries
+    const successRate = metrics.successful_queries / metrics.total_queries
+    const avgExecutionTime = metrics.total_execution_time / metrics.total_queries
 
     await supabase
       .from('agent_performance_metrics')
       .upsert({
         agent_type: agentType,
         workspace_id: null,
-        total_queries: metricsData.total_queries,
-        successful_queries: metricsData.successful_queries,
-        failed_queries: metricsData.failed_queries,
+        total_queries: metrics.total_queries,
+        successful_queries: metrics.successful_queries,
+        failed_queries: metrics.failed_queries,
         average_processing_time_ms: avgExecutionTime,
         average_confidence_score: successRate,
         improvement_rate: 0.0,
@@ -256,10 +318,10 @@ async function updateAgentPerformanceMetrics(trainingData: any[]) {
   console.log('✅ Agent performance metrics updated')
 }
 
-async function updateDataSourceEffectiveness(trainingData: any[]) {
+async function updateDataSourceEffectiveness(trainingData: TrainingData[]) {
   console.log('📊 Updating data source effectiveness...')
 
-  const sourceMetrics = trainingData.reduce((acc: any, interaction: any) => {
+  const sourceMetrics = trainingData.reduce((acc: Record<string, SourceMetrics>, interaction: TrainingData) => {
     const sources = interaction.data_sources_used || []
     
     sources.forEach((sourceId: string) => {
@@ -282,17 +344,16 @@ async function updateDataSourceEffectiveness(trainingData: any[]) {
   }, {})
 
   for (const [sourceId, metrics] of Object.entries(sourceMetrics)) {
-    const metricsData = metrics as any
-    const _successRate = metricsData.successful_queries / metricsData.total_queries
-    const avgRelevance = metricsData.total_relevance_score / metricsData.total_queries
+    const _successRate = metrics.successful_queries / metrics.total_queries
+    const avgRelevance = metrics.total_relevance_score / metrics.total_queries
 
     await supabase
       .from('data_source_effectiveness')
       .upsert({
         data_source_id: sourceId,
         workspace_id: null,
-        total_queries: metricsData.total_queries,
-        successful_queries: metricsData.successful_queries,
+        total_queries: metrics.total_queries,
+        successful_queries: metrics.successful_queries,
         average_relevance_score: avgRelevance,
         last_optimization_date: new Date().toISOString()
       }, {

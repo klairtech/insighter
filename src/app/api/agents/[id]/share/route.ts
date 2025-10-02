@@ -47,6 +47,14 @@ export async function POST(
     }
     console.log('✅ Agent share API: User authenticated:', user.userId);
 
+    if (!supabaseServer) {
+      console.log('❌ Agent share API: Database not configured');
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      )
+    }
+
     const { id: agentId } = await params
     const body = await request.json()
     const { email } = body
@@ -229,6 +237,14 @@ export async function GET(
     }
     console.log('✅ Agent access API: User authenticated:', user.userId);
 
+    if (!supabaseServer) {
+      console.log('❌ Agent access API: Database not configured');
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      )
+    }
+
     const { id: agentId } = await params
 
     // Check if user has permission to view access list using database function
@@ -339,6 +355,14 @@ export async function DELETE(
       )
     }
     console.log('✅ Agent access removal API: User authenticated:', user.userId);
+
+    if (!supabaseServer) {
+      console.log('❌ Agent access removal API: Database not configured');
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      )
+    }
 
     const { id: agentId } = await params
     const body = await request.json()

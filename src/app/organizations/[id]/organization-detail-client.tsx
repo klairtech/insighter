@@ -41,7 +41,11 @@ export default function OrganizationDetailClient({
   initialWorkspaces,
 }: OrganizationDetailClientProps) {
   const router = useRouter();
-  const { session, isLoading: authLoading } = useSupabaseAuth();
+  const authContext = useSupabaseAuth();
+  const { session, isLoading: authLoading } = authContext || {
+    session: null,
+    isLoading: false,
+  };
 
   // All hooks must be called before any conditional returns
   const [organization, setOrganization] =

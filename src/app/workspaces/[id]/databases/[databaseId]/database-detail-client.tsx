@@ -52,7 +52,8 @@ export default function DatabaseDetailClient({
   database,
 }: DatabaseDetailClientProps) {
   const router = useRouter();
-  const { session } = useSupabaseAuth();
+  const authContext = useSupabaseAuth();
+  const { session } = authContext || { session: null };
   const { notification, showSuccess, showError, hideNotification } =
     useNotification();
   const { dataSources } = useDataSourceConfig();

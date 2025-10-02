@@ -36,6 +36,14 @@ export async function GET(
       )
     }
 
+    if (!supabaseServer) {
+      console.log('❌ Agent GET API: Database not configured');
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      )
+    }
+
     const { id: agentId } = await params
 
     // Check if user has access to this agent using hierarchical access control
@@ -121,6 +129,14 @@ export async function PUT(
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
+      )
+    }
+
+    if (!supabaseServer) {
+      console.log('❌ Agent PUT API: Database not configured');
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
       )
     }
 
@@ -233,6 +249,14 @@ export async function DELETE(
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
+      )
+    }
+
+    if (!supabaseServer) {
+      console.log('❌ Agent DELETE API: Database not configured');
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
       )
     }
 

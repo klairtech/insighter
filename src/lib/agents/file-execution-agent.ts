@@ -28,7 +28,7 @@ export class FileExecutionAgent implements BaseAgent {
   name = 'File Execution Agent';
   description = 'Specialized agent for processing file-based data sources (PDF, Word, Excel, etc.)';
 
-  async execute(context: AgentContext & { filteredSources: any[]; optimizedQuery: string }): Promise<AgentResponse<FileExecutionAgentResponse>> {
+  async execute(context: AgentContext & { filteredSources: Record<string, unknown>[]; optimizedQuery: string }): Promise<AgentResponse<FileExecutionAgentResponse>> {
     const startTime = Date.now();
     
     try {
@@ -73,7 +73,7 @@ export class FileExecutionAgent implements BaseAgent {
       // Process each file source
       for (const fileSource of fileSources) {
         try {
-          console.log(`📁 Processing file: ${fileSource.name} (${fileSource.connection_type})`);
+          console.log(`📁 Processing file: ${fileSource.name as string} (${fileSource.connection_type})`);
           
           const fileResult = await this.processFileSource(fileSource, optimizedQuery);
           executionResults.push(fileResult);
@@ -85,11 +85,11 @@ export class FileExecutionAgent implements BaseAgent {
             failedFiles++;
           }
         } catch (error) {
-          console.warn(`Failed to process file ${fileSource.id}:`, error);
+          console.warn(`Failed to process file ${fileSource.id as string}:`, error);
           executionResults.push({
-            source_id: fileSource.id,
-            source_name: fileSource.name,
-            source_type: fileSource.type,
+            source_id: fileSource.id as string,
+            source_name: fileSource.name as string,
+            source_type: fileSource.type as string,
             success: false,
             error: error instanceof Error ? error.message : 'Unknown error',
             execution_time_ms: 0,
@@ -166,7 +166,7 @@ export class FileExecutionAgent implements BaseAgent {
     }
   }
 
-  private async processFileSource(fileSource: any, optimizedQuery: string): Promise<DatabaseExecutionResult> {
+  private async processFileSource(fileSource: Record<string, unknown>, optimizedQuery: string): Promise<DatabaseExecutionResult> {
     const sourceStartTime = Date.now();
     
     try {
@@ -174,22 +174,22 @@ export class FileExecutionAgent implements BaseAgent {
       const { data: fileUpload } = await supabase
         .from('file_uploads')
         .select('*')
-        .eq('id', fileSource.id)
+        .eq('id', fileSource.id as string)
         .single();
       
       if (!fileUpload) {
-        throw new Error(`File upload not found for source: ${fileSource.id}`);
+        throw new Error(`File upload not found for source: ${fileSource.id as string}`);
       }
       
       // Get file summary
       const { data: fileSummary } = await supabase
         .from('file_summaries')
         .select('*')
-        .eq('file_id', fileSource.id)
+        .eq('file_id', fileSource.id as string)
         .single();
       
       if (!fileSummary) {
-        throw new Error(`File summary not found for source: ${fileSource.id}`);
+        throw new Error(`File summary not found for source: ${fileSource.id as string}`);
       }
       
       // Extract data based on file type
@@ -198,9 +198,9 @@ export class FileExecutionAgent implements BaseAgent {
       const extractionTokens = extractionResult.tokensUsed;
       
       return {
-        source_id: fileSource.id,
-        source_name: fileSource.name,
-        source_type: fileSource.type,
+        source_id: fileSource.id as string,
+        source_name: fileSource.name as string,
+        source_type: fileSource.type as string,
         success: true,
         data: extractedData,
         query_executed: `File analysis: ${optimizedQuery}`,
@@ -219,9 +219,9 @@ export class FileExecutionAgent implements BaseAgent {
       };
     } catch (error) {
       return {
-        source_id: fileSource.id,
-        source_name: fileSource.name,
-        source_type: fileSource.type,
+        source_id: fileSource.id as string,
+        source_name: fileSource.name as string,
+        source_type: fileSource.type as string,
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
         execution_time_ms: Date.now() - sourceStartTime,
@@ -235,7 +235,7 @@ export class FileExecutionAgent implements BaseAgent {
     }
   }
 
-  private async extractDataFromFile(fileUpload: any, fileSummary: any, optimizedQuery: string): Promise<{ data: any[]; tokensUsed: number }> {
+  private async extractDataFromFile(fileUpload: Record<string, unknown>, fileSummary: Record<string, unknown>, optimizedQuery: string): Promise<{ data: Record<string, unknown>[]; tokensUsed: number }> {
     // Use AI to extract relevant data from file content
     const extractionPrompt = `You are a specialized file data extraction expert. Extract ONLY the data that directly answers the user's query from the file content.
 
@@ -303,7 +303,7 @@ If the file does NOT contain the requested data, respond with:
     }
   }
 
-  private extractColumnsFromRows(rows: any[]): Array<{ name: string; type: string }> {
+  private extractColumnsFromRows(rows: Record<string, unknown>[]): Array<{ name: string; type: string }> {
     if (!rows || rows.length === 0) return [];
     
     const firstRow = rows[0];

@@ -3,6 +3,13 @@ import { createServerSupabaseClient, supabaseServer } from '@/lib/server-utils'
 
 export async function POST() {
   try {
+    if (!supabaseServer) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      )
+    }
+
     // Verify user session using server-side Supabase client with cookies
     const supabase = await createServerSupabaseClient()
     const { data: { session }, error: sessionError } = await supabase.auth.getSession()

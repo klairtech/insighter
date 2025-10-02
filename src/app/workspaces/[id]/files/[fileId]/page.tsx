@@ -37,7 +37,8 @@ interface FileUpload {
 const FileDetailPage: React.FC = () => {
   const params = useParams();
   const router = useRouter();
-  const { user, session } = useSupabaseAuth();
+  const authContext = useSupabaseAuth();
+  const { user, session } = authContext || { user: null, session: null };
   const [file, setFile] = useState<FileUpload | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");

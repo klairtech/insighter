@@ -214,7 +214,7 @@ export class PredictiveCacheManager {
         // Cache the execution plan
         await queryPlanCache.setExecutionPlan(
           prediction.query,
-          mockSources,
+          mockSources as unknown as Record<string, unknown>[],
           mockExecutionPlan,
           mockQueryAnalysis,
           userId

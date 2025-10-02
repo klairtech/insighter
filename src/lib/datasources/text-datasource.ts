@@ -39,7 +39,7 @@ export class TextDataSource implements DataSourceAgent {
     ]
   };
 
-  async testConnection(config: FileDataSourceConfig): Promise<DataSourceTestResult> {
+  async testConnection(config: Record<string, unknown>): Promise<DataSourceTestResult> {
     const startTime = Date.now();
     
     try {
@@ -51,11 +51,12 @@ export class TextDataSource implements DataSourceAgent {
       }
       
       // Check file extension
-      if (!config.file_name.toLowerCase().endsWith('.txt') && 
-          !config.file_name.toLowerCase().endsWith('.log') &&
-          !config.file_name.toLowerCase().endsWith('.md') &&
-          !config.file_name.toLowerCase().endsWith('.json') &&
-          !config.file_name.toLowerCase().endsWith('.xml')) {
+      const fileName = config.file_name as string;
+      if (!fileName.toLowerCase().endsWith('.txt') && 
+          !fileName.toLowerCase().endsWith('.log') &&
+          !fileName.toLowerCase().endsWith('.md') &&
+          !fileName.toLowerCase().endsWith('.json') &&
+          !fileName.toLowerCase().endsWith('.xml')) {
         throw new Error('File must be a text file (.txt, .log, .md, .json, .xml)');
       }
       
@@ -95,7 +96,7 @@ export class TextDataSource implements DataSourceAgent {
     }
   }
 
-  async connect(config: FileDataSourceConfig): Promise<DataSourceConnection> {
+  async connect(config: Record<string, unknown>): Promise<DataSourceConnection> {
     try {
       console.log('🔌 Connecting to text file...');
       
@@ -104,10 +105,10 @@ export class TextDataSource implements DataSourceAgent {
       const connection: DataSourceConnection = {
         id: `text_${Date.now()}`,
         data_source_id: 'text',
-        connection_string: config.file_path,
+        connection_string: config.file_path as string,
         additional_config: {
-          file_name: config.file_name,
-          file_type: config.file_type,
+          file_name: config.file_name as string,
+          file_type: config.file_type as string,
           file_size: config.file_size,
           encoding: config.encoding || 'utf-8'
         }
@@ -141,7 +142,7 @@ export class TextDataSource implements DataSourceAgent {
       const schema: DataSourceSchema = {
         tables: [],
         metadata: {
-          database_name: connection.additional_config?.file_name || 'text_file',
+          database_name: (connection.additional_config?.file_name as string) || 'text_file',
           database_version: 'Text 1.0',
           schema_version: '1.0',
           last_updated: new Date().toISOString(),

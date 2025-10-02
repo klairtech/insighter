@@ -232,16 +232,16 @@ Respond with JSON:
     return { blocked: false };
   }
 
-  private determineRiskLevel(aiResult: any, heuristicResult: any): 'low' | 'medium' | 'high' {
+  private determineRiskLevel(aiResult: Record<string, unknown>, heuristicResult: Record<string, unknown>): 'low' | 'medium' | 'high' {
     if (!aiResult.allowed || !heuristicResult.allowed) {
       return 'high';
     }
     
-    if (aiResult.risk_level === 'high' || heuristicResult.reason?.includes('Resource-intensive')) {
+    if (aiResult.risk_level === 'high' || (heuristicResult.reason as string)?.includes('Resource-intensive')) {
       return 'high';
     }
     
-    if (aiResult.risk_level === 'medium' || aiResult.confidence < 0.7) {
+    if (aiResult.risk_level === 'medium' || (aiResult.confidence as number) < 0.7) {
       return 'medium';
     }
     

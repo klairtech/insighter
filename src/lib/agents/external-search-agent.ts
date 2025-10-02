@@ -75,10 +75,10 @@ export class ExternalSearchAgent implements BaseAgent {
           sourcesSearched++;
           const connectionResults = await this.searchExternalConnection(connection, optimizedQuery);
           searchResults.push(...connectionResults);
-          externalDataUsed.push(connection.name);
+          externalDataUsed.push(connection.name as string);
           successfulSearches++;
         } catch (error) {
-          console.warn(`Failed to search external connection ${connection.name}:`, error);
+          console.warn(`Failed to search external connection ${connection.name as string}:`, error);
           failedSearches++;
         }
       }
@@ -178,7 +178,7 @@ export class ExternalSearchAgent implements BaseAgent {
     return webSearchIndicators.some(indicator => lowerQuery.includes(indicator));
   }
 
-  private async getExternalConnections(workspaceId: string): Promise<any[]> {
+  private async getExternalConnections(workspaceId: string): Promise<Record<string, unknown>[]> {
     const { data: connections } = await supabase
       .from('external_connections')
       .select('*')
@@ -189,7 +189,7 @@ export class ExternalSearchAgent implements BaseAgent {
     return connections || [];
   }
 
-  private async searchExternalConnection(connection: any, query: string): Promise<ExternalSearchAgentResponse['search_results']> {
+  private async searchExternalConnection(connection: Record<string, unknown>, query: string): Promise<ExternalSearchAgentResponse['search_results']> {
     const results: ExternalSearchAgentResponse['search_results'] = [];
     
     try {
@@ -216,12 +216,12 @@ export class ExternalSearchAgent implements BaseAgent {
     return results;
   }
 
-  private async searchGoogleSheets(connection: any, query: string): Promise<ExternalSearchAgentResponse['search_results']> {
+  private async searchGoogleSheets(connection: Record<string, unknown>, query: string): Promise<ExternalSearchAgentResponse['search_results']> {
     // This would integrate with your existing Google Sheets connector
     // For now, return mock data
     return [
       {
-        source: connection.name,
+        source: connection.name as string,
         title: 'Google Sheets Data',
         content: `Relevant data from Google Sheets: ${query}`,
         relevance_score: 0.8,
@@ -230,11 +230,11 @@ export class ExternalSearchAgent implements BaseAgent {
     ];
   }
 
-  private async searchGoogleDocs(connection: any, query: string): Promise<ExternalSearchAgentResponse['search_results']> {
+  private async searchGoogleDocs(connection: Record<string, unknown>, query: string): Promise<ExternalSearchAgentResponse['search_results']> {
     // This would integrate with your existing Google Docs connector
     return [
       {
-        source: connection.name,
+        source: connection.name as string,
         title: 'Google Docs Content',
         content: `Relevant content from Google Docs: ${query}`,
         relevance_score: 0.7,
@@ -243,25 +243,25 @@ export class ExternalSearchAgent implements BaseAgent {
     ];
   }
 
-  private async searchWebURL(connection: any, query: string): Promise<ExternalSearchAgentResponse['search_results']> {
+  private async searchWebURL(connection: Record<string, unknown>, query: string): Promise<ExternalSearchAgentResponse['search_results']> {
     // This would integrate with your existing web scraper
     return [
       {
-        source: connection.name,
+        source: connection.name as string,
         title: 'Web Scraped Content',
         content: `Relevant content from web URL: ${query}`,
-        url: connection.url,
+        url: connection.url as string,
         relevance_score: 0.6,
         source_type: 'external_connection' as const
       }
     ];
   }
 
-  private async searchGoogleAnalytics(connection: any, query: string): Promise<ExternalSearchAgentResponse['search_results']> {
+  private async searchGoogleAnalytics(connection: Record<string, unknown>, query: string): Promise<ExternalSearchAgentResponse['search_results']> {
     // This would integrate with your existing Google Analytics connector
     return [
       {
-        source: connection.name,
+        source: connection.name as string,
         title: 'Google Analytics Data',
         content: `Analytics data: ${query}`,
         relevance_score: 0.9,
@@ -313,7 +313,7 @@ Respond with JSON array:
       const searchResults = JSON.parse(response.content);
       
       return {
-        results: searchResults.map((result: any) => ({
+        results: searchResults.map((result: Record<string, unknown>) => ({
           source: 'web_search',
           title: result.title || 'Web Search Result',
           content: result.content || 'No description available',

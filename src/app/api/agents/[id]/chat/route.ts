@@ -3,6 +3,8 @@ import { supabaseServer } from '@/lib/server-utils';
 import { verifyAgentApiToken, extractTokenFromHeader } from '@/lib/jwt-utils';
 import { getOrCreateApiConversation, saveApiInteraction } from '@/lib/api-conversations';
 import { TokenTrackingData } from '@/lib/token-utils';
+import { XAIMetrics } from '@/types/xai-metrics';
+// import { EnhancedAgentResponse } from '@/lib/agents/types';
 // import { checkUserCredits, deductCredits } from '@/lib/credit-utils';
 
 // Rate limiting: 100 requests per minute
@@ -14,14 +16,6 @@ interface ChatRequest {
   message: string;
 }
 
-interface XAIMetrics {
-  confidence_score: number;
-  reasoning_steps: string[];
-  uncertainty_factors: string[];
-  data_quality_score: number;
-  response_completeness_score: number;
-  user_satisfaction_prediction: number;
-}
 
 interface RAGContext {
   retrieved_chunks: number;
@@ -53,6 +47,7 @@ interface ChatResponse {
   xai_metrics?: XAIMetrics;
   agent_thinking_notes?: string[];
   sql_queries?: string[];
+  all_queries?: string[];
   graph_data?: Record<string, unknown>;
   reasoning_explanation?: string;
   analysis_depth?: string;
@@ -510,6 +505,7 @@ export async function POST(
           xai_metrics?: XAIMetrics;
           agent_thinking_notes?: string[];
           sql_queries?: string[];
+          all_queries?: string[];
           graph_data?: Record<string, unknown>;
           reasoning_explanation?: string;
           analysis_depth?: string;
@@ -567,17 +563,22 @@ export async function POST(
             tokenPayload.userId
           );
 
-          responseText = agentResponse.content;
-          tokensUsed = agentResponse.tokens_used;
-          
-          // Debug: Log what we received from the multi-agent flow
-          console.log('🔍 Debug: Agent response keys:', Object.keys(agentResponse));
-          console.log('🔍 Debug: Has xai_metrics:', !!agentResponse.xai_metrics);
-          console.log('🔍 Debug: Has sql_queries:', !!agentResponse.sql_queries);
-          console.log('🔍 Debug: Has graph_data:', !!agentResponse.graph_data);
-          console.log('🔍 Debug: Has agent_thinking_notes:', !!agentResponse.agent_thinking_notes);
-          console.log('🔍 Debug: xai_metrics value:', agentResponse.xai_metrics);
-          console.log('🔍 Debug: sql_queries value:', agentResponse.sql_queries);
+          if (agentResponse) {
+            responseText = agentResponse.content;
+            tokensUsed = agentResponse.tokens_used;
+            
+            // Debug: Log what we received from the multi-agent flow
+            console.log('🔍 Debug: Agent response keys:', Object.keys(agentResponse));
+            console.log('🔍 Debug: Has xai_metrics:', !!agentResponse.xai_metrics);
+            console.log('🔍 Debug: Has sql_queries:', !!agentResponse.sql_queries);
+            console.log('🔍 Debug: Has graph_data:', !!agentResponse.graph_data);
+            console.log('🔍 Debug: Has agent_thinking_notes:', !!agentResponse.agent_thinking_notes);
+            console.log('🔍 Debug: xai_metrics value:', agentResponse.xai_metrics);
+            console.log('🔍 Debug: sql_queries value:', agentResponse.sql_queries);
+          } else {
+            responseText = "I encountered an error while processing your request. Please try again.";
+            tokensUsed = 0;
+          }
           
           console.log('✅ Step 4: AI response generated successfully');
 
@@ -836,6 +837,9 @@ export async function POST(
         
         // SQL Queries (only include if available)
         ...(agentResponse.sql_queries && { sql_queries: agentResponse.sql_queries }),
+        
+        // All Queries (only include if available)
+        ...(agentResponse.all_queries && { all_queries: agentResponse.all_queries }),
         
         // Graph Data (only include if available)
         ...(agentResponse.graph_data && { graph_data: agentResponse.graph_data }),

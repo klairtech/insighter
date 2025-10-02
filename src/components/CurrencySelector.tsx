@@ -14,7 +14,8 @@ const CurrencySelector: React.FC<CurrencySelectorProps> = ({
   className = "",
   initialCurrency,
 }) => {
-  const { user, session } = useSupabaseAuth();
+  const authContext = useSupabaseAuth();
+  const { user, session } = authContext || { user: null, session: null };
   const [selectedCurrency, setSelectedCurrency] = useState(
     initialCurrency || "INR"
   );
@@ -41,7 +42,7 @@ const CurrencySelector: React.FC<CurrencySelectorProps> = ({
         const data = await response.json();
         setSelectedCurrency(data.preferred_currency || "INR");
       }
-    } catch (_error) {}
+    } catch {}
   }, [session]);
 
   useEffect(() => {
@@ -73,7 +74,7 @@ const CurrencySelector: React.FC<CurrencySelectorProps> = ({
         onCurrencyChange?.(currency);
       } else {
       }
-    } catch (_error) {
+    } catch {
     } finally {
       setIsLoading(false);
     }

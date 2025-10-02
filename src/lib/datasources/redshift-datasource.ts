@@ -42,7 +42,7 @@ export class RedshiftDataSource implements DataSourceAgent {
     ]
   };
 
-  async testConnection(config: DatabaseDataSourceConfig): Promise<DataSourceTestResult> {
+  async testConnection(config: Record<string, unknown>): Promise<DataSourceTestResult> {
     const startTime = Date.now();
     
     try {
@@ -87,7 +87,7 @@ export class RedshiftDataSource implements DataSourceAgent {
     }
   }
 
-  async connect(config: DatabaseDataSourceConfig): Promise<DataSourceConnection> {
+  async connect(config: Record<string, unknown>): Promise<DataSourceConnection> {
     try {
       console.log('🔌 Connecting to Redshift database...');
       
@@ -96,17 +96,17 @@ export class RedshiftDataSource implements DataSourceAgent {
       const connection: DataSourceConnection = {
         id: `redshift_${Date.now()}`,
         data_source_id: 'redshift',
-        host: config.host,
-        port: config.port || 5439, // Default Redshift port
-        database_name: config.database_name,
-        username: config.username,
-        connection_timeout: config.connection_timeout || 60000, // Longer timeout for Redshift
-        query_timeout: config.query_timeout || 300000, // 5 minutes for large queries
-        max_connections: config.max_connections || 5, // Redshift has connection limits
+        host: config.host as string,
+        port: (config.port as number) || 5439, // Default Redshift port
+        database_name: config.database_name as string,
+        username: config.username as string,
+        connection_timeout: (config.connection_timeout as number) || 60000, // Longer timeout for Redshift
+        query_timeout: (config.query_timeout as number) || 300000, // 5 minutes for large queries
+        max_connections: (config.max_connections as number) || 5, // Redshift has connection limits
         additional_config: {
-          ...config.additional_config,
+          ...(config.additional_config as Record<string, unknown>),
           ssl_mode: 'require',
-          cluster_identifier: config.additional_config?.cluster_identifier
+          cluster_identifier: (config.additional_config as Record<string, unknown>)?.cluster_identifier
         }
       };
       

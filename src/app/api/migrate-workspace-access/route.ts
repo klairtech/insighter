@@ -8,6 +8,13 @@ import { addOrganizationMemberToWorkspaces } from '@/lib/workspace-inheritance';
  */
 export async function POST(request: NextRequest) {
   try {
+    if (!supabaseServer) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      );
+    }
+
     const decoded = await verifyUserSession(request);
     if (!decoded) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

@@ -12,7 +12,7 @@ export const razorpayConfig = {
   currency: 'INR',
   name: 'Insighter',
   description: 'Credit Purchase',
-  image: '/logo.svg',
+  image: 'https://uvbtwtqmtsbdwmcrtdcx.supabase.co/storage/v1/object/public/website/public/Logos/Insighter/Insighter%20Logos%20(svg)/logo.svg',
   theme: {
     color: '#3B82F6', // Blue color matching your theme
   },

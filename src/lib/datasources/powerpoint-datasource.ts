@@ -39,7 +39,7 @@ export class PowerPointDataSource implements DataSourceAgent {
     ]
   };
 
-  async testConnection(config: FileDataSourceConfig): Promise<DataSourceTestResult> {
+  async testConnection(config: Record<string, unknown>): Promise<DataSourceTestResult> {
     const startTime = Date.now();
     
     try {
@@ -51,8 +51,9 @@ export class PowerPointDataSource implements DataSourceAgent {
       }
       
       // Check file extension
-      if (!config.file_name.toLowerCase().endsWith('.pptx') && 
-          !config.file_name.toLowerCase().endsWith('.ppt')) {
+      const fileName = config.file_name as string;
+      if (!fileName.toLowerCase().endsWith('.pptx') && 
+          !fileName.toLowerCase().endsWith('.ppt')) {
         throw new Error('File must be a PowerPoint presentation (.pptx or .ppt)');
       }
       
@@ -93,7 +94,7 @@ export class PowerPointDataSource implements DataSourceAgent {
     }
   }
 
-  async connect(config: FileDataSourceConfig): Promise<DataSourceConnection> {
+  async connect(config: Record<string, unknown>): Promise<DataSourceConnection> {
     try {
       console.log('🔌 Connecting to PowerPoint presentation...');
       
@@ -102,10 +103,10 @@ export class PowerPointDataSource implements DataSourceAgent {
       const connection: DataSourceConnection = {
         id: `powerpoint_${Date.now()}`,
         data_source_id: 'powerpoint',
-        connection_string: config.file_path,
+        connection_string: config.file_path as string,
         additional_config: {
-          file_name: config.file_name,
-          file_type: config.file_type,
+          file_name: config.file_name as string,
+          file_type: config.file_type as string,
           file_size: config.file_size,
           encoding: config.encoding || 'utf-8'
         }
@@ -139,7 +140,7 @@ export class PowerPointDataSource implements DataSourceAgent {
       const schema: DataSourceSchema = {
         tables: [],
         metadata: {
-          database_name: connection.additional_config?.file_name || 'powerpoint_presentation',
+          database_name: (connection.additional_config?.file_name as string) || 'powerpoint_presentation',
           database_version: 'PowerPoint 2021',
           schema_version: '1.0',
           last_updated: new Date().toISOString(),

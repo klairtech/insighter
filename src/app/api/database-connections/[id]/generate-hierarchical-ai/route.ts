@@ -23,6 +23,13 @@ export async function POST(
 
     const { id: connectionId } = await params
 
+    if (!supabaseServer) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      )
+    }
+
     // Get the database connection
     const { data: connection, error: connectionError } = await supabaseServer
       .from('database_connections')

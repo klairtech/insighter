@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseServer, verifyUserSession } from '@/lib/server-utils'
 import { decryptObject } from '@/lib/encryption'
+import { DatabaseTable } from '@/types/database-schema'
 
 interface SyncResult {
   success: boolean
@@ -18,19 +19,37 @@ interface SyncResult {
         type: string
         nullable: boolean
         sample_values: string[]
-        ai_definition?: any
+        ai_definition?: {
+          description?: string;
+          business_purpose?: string;
+          key_entities?: string[];
+          relationships?: string[];
+          usage_examples?: string[];
+        }
       }>
       row_count: number
-      ai_definition?: any
+      ai_definition?: {
+        description?: string;
+        business_purpose?: string;
+        key_entities?: string[];
+        relationships?: string[];
+        usage_examples?: string[];
+      }
     }>
-    ai_definition?: any
+    ai_definition?: {
+      description?: string;
+      business_purpose?: string;
+      key_entities?: string[];
+      relationships?: string[];
+      usage_examples?: string[];
+    }
   }
   summary?: string
   rowCount?: number
   columnCount?: number
   contentSize?: number
   contentHash?: string
-  sampleData?: any
+  sampleData?: Record<string, unknown>
 }
 import { generateMultipleTablesBatchAIDefinitions } from '@/lib/hierarchical-ai-generation'
 import { saveTokenUsageToDatabase } from '@/lib/token-utils-server'
@@ -41,6 +60,13 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    if (!supabaseServer) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      )
+    }
+
     const session = await verifyUserSession(request)
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -50,7 +76,7 @@ export async function POST(
     const { syncType = 'full' } = await request.json()
 
     // Get external connection
-    const { data: connection, error } = await supabaseServer
+    const { data: connection, error } = await supabaseServer!
       .from('external_connections')
       .select('*')
       .eq('id', connectionId)
@@ -62,7 +88,7 @@ export async function POST(
     }
 
     // Check workspace access
-    const { data: workspace, error: workspaceError } = await supabaseServer
+    const { data: workspace, error: workspaceError } = await supabaseServer!
       .from('workspaces')
       .select('organization_id')
       .eq('id', connection.workspace_id)
@@ -73,7 +99,7 @@ export async function POST(
     }
 
     // Check organization membership
-    const { data: membership, error: membershipError } = await supabaseServer
+    const { data: membership, error: membershipError } = await supabaseServer!
       .from('organization_members')
       .select('id')
       .eq('organization_id', workspace.organization_id)
@@ -90,7 +116,7 @@ export async function POST(
     console.log(`🔄 Starting ${syncType} sync for ${connection.type} connection: ${connection.name}`)
 
     // Update connection status to syncing
-    await supabaseServer
+    await supabaseServer!
       .from('external_connections')
       .update({ connection_status: 'syncing' })
       .eq('id', connectionId)
@@ -133,7 +159,7 @@ export async function POST(
           totalInputTokens: aiInputTokens,
           totalOutputTokens: aiOutputTokens
         } = await generateMultipleTablesBatchAIDefinitions(
-          syncResult.schema.tables as any,
+          syncResult.schema.tables as DatabaseTable[],
           connection.name,
           connection.type,
           3
@@ -170,11 +196,8 @@ export async function POST(
             tableInsights[0].business_purpose || "Data storage and management with intelligent analysis capabilities" :
             "Data storage and management with intelligent analysis capabilities",
           key_entities: [...new Set(allKeyEntities)].slice(0, 10),
-          common_use_cases: [...new Set(allUseCases)].slice(0, 8),
-          data_relationships: ["Data relationships within the source"],
-          table_summary: `Data source contains ${syncResult.schema.tables.length} structured data elements`,
-          overall_architecture: "External data source with structured content",
-          data_flow_analysis: "Data flows from external source to internal analysis"
+          relationships: ["Data relationships within the source"],
+          usage_examples: [...new Set(allUseCases)].slice(0, 8)
         }
       }
 
@@ -207,7 +230,7 @@ export async function POST(
         updateData.data_sample = syncResult.sampleData || {}
       }
 
-      await supabaseServer
+      await supabaseServer!
         .from('external_connections')
         .update(updateData)
         .eq('id', connectionId)
@@ -275,7 +298,7 @@ export async function POST(
       }
 
       // Log sync completion
-      await supabaseServer
+      await supabaseServer!
         .from('external_connection_syncs')
         .insert({
           connection_id: connectionId,
@@ -303,13 +326,13 @@ export async function POST(
       console.error('❌ Sync failed:', syncError)
       
       // Update connection status to error
-      await supabaseServer
+      await supabaseServer!
         .from('external_connections')
         .update({ connection_status: 'error' })
         .eq('id', connectionId)
 
       // Log sync failure
-      await supabaseServer
+      await supabaseServer!
         .from('external_connection_syncs')
         .insert({
           connection_id: connectionId,
@@ -337,6 +360,10 @@ async function syncGoogleSheets(connection: { id: string; name: string; type: st
   console.log(`📊 Syncing Google Sheets: ${config.sheetId || config.url}`)
   
   try {
+    if (!supabaseServer) {
+      throw new Error('Database not configured')
+    }
+
     // Get OAuth tokens from database
     const { data: oauthTokens, error: tokenError } = await supabaseServer
       .from('oauth_tokens')
@@ -350,13 +377,13 @@ async function syncGoogleSheets(connection: { id: string; name: string; type: st
     }
 
     // Decrypt tokens
-    const accessToken = decryptObject(oauthTokens.access_token_encrypted)
+    const accessToken = decryptObject(oauthTokens.access_token_encrypted) as string
     const refreshToken = oauthTokens.refresh_token_encrypted ? 
-      decryptObject(oauthTokens.refresh_token_encrypted) : undefined
+      decryptObject(oauthTokens.refresh_token_encrypted) as string : undefined
 
     // Initialize Google Sheets connector
     const { GoogleSheetsConnector } = await import('@/lib/datasources/google-sheets')
-    const connector = new GoogleSheetsConnector(accessToken as any, refreshToken as any)
+    const connector = new GoogleSheetsConnector(accessToken, refreshToken)
 
     // Fetch sheet data
     const sheetData = await connector.fetchSheetData({
@@ -398,6 +425,10 @@ async function syncGoogleDocs(connection: { id: string; name: string; type: stri
   console.log(`📄 Syncing Google Docs: ${config.documentId || config.url}`)
   
   try {
+    if (!supabaseServer) {
+      throw new Error('Database not configured')
+    }
+
     // Get OAuth tokens from database
     const { data: oauthTokens, error: tokenError } = await supabaseServer
       .from('oauth_tokens')
@@ -411,13 +442,13 @@ async function syncGoogleDocs(connection: { id: string; name: string; type: stri
     }
 
     // Decrypt tokens
-    const accessToken = decryptObject(oauthTokens.access_token_encrypted)
+    const accessToken = decryptObject(oauthTokens.access_token_encrypted) as string
     const refreshToken = oauthTokens.refresh_token_encrypted ? 
-      decryptObject(oauthTokens.refresh_token_encrypted) : undefined
+      decryptObject(oauthTokens.refresh_token_encrypted) as string : undefined
 
     // Initialize Google Docs connector
     const { GoogleDocsConnector } = await import('@/lib/datasources/google-docs')
-    const connector = new GoogleDocsConnector(accessToken as any, refreshToken as any)
+    const connector = new GoogleDocsConnector(accessToken, refreshToken)
 
     // Fetch document data
     const docData = await connector.fetchDocumentData({
@@ -504,6 +535,10 @@ async function syncGoogleAnalytics(connection: { id: string; name: string; type:
   console.log(`📊 Syncing Google Analytics: ${config.propertyId || config.url}`)
   
   try {
+    if (!supabaseServer) {
+      throw new Error('Database not configured')
+    }
+
     // Get OAuth tokens from database
     const { data: oauthTokens, error: tokenError } = await supabaseServer
       .from('oauth_tokens')
@@ -517,13 +552,13 @@ async function syncGoogleAnalytics(connection: { id: string; name: string; type:
     }
 
     // Decrypt tokens
-    const accessToken = decryptObject(oauthTokens.access_token_encrypted)
+    const accessToken = decryptObject(oauthTokens.access_token_encrypted) as string
     const refreshToken = oauthTokens.refresh_token_encrypted ? 
-      decryptObject(oauthTokens.refresh_token_encrypted) : undefined
+      decryptObject(oauthTokens.refresh_token_encrypted) as string : undefined
 
     // Initialize Google Analytics connector
     const { GoogleAnalyticsConnector } = await import('@/lib/datasources/google-analytics')
-    const connector = new GoogleAnalyticsConnector(accessToken as any, refreshToken as any)
+    const connector = new GoogleAnalyticsConnector(accessToken, refreshToken)
 
     // Fetch analytics data
     const analyticsData = await connector.fetchAnalyticsData({

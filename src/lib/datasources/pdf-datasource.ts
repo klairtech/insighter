@@ -39,7 +39,7 @@ export class PDFDataSource implements DataSourceAgent {
     ]
   };
 
-  async testConnection(config: FileDataSourceConfig): Promise<DataSourceTestResult> {
+  async testConnection(config: Record<string, unknown>): Promise<DataSourceTestResult> {
     const startTime = Date.now();
     
     try {
@@ -51,7 +51,8 @@ export class PDFDataSource implements DataSourceAgent {
       }
       
       // Check file extension
-      if (!config.file_name.toLowerCase().endsWith('.pdf')) {
+      const fileName = config.file_name as string;
+      if (!fileName.toLowerCase().endsWith('.pdf')) {
         throw new Error('File must be a PDF file (.pdf)');
       }
       
@@ -92,7 +93,7 @@ export class PDFDataSource implements DataSourceAgent {
     }
   }
 
-  async connect(config: FileDataSourceConfig): Promise<DataSourceConnection> {
+  async connect(config: Record<string, unknown>): Promise<DataSourceConnection> {
     try {
       console.log('🔌 Connecting to PDF file...');
       
@@ -101,10 +102,10 @@ export class PDFDataSource implements DataSourceAgent {
       const connection: DataSourceConnection = {
         id: `pdf_${Date.now()}`,
         data_source_id: 'pdf',
-        connection_string: config.file_path,
+        connection_string: config.file_path as string,
         additional_config: {
-          file_name: config.file_name,
-          file_type: config.file_type,
+          file_name: config.file_name as string,
+          file_type: config.file_type as string,
           file_size: config.file_size,
           page_range: config.page_range,
           encoding: config.encoding || 'utf-8'
@@ -139,7 +140,7 @@ export class PDFDataSource implements DataSourceAgent {
       const schema: DataSourceSchema = {
         tables: [],
         metadata: {
-          database_name: connection.additional_config?.file_name || 'pdf_file',
+          database_name: (connection.additional_config?.file_name as string) || 'pdf_file',
           database_version: 'PDF 1.7',
           schema_version: '1.0',
           last_updated: new Date().toISOString(),

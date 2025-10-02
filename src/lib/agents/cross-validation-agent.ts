@@ -10,7 +10,7 @@ import { callAIWithOpenAIPrimary } from '../ai-utils';
 
 export interface CrossValidationResult {
   source_id: string;
-  data: any;
+  data: unknown;
   confidence_score: number;
   validation_status: 'validated' | 'inconsistent' | 'unverified' | 'contradicted';
   inconsistencies: string[];
@@ -35,7 +35,7 @@ export class CrossValidationAgent implements BaseAgent {
   name = 'Cross-Validation Agent';
   description = 'Validates results across multiple data sources to detect inconsistencies and provide confidence scores';
 
-  async execute(context: AgentContext & { sourceResults: any[] }): Promise<AgentResponse<CrossValidationAgentResponse>> {
+  async execute(context: AgentContext & { sourceResults: Record<string, unknown>[] }): Promise<AgentResponse<CrossValidationAgentResponse>> {
     const startTime = Date.now();
     
     try {
@@ -122,13 +122,13 @@ export class CrossValidationAgent implements BaseAgent {
     }
   }
 
-  private async performCrossValidation(sourceResults: any[], userQuery: string): Promise<CrossValidationResult[]> {
+  private async performCrossValidation(sourceResults: Record<string, unknown>[], userQuery: string): Promise<CrossValidationResult[]> {
     const validationResults: CrossValidationResult[] = [];
     
     for (const result of sourceResults) {
       if (!result.success || !result.data) {
         validationResults.push({
-          source_id: result.source_id || 'unknown',
+          source_id: (result.source_id as string) || 'unknown',
           data: result.data,
           confidence_score: 0.1,
           validation_status: 'unverified',
@@ -148,8 +148,8 @@ export class CrossValidationAgent implements BaseAgent {
   }
 
   private async validateSourceResult(
-    sourceResult: any, 
-    allResults: any[], 
+    sourceResult: Record<string, unknown>, 
+    allResults: Record<string, unknown>[], 
     userQuery: string
   ): Promise<CrossValidationResult> {
     try {
@@ -204,7 +204,7 @@ Respond with JSON:
       const validation = JSON.parse(response.content);
       
       return {
-        source_id: sourceResult.source_id || 'unknown',
+        source_id: (sourceResult.source_id as string) || 'unknown',
         data: sourceResult.data,
         confidence_score: validation.confidence_score || 0.5,
         validation_status: validation.validation_status || 'unverified',
@@ -216,7 +216,7 @@ Respond with JSON:
     } catch (error) {
       console.warn('AI validation failed for source:', sourceResult.source_id, error);
       return {
-        source_id: sourceResult.source_id || 'unknown',
+        source_id: (sourceResult.source_id as string) || 'unknown',
         data: sourceResult.data,
         confidence_score: 0.3,
         validation_status: 'unverified',

@@ -9,6 +9,13 @@ const supabaseServer = createClient(supabaseUrl, supabaseServiceKey)
 
 export async function POST(request: NextRequest) {
   try {
+    if (!supabaseServer) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      )
+    }
+
     // Verify user session
     const session = await verifyUserSession(request)
     if (!session) {

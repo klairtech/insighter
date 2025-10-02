@@ -25,6 +25,13 @@ export async function POST(
       return NextResponse.json({ error: 'Schema is required' }, { status: 400 })
     }
 
+    if (!supabaseServer) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      )
+    }
+
     // Get database connection
     const { data: connection, error } = await supabaseServer
       .from('database_connections')

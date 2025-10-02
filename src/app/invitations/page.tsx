@@ -27,7 +27,8 @@ interface Invitation {
 }
 
 const InvitationsPage: React.FC = () => {
-  const { user, session } = useSupabaseAuth();
+  const authContext = useSupabaseAuth();
+  const { user, session } = authContext || { user: null, session: null };
   const router = useRouter();
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [isLoading, setIsLoading] = useState(true);

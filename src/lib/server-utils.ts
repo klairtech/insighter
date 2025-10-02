@@ -13,7 +13,12 @@ export const supabaseServer = supabaseUrl && supabaseServiceKey ? createClient(s
     autoRefreshToken: false,
     persistSession: false
   }
-}) : null
+}) : createClient('https://placeholder.supabase.co', 'placeholder-key', {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false
+  }
+})
 
 // Create server-side Supabase client that can read session cookies
 export async function createServerSupabaseClient() {
@@ -57,7 +62,7 @@ export const supabaseAdmin = supabaseServer
 
 // Create client-side Supabase client (read-only for cookies)
 export function createClientSupabaseClient() {
-  return createClient(supabaseUrl, supabaseAnonKey, {
+  return createClient(supabaseUrl || 'https://placeholder.supabase.co', supabaseAnonKey || 'placeholder-key', {
     auth: {
       autoRefreshToken: true,
       persistSession: true
@@ -68,7 +73,7 @@ export function createClientSupabaseClient() {
 // Create a client-side Supabase client that doesn't try to set cookies
 // This should be used in client components to avoid cookie setting errors
 export function createClientOnlySupabaseClient() {
-  return createClient(supabaseUrl, supabaseAnonKey, {
+  return createClient(supabaseUrl || 'https://placeholder.supabase.co', supabaseAnonKey || 'placeholder-key', {
     auth: {
       autoRefreshToken: true,
       persistSession: true,
@@ -80,6 +85,12 @@ export function createClientOnlySupabaseClient() {
 
 // Helper function to verify user session from request headers
 export async function verifyUserSession(request: Request) {
+  // Check if we have proper Supabase configuration
+  if (!supabaseUrl || !supabaseServiceKey) {
+    console.log('❌ verifyUserSession - Supabase not configured')
+    return null
+  }
+
   const authHeader = request.headers.get('authorization')
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     console.log('❌ verifyUserSession - No valid auth header')
@@ -102,6 +113,12 @@ export async function verifyUserSession(request: Request) {
 
 // Server-side data fetching utilities
 export async function getServerSideOrganizations() {
+  // Check if we have proper Supabase configuration
+  if (!supabaseUrl || !supabaseServiceKey) {
+    console.log('❌ getServerSideOrganizations - Supabase not configured')
+    return []
+  }
+
   try {
     const { data, error } = await supabaseServer
       .from('organizations')
@@ -130,6 +147,12 @@ export async function getServerSideOrganizations() {
 }
 
 export async function getServerSideUser(userId: string) {
+  // Check if we have proper Supabase configuration
+  if (!supabaseUrl || !supabaseServiceKey) {
+    console.log('❌ getServerSideUser - Supabase not configured')
+    return null
+  }
+
   try {
     const { data, error } = await supabaseServer
       .from('users')

@@ -174,7 +174,8 @@ const PricingPage: React.FC = () => {
           currency: orderData.order.currency,
           name: "Insighter",
           description: `${plan.name} Plan - ${orderData.credits} credits`,
-          image: "/logo.svg",
+          image:
+            "https://uvbtwtqmtsbdwmcrtdcx.supabase.co/storage/v1/object/public/website/public/Logos/Insighter/Insighter%20Logos%20(svg)/logo.svg",
           order_id: orderData.order.id,
           handler: async function (response: {
             razorpay_order_id: string;

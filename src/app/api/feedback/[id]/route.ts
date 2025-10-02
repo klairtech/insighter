@@ -3,6 +3,10 @@ import { supabaseServer } from '@/lib/server-utils'
 
 // Helper function to verify admin session
 async function verifyAdminSession(request: NextRequest) {
+  if (!supabaseServer) {
+    return null
+  }
+
   const authHeader = request.headers.get('authorization')
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return null
@@ -32,7 +36,7 @@ export async function GET(
     const { id } = await params
 
     // Get feedback by ID
-    const { data: feedback, error } = await supabaseServer
+    const { data: feedback, error } = await supabaseServer!
       .from('feedback')
       .select('*')
       .eq('id', id)
@@ -74,7 +78,7 @@ export async function PUT(
     const { status, notes, priority } = body
 
     // Check if feedback exists
-    const { data: existingFeedback, error: fetchError } = await supabaseServer
+    const { data: existingFeedback, error: fetchError } = await supabaseServer!
       .from('feedback')
       .select('id')
       .eq('id', id)
@@ -118,7 +122,7 @@ export async function PUT(
     if (notes !== undefined) updateData.notes = notes
     if (priority !== undefined) updateData.priority = priority
 
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer!
       .from('feedback')
       .update(updateData)
       .eq('id', id)
@@ -164,7 +168,7 @@ export async function DELETE(
     const { id } = await params
 
     // Check if feedback exists
-    const { data: existingFeedback, error: fetchError } = await supabaseServer
+    const { data: existingFeedback, error: fetchError } = await supabaseServer!
       .from('feedback')
       .select('id')
       .eq('id', id)
@@ -178,7 +182,7 @@ export async function DELETE(
     }
 
     // Delete feedback
-    const { error } = await supabaseServer
+    const { error } = await supabaseServer!
       .from('feedback')
       .delete()
       .eq('id', id)

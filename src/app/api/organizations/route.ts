@@ -14,6 +14,13 @@ const CACHE_KEY = 'organizations'
 
 export async function GET(request: NextRequest) {
   try {
+    if (!supabaseServer) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      )
+    }
+
     // Rate limiting
     const clientIP = request.headers.get('x-real-ip') || request.headers.get('x-forwarded-for') || 'unknown'
     const rateLimit = checkRateLimit(clientIP, 100, 15 * 60 * 1000) // 100 requests per 15 minutes

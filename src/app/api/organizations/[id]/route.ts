@@ -3,6 +3,10 @@ import { supabaseServer, checkRateLimit } from '@/lib/server-utils'
 
 // Helper function to verify user session
 async function verifyUserSession(request: NextRequest) {
+  if (!supabaseServer) {
+    return null
+  }
+
   const authHeader = request.headers.get('authorization')
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return null
@@ -24,6 +28,10 @@ async function verifyUserSession(request: NextRequest) {
 // Helper function to check if user is owner of organization
 async function checkOrganizationOwnership(userId: string, organizationId: string) {
   try {
+    if (!supabaseServer) {
+      return false
+    }
+
     const { data: membership, error } = await supabaseServer
       .from('organization_members')
       .select('role')
@@ -48,6 +56,13 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    if (!supabaseServer) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      )
+    }
+
     // Verify user session
     const user = await verifyUserSession(request)
     if (!user) {
@@ -127,6 +142,13 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    if (!supabaseServer) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      )
+    }
+
     // Verify user session
     const user = await verifyUserSession(request)
     if (!user) {
@@ -225,6 +247,13 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    if (!supabaseServer) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      )
+    }
+
     // Verify user session
     const user = await verifyUserSession(request)
     if (!user) {

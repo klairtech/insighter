@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
     console.log(`🎫 Processing invitation acceptance for user ${decoded.userId} with token ${token}`);
 
     // Find the invitation
-    const { data: invitation, error: invitationError } = await supabaseAdmin
+    const { data: invitation, error: invitationError } = await supabaseAdmin!
       .from('organization_invitations')
       .select(`
         id,

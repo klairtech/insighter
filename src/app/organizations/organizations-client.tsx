@@ -39,7 +39,11 @@ export default function OrganizationsClient({
   initialOrganizations,
 }: OrganizationsClientProps) {
   const router = useRouter();
-  const { session, isLoading } = useSupabaseAuth();
+  const authContext = useSupabaseAuth();
+  const { session, isLoading } = authContext || {
+    session: null,
+    isLoading: false,
+  };
   const { trackFeatureUsage } = useAnalytics();
   const [organizations, setOrganizations] =
     useState<Organization[]>(initialOrganizations);

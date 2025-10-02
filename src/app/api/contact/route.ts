@@ -3,6 +3,13 @@ import { supabaseServer } from '@/lib/server-utils'
 
 export async function POST(request: NextRequest) {
   try {
+    if (!supabaseServer) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      )
+    }
+
     const body = await request.json()
     const { name, email, company, phone, service, message, form_type = 'contact' } = body
 
@@ -63,6 +70,13 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
+    if (!supabaseServer) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      )
+    }
+
     // This endpoint is for admin use only - would need proper auth
     const { searchParams } = new URL(request.url)
     const status = searchParams.get('status')

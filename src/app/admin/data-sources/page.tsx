@@ -15,7 +15,8 @@ interface DataSourceConfig {
 }
 
 export default function DataSourceAdminPage() {
-  const { session } = useSupabaseAuth();
+  const authContext = useSupabaseAuth();
+  const { session } = authContext || { session: null };
   const [dataSources, setDataSources] = useState<DataSourceConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

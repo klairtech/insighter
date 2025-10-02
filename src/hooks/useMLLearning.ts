@@ -18,7 +18,7 @@ export interface LearningInsights {
   query_patterns: {
     successful_patterns: string[]
     failure_patterns: string[]
-    user_preferences: Record<string, any>
+    user_preferences: Record<string, unknown>
   }
   agent_optimizations: {
     agent_type: string
@@ -95,8 +95,8 @@ export function useMLLearning() {
         features: data.features,
         learningInsights: data.learningInsights
       }
-    } catch (_err) {
-      const errorMessage = _err instanceof Error ? _err.message : 'Unknown error'
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error'
       setError(errorMessage)
       return null
     } finally {
@@ -133,8 +133,8 @@ export function useMLLearning() {
       }
 
       return data.learningInsights
-    } catch (_err) {
-      const errorMessage = _err instanceof Error ? _err.message : 'Unknown error'
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error'
       setError(errorMessage)
       return null
     } finally {
@@ -176,7 +176,7 @@ export function useMLLearning() {
 
       const data = await response.json()
       return data.success
-    } catch (_err) {
+    } catch {
       return false
     }
   }, [])
@@ -208,7 +208,7 @@ export function useMLLearning() {
 
       const data = await response.json()
       return data.success
-    } catch (_err) {
+    } catch {
       return false
     }
   }, [])

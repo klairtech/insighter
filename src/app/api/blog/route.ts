@@ -3,6 +3,10 @@ import { supabaseServer } from '@/lib/server-utils'
 
 // Helper function to verify user session
 async function verifyUserSession(request: NextRequest) {
+  if (!supabaseServer) {
+    return null
+  }
+
   const authHeader = request.headers.get('authorization')
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return null
@@ -23,6 +27,13 @@ async function verifyUserSession(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
+    if (!supabaseServer) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      )
+    }
+
     const { searchParams } = new URL(request.url)
     const published = searchParams.get('published')
     const limit = parseInt(searchParams.get('limit') || '10')
@@ -68,6 +79,13 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    if (!supabaseServer) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      )
+    }
+
     const user = await verifyUserSession(request)
     if (!user) {
       return NextResponse.json(

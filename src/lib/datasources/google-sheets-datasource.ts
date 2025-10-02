@@ -41,7 +41,7 @@ export class GoogleSheetsDataSource implements DataSourceAgent {
     ]
   };
 
-  async testConnection(config: ExternalDataSourceConfig): Promise<DataSourceTestResult> {
+  async testConnection(config: Record<string, unknown>): Promise<DataSourceTestResult> {
     const startTime = Date.now();
     
     try {
@@ -53,7 +53,7 @@ export class GoogleSheetsDataSource implements DataSourceAgent {
       }
       
       // Test with real Google Sheets API
-      const connector = new GoogleSheetsConnector(config.oauth_token, config.refresh_token);
+      const connector = new GoogleSheetsConnector(config.oauth_token as string, config.refresh_token as string);
       
       const connectionTime = Date.now() - startTime;
       
@@ -95,7 +95,7 @@ export class GoogleSheetsDataSource implements DataSourceAgent {
     }
   }
 
-  async connect(config: ExternalDataSourceConfig): Promise<DataSourceConnection> {
+  async connect(config: Record<string, unknown>): Promise<DataSourceConnection> {
     try {
       console.log('🔌 Connecting to Google Sheets...');
       
@@ -104,7 +104,7 @@ export class GoogleSheetsDataSource implements DataSourceAgent {
       const connection: DataSourceConnection = {
         id: `gsheets_${Date.now()}`,
         data_source_id: 'google-sheets',
-        connection_string: config.api_url || 'https://sheets.googleapis.com/v4/spreadsheets',
+        connection_string: (config.api_url as string) || 'https://sheets.googleapis.com/v4/spreadsheets',
         additional_config: {
           api_key: config.api_key,
           oauth_token: config.oauth_token,
@@ -247,12 +247,12 @@ export class GoogleSheetsDataSource implements DataSourceAgent {
       
       // Use real Google Sheets connector
       const connector = new GoogleSheetsConnector(
-        connection.additional_config?.oauth_token,
-        connection.additional_config?.refresh_token
+        (connection.additional_config as Record<string, unknown>)?.oauth_token as string,
+        (connection.additional_config as Record<string, unknown>)?.refresh_token as string
       );
       
       // Parse query to extract sheet configuration
-      const sheetsConfig = this.parseSheetsQuery(query, sheetId);
+      const sheetsConfig = this.parseSheetsQuery(query, sheetId as string);
       
       // Fetch sheet data
       const sheetsData = await connector.fetchSheetData(sheetsConfig);

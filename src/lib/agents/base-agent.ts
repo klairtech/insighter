@@ -15,7 +15,7 @@ export abstract class BaseAgentWithTokenTracking implements BaseAgent {
   protected currentTokensUsed: number = 0;
   protected startTime: number = 0;
 
-  abstract execute(context: AgentContext): Promise<AgentResponse<any>>;
+  abstract execute(context: AgentContext): Promise<AgentResponse<unknown>>;
 
   /**
    * Call AI with automatic token tracking
@@ -82,7 +82,7 @@ export abstract class BaseAgentWithTokenTracking implements BaseAgent {
   protected createSuccessResponse<T>(
     data: T,
     confidence: number = 1.0,
-    additionalMetadata: Record<string, any> = {}
+    additionalMetadata: Record<string, unknown> = {}
   ): AgentResponse<T> {
     return {
       success: true,
@@ -123,7 +123,7 @@ export abstract class BaseAgentWithTokenTracking implements BaseAgent {
   /**
    * Execute agent with automatic timing and token tracking
    */
-  async executeWithTracking(context: AgentContext): Promise<AgentResponse<any>> {
+  async executeWithTracking(context: AgentContext): Promise<AgentResponse<unknown>> {
     this.startTiming();
     this.resetTokenTracking();
     

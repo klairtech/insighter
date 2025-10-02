@@ -37,9 +37,9 @@ export class HallucinationDetectionAgent implements BaseAgent {
   description = 'Detects and prevents hallucinations by analyzing responses for factual accuracy and consistency';
 
   async execute(context: AgentContext & { 
-    sourceResults: any[];
+    sourceResults: Record<string, unknown>[];
     generatedResponse: string;
-    crossValidationResults?: any;
+    crossValidationResults?: Record<string, unknown>;
   }): Promise<AgentResponse<HallucinationDetectionAgentResponse>> {
     const startTime = Date.now();
     
@@ -132,9 +132,9 @@ export class HallucinationDetectionAgent implements BaseAgent {
 
   private async performHallucinationChecks(
     response: string,
-    sourceResults: any[],
+    sourceResults: Record<string, unknown>[],
     userQuery: string,
-    crossValidationResults?: any
+    crossValidationResults?: Record<string, unknown>
   ): Promise<HallucinationCheck[]> {
     const checks: HallucinationCheck[] = [];
     
@@ -163,7 +163,7 @@ export class HallucinationDetectionAgent implements BaseAgent {
 
   private async checkFactualAccuracy(
     response: string,
-    sourceResults: any[],
+    sourceResults: Record<string, unknown>[],
     userQuery: string
   ): Promise<HallucinationCheck> {
     try {
@@ -281,7 +281,7 @@ Respond with JSON:
     }
   }
 
-  private async checkSourceAttribution(response: string, sourceResults: any[]): Promise<HallucinationCheck> {
+  private async checkSourceAttribution(response: string, sourceResults: Record<string, unknown>[]): Promise<HallucinationCheck> {
     try {
       const sourceIds = sourceResults.map(r => r.source_id || 'unknown').filter(id => id !== 'unknown');
       
@@ -338,7 +338,7 @@ Respond with JSON:
     }
   }
 
-  private async checkConfidenceCalibration(response: string, sourceResults: any[]): Promise<HallucinationCheck> {
+  private async checkConfidenceCalibration(response: string, sourceResults: Record<string, unknown>[]): Promise<HallucinationCheck> {
     try {
       const prompt = `You are a confidence calibration checker. Analyze if the response's confidence level matches the available data quality.
 
@@ -395,8 +395,8 @@ Respond with JSON:
 
   private async checkContradictions(
     response: string,
-    sourceResults: any[],
-    crossValidationResults?: any
+    sourceResults: Record<string, unknown>[],
+    crossValidationResults?: Record<string, unknown>
   ): Promise<HallucinationCheck> {
     try {
       const prompt = `You are a contradiction detector. Analyze if the response contains contradictions with the source data or cross-validation results.
@@ -506,7 +506,7 @@ Respond with JSON:
     };
   }
 
-  private calculateHallucinationScores(checks: HallucinationCheck[], sourceResults: any[]): {
+  private calculateHallucinationScores(checks: HallucinationCheck[], sourceResults: Record<string, unknown>[]): {
     overall_confidence: number;
     source_attribution_score: number;
     factual_accuracy_score: number;
@@ -530,9 +530,9 @@ Respond with JSON:
     };
   }
 
-  private determineSafety(analysis: any, scores: any): boolean {
+  private determineSafety(analysis: Record<string, unknown>, scores: Record<string, unknown>): boolean {
     // Don't proceed if critical risk or very low confidence
-    if (analysis.risk_level === 'critical' || scores.overall_confidence < 0.3) {
+    if (analysis.risk_level === 'critical' || (scores.overall_confidence as number) < 0.3) {
       return false;
     }
     
@@ -543,6 +543,6 @@ Respond with JSON:
     
     // Proceed if low risk or medium risk with decent confidence
     return analysis.risk_level === 'low' || 
-           (analysis.risk_level === 'medium' && scores.overall_confidence > 0.5);
+           (analysis.risk_level === 'medium' && (scores.overall_confidence as number) > 0.5);
   }
 }

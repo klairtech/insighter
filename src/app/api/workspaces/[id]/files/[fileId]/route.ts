@@ -21,6 +21,10 @@ const S3_BUCKET = process.env.AWS_S3_BUCKET || 'insighter-files'
 
 // Helper function to verify user session
 async function verifyUserSession(request: NextRequest) {
+  if (!supabaseServer) {
+    return null
+  }
+
   const authHeader = request.headers.get('authorization')
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return null
@@ -42,6 +46,10 @@ async function verifyUserSession(request: NextRequest) {
 // Helper function to check file access
 async function checkFileAccess(userId: string, fileId: string) {
   try {
+    if (!supabaseServer) {
+      return { hasAccess: false, file: null }
+    }
+
     // First, get the file with workspace info
     const { data: file, error: fileError } = await supabaseServer
       .from('file_uploads')
@@ -121,7 +129,7 @@ async function checkFileAccess(userId: string, fileId: string) {
     }
 
     // Check organization membership
-    const { data: membership, error: membershipError } = await supabaseServer
+    const { data: membership, error: membershipError } = await supabaseServer!
       .from('organization_members')
       .select('role')
       .eq('organization_id', file.workspaces.organization_id)
@@ -151,6 +159,13 @@ export async function GET(
   { params }: { params: Promise<{ id: string; fileId: string }> }
 ) {
   try {
+    if (!supabaseServer) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      )
+    }
+
     // Verify user session
     const user = await verifyUserSession(request)
     if (!user) {
@@ -229,6 +244,13 @@ export async function PUT(
   { params }: { params: Promise<{ id: string; fileId: string }> }
 ) {
   try {
+    if (!supabaseServer) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      )
+    }
+
     // Verify user session
     const user = await verifyUserSession(request)
     if (!user) {
@@ -365,6 +387,13 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; fileId: string }> }
 ) {
   try {
+    if (!supabaseServer) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      )
+    }
+
     // Verify user session
     const user = await verifyUserSession(request)
     if (!user) {

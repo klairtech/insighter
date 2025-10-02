@@ -20,7 +20,7 @@ interface CacheStats {
 }
 
 export class AgentCache {
-  private cache: Map<string, CacheEntry<any>> = new Map();
+  private cache: Map<string, CacheEntry<unknown>> = new Map();
   private readonly defaultTTL: number;
   private readonly maxSize: number;
   private stats: CacheStats = {
@@ -91,7 +91,7 @@ export class AgentCache {
   /**
    * Generate cache key for agent results
    */
-  generateAgentKey(agentType: string, query: string, context?: any): string {
+  generateAgentKey(agentType: string, query: string, context?: Record<string, unknown>): string {
     const contextHash = context ? this.hashObject(context) : '';
     const queryHash = this.hashString(query.substring(0, 100));
     return `agent_${agentType}_${queryHash}_${contextHash}`;
@@ -100,9 +100,10 @@ export class AgentCache {
   /**
    * Generate cache key for query plans
    */
-  generatePlanKey(query: string, sources: any[], userId?: string): string {
+  generatePlanKey(query: string, sources: Record<string, unknown>[], userId?: string): string {
     const queryHash = this.hashString(query.substring(0, 100));
-    const sourcesHash = this.hashObject(sources.map(s => ({ id: s.id, type: s.type })));
+    const sourcesData = sources.map(s => ({ id: s.id, type: s.type }));
+    const sourcesHash = this.hashObject({ sources: sourcesData });
     const userHash = userId ? this.hashString(userId) : 'anonymous';
     return `plan_${queryHash}_${sourcesHash}_${userHash}`;
   }
@@ -219,7 +220,7 @@ export class AgentCache {
   /**
    * Hash object to string
    */
-  private hashObject(obj: any): string {
+  private hashObject(obj: Record<string, unknown>): string {
     try {
       return this.hashString(JSON.stringify(obj));
     } catch (error) {

@@ -227,7 +227,7 @@ function D3VisualizationContainer({
                 
                 window.addEventListener('resize', handleResize);
                 
-              } catch (_error) {
+              } catch {
                 console.warn('Error executing D3 visualization script:', _error);
               }
             })();
@@ -246,7 +246,7 @@ function D3VisualizationContainer({
               document.head.removeChild(scriptElement);
             }
           }, 2000); // Increased from 100ms to 2 seconds
-        } catch (_scriptError) {}
+        } catch {}
       });
 
       setIsLoaded(true);
@@ -599,7 +599,7 @@ export default function VisualizationDisplay({
               }
             },
           });
-        } catch (_html2canvasError) {
+        } catch {
           // Fallback: try with minimal options
           canvas = await html2canvas(container, {
             backgroundColor: "#1f2937",
@@ -636,7 +636,7 @@ export default function VisualizationDisplay({
         link.href = chartInstanceRef.current.toBase64Image("image/png", 1);
         link.click();
       }
-    } catch (_error) {
+    } catch {
     } finally {
       setIsDownloading(false);
     }
@@ -716,7 +716,7 @@ export default function VisualizationDisplay({
     try {
       const config = createChartConfig();
       chartInstanceRef.current = new Chart(chartRef.current, config);
-    } catch (_error) {}
+    } catch {}
 
     // Cleanup function
     return () => {

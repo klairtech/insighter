@@ -3,6 +3,10 @@ import { supabaseServer } from '@/lib/server-utils'
 
 // Helper function to verify user session (optional for feedback)
 async function verifyUserSession(request: NextRequest) {
+  if (!supabaseServer) {
+    return null
+  }
+
   const authHeader = request.headers.get('authorization')
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return null
@@ -86,7 +90,7 @@ export async function POST(request: NextRequest) {
     const userId = user?.id || null
 
     // Create feedback
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer!
       .from('feedback')
       .insert([{
         type,
@@ -150,7 +154,7 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50')
     const offset = parseInt(searchParams.get('offset') || '0')
 
-    let query = supabaseServer
+    let query = supabaseServer!
       .from('feedback')
       .select('*')
       .order('created_at', { ascending: false })

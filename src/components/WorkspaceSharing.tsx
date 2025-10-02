@@ -46,7 +46,8 @@ const WorkspaceSharing: React.FC<WorkspaceSharingProps> = ({
   userRole,
   onClose,
 }) => {
-  const { user, session } = useSupabaseAuth();
+  const authContext = useSupabaseAuth();
+  const { user, session } = authContext || { user: null, session: null };
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [invitations, setInvitations] = useState<WorkspaceInvitation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -85,7 +86,9 @@ const WorkspaceSharing: React.FC<WorkspaceSharingProps> = ({
 
       if (!membersResponse.ok) {
         const errorData = await membersResponse.json().catch(() => ({}));
-        const errorMessage = errorData.error || `Failed to load workspace members (${membersResponse.status})`;
+        const errorMessage =
+          errorData.error ||
+          `Failed to load workspace members (${membersResponse.status})`;
         throw new Error(errorMessage);
       }
 
@@ -104,7 +107,9 @@ const WorkspaceSharing: React.FC<WorkspaceSharingProps> = ({
 
       if (!invitationsResponse.ok) {
         const errorData = await invitationsResponse.json().catch(() => ({}));
-        const errorMessage = errorData.error || `Failed to load workspace invitations (${invitationsResponse.status})`;
+        const errorMessage =
+          errorData.error ||
+          `Failed to load workspace invitations (${invitationsResponse.status})`;
         throw new Error(errorMessage);
       }
 

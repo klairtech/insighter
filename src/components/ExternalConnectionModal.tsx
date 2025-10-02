@@ -181,7 +181,8 @@ export default function ExternalConnectionModal({
   onConnectionSuccess,
   workspaceId,
 }: ExternalConnectionModalProps) {
-  const { session } = useSupabaseAuth();
+  const authContext = useSupabaseAuth();
+  const { session } = authContext || { session: null };
   const [selectedSource, setSelectedSource] = useState<string>("");
   const [connectionConfig, setConnectionConfig] =
     useState<ExternalConnectionConfig>({

@@ -14,7 +14,12 @@ interface DashboardStats {
 }
 
 const AdminDashboard: React.FC = () => {
-  const { user, session, signOut } = useSupabaseAuth();
+  const authContext = useSupabaseAuth();
+  const { user, session, signOut } = authContext || {
+    user: null,
+    session: null,
+    signOut: () => {},
+  };
   const [stats, setStats] = useState<DashboardStats>({
     totalUsers: 0,
     totalOrganizations: 0,

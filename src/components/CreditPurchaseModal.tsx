@@ -218,7 +218,8 @@ const CreditPurchaseModal: React.FC<CreditPurchaseModalProps> = ({
         currency: orderData.order.currency,
         name: "Insighter",
         description: `Purchase ${orderData.credits.total} credits`,
-        image: "/logo.svg",
+        image:
+          "https://uvbtwtqmtsbdwmcrtdcx.supabase.co/storage/v1/object/public/website/public/Logos/Insighter/Insighter%20Logos%20(svg)/logo.svg",
         order_id: orderData.order.id,
         handler: async function (response: RazorpayResponse) {
           console.log("🎉 Razorpay handler triggered!", response);

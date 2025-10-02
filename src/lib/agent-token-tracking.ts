@@ -18,7 +18,7 @@ export interface AgentStepTracking {
   tokensUsed: number;
   inputTokens: number;
   outputTokens: number;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -38,7 +38,7 @@ export async function trackAgentStepUsage(
     output_tokens: number;
   },
   conversationId?: string,
-  metadata?: Record<string, any>
+  metadata?: Record<string, unknown>
 ): Promise<string> {
   try {
     const conversationStepId = uuidv4()
@@ -116,7 +116,7 @@ export async function trackAISummaryUsage(
     input_tokens: number;
     output_tokens: number;
   },
-  metadata?: Record<string, any>
+  metadata?: Record<string, unknown>
 ): Promise<string> {
   return trackAgentStepUsage(
     userId,

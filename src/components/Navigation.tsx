@@ -18,6 +18,7 @@ import {
   CreditCard,
 } from "lucide-react";
 import CreditBalance from "./CreditBalance";
+import LogoRobust from "./LogoRobust";
 import { usePremiumMembership } from "@/hooks/usePremiumMembership";
 
 interface Workspace {
@@ -51,10 +52,14 @@ interface Organization {
 const Navigation: React.FC = () => {
   const pathname = usePathname();
   const authContext = useSupabaseAuth();
-  const { user, session, profile, signOut } = authContext || {};
+  const { user, session, profile, signOut } = authContext || {
+    user: null,
+    session: null,
+    profile: null,
+    signOut: () => {},
+  };
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isOrgDropdownOpen, setIsOrgDropdownOpen] = useState(false);
-  const [isResourcesDropdownOpen, setIsResourcesDropdownOpen] = useState(false);
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [, setIsLoading] = useState(false);
@@ -166,7 +171,7 @@ const Navigation: React.FC = () => {
         const apiOrgs = await response.json();
         setOrganizations(apiOrgs);
       }
-    } catch (_error) {
+    } catch {
       setOrganizations([]);
     } finally {
       setIsLoading(false);
@@ -202,7 +207,7 @@ const Navigation: React.FC = () => {
           const _errorData = await response.json();
         } catch {}
       }
-    } catch (_error) {}
+    } catch {}
   }, [user, session]);
 
   useEffect(() => {
@@ -222,18 +227,11 @@ const Navigation: React.FC = () => {
 
   return (
     <header className="fixed top-0 w-full bg-background backdrop-blur-md border-b border-white/10 z-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="w-full px-2 sm:px-4 lg:px-6">
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
           <Link href="/" className="flex items-center">
-            <Image
-              src="/logo-white.svg"
-              alt="Insighter"
-              width={120}
-              height={36}
-              className="h-9 w-auto"
-              priority
-            />
+            <LogoRobust variant="white" size="2xl" showText={false} />
           </Link>
 
           {/* Desktop Navigation */}
@@ -467,61 +465,36 @@ const Navigation: React.FC = () => {
               </>
             ) : isClient ? (
               <>
-                <div className="relative">
-                  <button
-                    className={`px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 flex items-center ${
-                      isActive("/documentation") ||
-                      isActive("/about-us") ||
-                      isActive("/pricing") ||
-                      isActive("/blog") ||
-                      isActive("/feedback")
-                        ? "text-blue-400 bg-blue-500/10"
-                        : "text-gray-300 hover:text-white hover:bg-white/10"
-                    }`}
-                    onClick={() =>
-                      setIsResourcesDropdownOpen(!isResourcesDropdownOpen)
-                    }
-                  >
-                    Resources
-                    <svg
-                      className="ml-1 h-4 w-4"
-                      fill="currentColor"
-                      viewBox="0 0 20 20"
-                    >
-                      <path
-                        fillRule="evenodd"
-                        d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
-                  </button>
-
-                  {isResourcesDropdownOpen && (
-                    <div className="absolute right-0 mt-2 w-48 klair-glass rounded-lg shadow-lg py-2 z-50">
-                      <Link
-                        href="/about-us"
-                        className="block px-4 py-2 text-sm text-gray-300 hover:text-white hover:bg-white/10 transition-colors"
-                        onClick={() => setIsResourcesDropdownOpen(false)}
-                      >
-                        About Us
-                      </Link>
-                      <Link
-                        href="/pricing"
-                        className="block px-4 py-2 text-sm text-gray-300 hover:text-white hover:bg-white/10 transition-colors"
-                        onClick={() => setIsResourcesDropdownOpen(false)}
-                      >
-                        Pricing
-                      </Link>
-                      <Link
-                        href="/contact-us"
-                        className="block px-4 py-2 text-sm text-gray-300 hover:text-white hover:bg-white/10 transition-colors"
-                        onClick={() => setIsResourcesDropdownOpen(false)}
-                      >
-                        Contact
-                      </Link>
-                    </div>
-                  )}
-                </div>
+                <Link
+                  href="/about-us"
+                  className={`px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 ${
+                    isActive("/about-us")
+                      ? "text-blue-400 bg-blue-500/10"
+                      : "text-gray-300 hover:text-white hover:bg-white/10"
+                  }`}
+                >
+                  About Us
+                </Link>
+                <Link
+                  href="/pricing"
+                  className={`px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 ${
+                    isActive("/pricing")
+                      ? "text-blue-400 bg-blue-500/10"
+                      : "text-gray-300 hover:text-white hover:bg-white/10"
+                  }`}
+                >
+                  Pricing
+                </Link>
+                <Link
+                  href="/contact-us"
+                  className={`px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 ${
+                    isActive("/contact-us")
+                      ? "text-blue-400 bg-blue-500/10"
+                      : "text-gray-300 hover:text-white hover:bg-white/10"
+                  }`}
+                >
+                  Contact
+                </Link>
 
                 <div className="flex items-center space-x-3">
                   <Link
@@ -560,7 +533,7 @@ const Navigation: React.FC = () => {
         {/* Mobile Navigation */}
         {isMenuOpen && (
           <div className="md:hidden">
-            <div className="px-2 pt-2 pb-3 space-y-1 bg-black/95 backdrop-blur-md rounded-lg mt-2 border border-white/10">
+            <div className="px-1 pt-2 pb-3 space-y-1 bg-black/95 backdrop-blur-md rounded-lg mt-2 border border-white/10">
               <Link
                 href="/"
                 className={`block px-3 py-2 rounded-md text-base font-medium ${

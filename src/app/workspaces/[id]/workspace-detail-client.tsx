@@ -68,7 +68,7 @@ export default function WorkspaceDetailClient({
     const auth = useSupabaseAuth();
     user = auth?.user;
     session = auth?.session;
-  } catch (_error) {
+  } catch {
     user = null;
     session = null;
   }
@@ -198,7 +198,7 @@ export default function WorkspaceDetailClient({
       if (Array.isArray(connections)) {
         setDatabaseConnections(connections);
       }
-    } catch (_error) {
+    } catch {
     } finally {
       setIsLoadingDatabases(false);
     }
@@ -267,7 +267,7 @@ export default function WorkspaceDetailClient({
           } else {
             setIsRefreshingDatabases(false);
           }
-        } catch (_error) {
+        } catch {
           if (retries > 0) {
             setTimeout(() => fetchWithRetry(retries - 1, delay * 1.5), delay);
           } else {
@@ -332,7 +332,7 @@ export default function WorkspaceDetailClient({
         const error = await response.json();
         updateStatus(`Failed to update workspace: ${error.error}`, "error");
       }
-    } catch (_error) {
+    } catch {
       updateStatus("Failed to update workspace. Please try again.", "error");
     }
   };
@@ -364,7 +364,7 @@ export default function WorkspaceDetailClient({
       if (result.success && Array.isArray(result.connections)) {
         setExternalConnections(result.connections);
       }
-    } catch (_error) {
+    } catch {
     } finally {
       // setIsLoadingExternal(false);
     }
@@ -398,7 +398,7 @@ export default function WorkspaceDetailClient({
         const error = await response.json();
         updateStatus(`Failed to delete workspace: ${error.error}`, "error");
       }
-    } catch (_error) {
+    } catch {
       updateStatus("Failed to delete workspace. Please try again.", "error");
     }
   };
@@ -459,7 +459,7 @@ export default function WorkspaceDetailClient({
           "error"
         );
       }
-    } catch (_error) {
+    } catch {
       updateStatus("Failed to upload files. Please try again.", "error");
     } finally {
       setIsUploading(false);
@@ -491,7 +491,7 @@ export default function WorkspaceDetailClient({
         setApiInfo(null);
         return null;
       }
-    } catch (_error) {
+    } catch {
       setApiInfo(null);
       return null;
     }
@@ -587,7 +587,7 @@ export default function WorkspaceDetailClient({
           result.error || "Failed to regenerate token"
         );
       }
-    } catch (_error) {
+    } catch {
       showError("Token Regeneration Failed", "Failed to regenerate API token");
     }
   };
@@ -1632,7 +1632,7 @@ export default function WorkspaceDetailClient({
                                     "Copied!",
                                     "API token copied to clipboard"
                                   );
-                                } catch (_error) {
+                                } catch {
                                   showError(
                                     "Copy Failed",
                                     "Failed to copy API token to clipboard"

@@ -3,6 +3,10 @@ import { supabaseServer } from '@/lib/server-utils'
 
 // Helper function to verify admin session
 async function verifyAdminSession(request: NextRequest) {
+  if (!supabaseServer) {
+    return null
+  }
+
   const authHeader = request.headers.get('authorization')
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return null
@@ -30,7 +34,7 @@ export async function GET(request: NextRequest) {
     const category = searchParams.get('category')
     const published = searchParams.get('published')
 
-    let query = supabaseServer
+    let query = supabaseServer!
       .from('faqs')
       .select('*')
       .order('display_order', { ascending: true })
@@ -86,7 +90,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create FAQ
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer!
       .from('faqs')
       .insert([{
         question,

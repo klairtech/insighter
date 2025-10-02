@@ -22,7 +22,8 @@ interface UsePremiumMembershipReturn {
 }
 
 export function usePremiumMembership(): UsePremiumMembershipReturn {
-  const { user } = useSupabaseAuth();
+  const authContext = useSupabaseAuth();
+  const { user } = authContext || { user: null };
   const [membership, setMembership] = useState<PremiumMembership | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

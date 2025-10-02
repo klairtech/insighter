@@ -26,7 +26,7 @@ export class DatabaseExecutionAgent implements BaseAgent {
   name = 'Database Execution Agent';
   description = 'Specialized agent for processing database sources with enhanced SQL validation and security';
 
-  async execute(context: AgentContext & { filteredSources: any[]; optimizedQuery: string }): Promise<AgentResponse<DatabaseExecutionAgentResponse>> {
+  async execute(context: AgentContext & { filteredSources: Record<string, unknown>[]; optimizedQuery: string }): Promise<AgentResponse<DatabaseExecutionAgentResponse>> {
     const startTime = Date.now();
     
     try {
@@ -86,11 +86,11 @@ export class DatabaseExecutionAgent implements BaseAgent {
             failedSources++;
           }
         } catch (error) {
-          console.warn(`Failed to execute query on source ${source.id}:`, error);
+          console.warn(`Failed to execute query on source ${source.id as string}:`, error);
           executionResults.push({
-            source_id: source.id,
-            source_name: source.name,
-            source_type: source.type,
+            source_id: source.id as string,
+            source_name: source.name as string,
+            source_type: source.type as string,
             success: false,
             error: error instanceof Error ? error.message : 'Unknown error',
             execution_time_ms: 0,
@@ -166,7 +166,7 @@ export class DatabaseExecutionAgent implements BaseAgent {
   }
 
 
-  private async executeDatabaseQuery(source: any, optimizedQuery: string): Promise<DatabaseExecutionResult> {
+  private async executeDatabaseQuery(source: Record<string, unknown>, optimizedQuery: string): Promise<DatabaseExecutionResult> {
     const sourceStartTime = Date.now();
     // Get database connection details
     const { data: dbConnection, error } = await supabase
@@ -188,9 +188,9 @@ export class DatabaseExecutionAgent implements BaseAgent {
     const queryResult = await this.executeActualDatabaseQuery(dbConnection, sqlQuery);
     
     return {
-      source_id: source.id,
-      source_name: source.name,
-      source_type: source.type,
+      source_id: source.id as string,
+      source_name: source.name as string,
+      source_type: source.type as string,
       success: true,
       data: queryResult.rows,
       query_executed: sqlQuery,
@@ -210,7 +210,7 @@ export class DatabaseExecutionAgent implements BaseAgent {
   }
 
 
-  private async generateSQLQuery(optimizedQuery: string, dbConnection: any): Promise<{ query: string; tokensUsed: number; validation: any }> {
+  private async generateSQLQuery(optimizedQuery: string, dbConnection: Record<string, unknown>): Promise<{ query: string; tokensUsed: number; validation: Record<string, unknown> }> {
     // Use AI to generate appropriate SQL query with enhanced validation
     const sqlPrompt = `You are a specialized SQL query generator for ${dbConnection.database_type} databases. Generate ONLY a valid SQL query based on the user's request.
 
@@ -295,7 +295,7 @@ Respond with JSON:
     }
   }
 
-  private async validateGeneratedQuery(query: string, dbConnection: any): Promise<any> {
+  private async validateGeneratedQuery(query: string, dbConnection: Record<string, unknown>): Promise<Record<string, unknown>> {
     try {
       // Basic SQL validation
       const trimmedQuery = query.trim().toLowerCase();
@@ -399,7 +399,7 @@ Respond with JSON:
     return injectionPatterns.some(pattern => pattern.test(query));
   }
 
-  private async executeActualDatabaseQuery(dbConnection: any, sqlQuery: string): Promise<{ rows: any[] }> {
+  private async executeActualDatabaseQuery(dbConnection: Record<string, unknown>, sqlQuery: string): Promise<{ rows: Record<string, unknown>[] }> {
     // This would integrate with your existing database execution system
     // For now, return mock data
     return {
@@ -411,7 +411,7 @@ Respond with JSON:
   }
 
 
-  private extractColumnsFromRows(rows: any[]): Array<{ name: string; type: string }> {
+  private extractColumnsFromRows(rows: Record<string, unknown>[]): Array<{ name: string; type: string }> {
     if (!rows || rows.length === 0) return [];
     
     const firstRow = rows[0];

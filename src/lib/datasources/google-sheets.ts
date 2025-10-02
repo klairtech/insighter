@@ -3,6 +3,33 @@ import { OAuth2Client } from 'google-auth-library'
 import { supabaseServer } from '@/lib/server-utils'
 import { encryptObject } from '@/lib/encryption'
 
+// Import Google Sheets API types
+import { sheets_v4 } from 'googleapis'
+type Schema$Sheet = sheets_v4.Schema$Sheet
+
+// AI Definition interface
+interface AIDefinition {
+  description?: string
+  business_purpose?: string
+  key_entities?: string[]
+  relationships?: string[]
+  usage_examples?: string[]
+}
+
+// Database row interface for storing sheet data
+interface SheetDataRow {
+  connection_id: string
+  sheet_name: string
+  row_index: number
+  column_index: number
+  cell_value?: string | number | boolean | null
+  cell_value_encrypted: string
+  cell_type: string
+  is_header: boolean
+  data_type?: string
+  created_at?: string
+}
+
 export interface GoogleSheetsConfig {
   sheetId: string
   sheetName?: string
@@ -31,17 +58,17 @@ export interface GoogleSheetsSchema {
       type: string
       nullable: boolean
       sample_values: string[]
-      ai_definition?: any
+      ai_definition?: AIDefinition
     }>
     row_count: number
-    ai_definition?: any
+    ai_definition?: AIDefinition
   }>
-  ai_definition?: any
+  ai_definition?: AIDefinition
 }
 
 export class GoogleSheetsConnector {
   private oauth2Client: OAuth2Client
-  private sheets: any
+  private sheets: ReturnType<typeof google.sheets>
 
   constructor(accessToken: string, refreshToken?: string) {
     this.oauth2Client = new google.auth.OAuth2(
@@ -94,7 +121,7 @@ export class GoogleSheetsConnector {
         includeGridData: false
       })
 
-      const sheet = metadataResponse.data.sheets?.find((s: any) => 
+      const sheet = metadataResponse.data.sheets?.find((s: Schema$Sheet) => 
         s.properties?.title === config.sheetName || s.properties?.title === 'Sheet1'
       )
 
@@ -105,7 +132,7 @@ export class GoogleSheetsConnector {
           sheetName: sheet?.properties?.title || config.sheetName || 'Sheet1',
           rowCount: limitedRows.length,
           columnCount: headers.length,
-          lastModified: metadataResponse.data.properties?.modifiedTime || new Date().toISOString()
+          lastModified: new Date().toISOString()
         }
       }
 
@@ -200,7 +227,7 @@ export class GoogleSheetsConnector {
         .eq('connection_id', connectionId)
 
       // Store new data
-      const rowsToInsert: any[] = []
+      const rowsToInsert: SheetDataRow[] = []
       
       // Insert headers as row 0
       data.headers.forEach((header, colIndex) => {

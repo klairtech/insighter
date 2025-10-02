@@ -10,7 +10,10 @@ const AdminLoginPage: React.FC = () => {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [_error, setError] = useState("");
-  const { signIn } = useSupabaseAuth();
+  const authContext = useSupabaseAuth();
+  const { signIn } = authContext || {
+    signIn: async () => ({ error: { message: "Not authenticated" } }),
+  };
   const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {

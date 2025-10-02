@@ -39,7 +39,7 @@ export class WordDataSource implements DataSourceAgent {
     ]
   };
 
-  async testConnection(config: FileDataSourceConfig): Promise<DataSourceTestResult> {
+  async testConnection(config: Record<string, unknown>): Promise<DataSourceTestResult> {
     const startTime = Date.now();
     
     try {
@@ -51,8 +51,9 @@ export class WordDataSource implements DataSourceAgent {
       }
       
       // Check file extension
-      if (!config.file_name.toLowerCase().endsWith('.docx') && 
-          !config.file_name.toLowerCase().endsWith('.doc')) {
+      const fileName = config.file_name as string;
+      if (!fileName.toLowerCase().endsWith('.docx') && 
+          !fileName.toLowerCase().endsWith('.doc')) {
         throw new Error('File must be a Word document (.docx or .doc)');
       }
       
@@ -93,7 +94,7 @@ export class WordDataSource implements DataSourceAgent {
     }
   }
 
-  async connect(config: FileDataSourceConfig): Promise<DataSourceConnection> {
+  async connect(config: Record<string, unknown>): Promise<DataSourceConnection> {
     try {
       console.log('🔌 Connecting to Word document...');
       
@@ -102,10 +103,10 @@ export class WordDataSource implements DataSourceAgent {
       const connection: DataSourceConnection = {
         id: `word_${Date.now()}`,
         data_source_id: 'word',
-        connection_string: config.file_path,
+        connection_string: config.file_path as string,
         additional_config: {
-          file_name: config.file_name,
-          file_type: config.file_type,
+          file_name: config.file_name as string,
+          file_type: config.file_type as string,
           file_size: config.file_size,
           encoding: config.encoding || 'utf-8'
         }
@@ -139,7 +140,7 @@ export class WordDataSource implements DataSourceAgent {
       const schema: DataSourceSchema = {
         tables: [],
         metadata: {
-          database_name: connection.additional_config?.file_name || 'word_document',
+          database_name: (connection.additional_config?.file_name as string) || 'word_document',
           database_version: 'Word 2021',
           schema_version: '1.0',
           last_updated: new Date().toISOString(),

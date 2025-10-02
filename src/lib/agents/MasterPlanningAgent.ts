@@ -72,7 +72,7 @@ export class MasterPlanningAgent {
     
     try {
       // Check cache first
-      const cachedPlan = await queryPlanCache.getExecutionPlan(query, availableSources, userId);
+      const cachedPlan = await queryPlanCache.getExecutionPlan(query, availableSources as unknown as Record<string, unknown>[], userId);
       if (cachedPlan) {
         console.log('🎯 Using cached execution plan');
         return cachedPlan;
@@ -103,7 +103,7 @@ export class MasterPlanningAgent {
       // Cache the plan and analysis
       await queryPlanCache.setExecutionPlan(
         query,
-        availableSources,
+        availableSources as unknown as Record<string, unknown>[],
         executionPlan,
         queryAnalysis,
         userId

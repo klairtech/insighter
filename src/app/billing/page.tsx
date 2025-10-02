@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+
 import { useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
 import {
   CreditCard,
@@ -99,7 +100,8 @@ interface CreditStatement {
 }
 
 const BillingPage: React.FC = () => {
-  const { user } = useSupabaseAuth();
+  const authContext = useSupabaseAuth();
+  const { user } = authContext || { user: null };
   const [creditBalance, setCreditBalance] = useState<CreditBalance | null>(
     null
   );
@@ -220,11 +222,12 @@ const BillingPage: React.FC = () => {
 
       // Open Razorpay checkout
       const options = {
-        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID as string,
         amount: orderData.order.amount,
         currency: orderData.order.currency,
         name: "Insighter",
         description: `Purchase ${credits} credits`,
+        image: "/favicon.ico",
         order_id: orderData.order.id,
         handler: async (response: {
           razorpay_order_id: string;
@@ -259,15 +262,17 @@ const BillingPage: React.FC = () => {
         prefill: {
           name: user?.user_metadata?.name || "",
           email: user?.email || "",
+          contact: "",
+        },
+        notes: {
+          address: "",
         },
         theme: {
           color: "#3B82F6",
         },
       };
 
-      const razorpay = new (
-        window as { Razorpay: new (options: any) => any }
-      ).Razorpay(options);
+      const razorpay = new window.Razorpay(options);
       razorpay.open();
     } catch (error) {
       console.error("Error purchasing credits:", error);

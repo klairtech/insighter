@@ -9,9 +9,6 @@ import SQLQueryDisplay from "@/components/SQLQueryDisplay";
 import VisualizationDisplay from "@/components/VisualizationDisplay";
 import LiveAgentStatus from "@/components/LiveAgentStatus";
 import DataSourceFilter from "@/components/DataSourceFilter";
-import StreamingProgress from "@/components/StreamingProgress";
-import StreamingChatToggle from "@/components/StreamingChatToggle";
-import { useStreamingChat } from "@/hooks/useStreamingChat";
 import { useAnalytics } from "@/hooks/useAnalytics";
 
 // MessageContent component with "See More" functionality
@@ -237,6 +234,14 @@ export default function ChatClient({
 }: ChatClientProps) {
   const router = useRouter();
   const { trackSendMessage, trackAIResponse } = useAnalytics();
+
+  // Client-side authentication protection
+  useEffect(() => {
+    if (!user) {
+      router.push("/login");
+      return;
+    }
+  }, [user, router]);
   const [agents] = useState<Agent[]>(initialAgents);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
   const [currentConversation, setCurrentConversation] =
@@ -260,20 +265,6 @@ export default function ChatClient({
   >([]);
   const [showLiveStatus, setShowLiveStatus] = useState(false);
   const [selectedDataSources, setSelectedDataSources] = useState<string[]>([]);
-  const [isStreamingEnabled, setIsStreamingEnabled] = useState(false);
-
-  // Streaming chat hook
-  const streamingChat = useStreamingChat({
-    onProgress: (_progress, _message) => {},
-    onAgentStart: (_agentName) => {},
-    onAgentComplete: (_agentName) => {},
-    onError: (_error) => {
-      setIsLoading(false);
-    },
-    onComplete: (_response) => {
-      setIsLoading(false);
-    },
-  });
 
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -570,19 +561,6 @@ export default function ChatClient({
     }
   }, []);
 
-  // Handle streaming connection when enabled
-  useEffect(() => {
-    if (isStreamingEnabled && currentConversation && selectedAgent) {
-      const sessionId = `chat-${currentConversation.id}-${Date.now()}`;
-      const clientId = `client-${Date.now()}`;
-
-      streamingChat.connect(sessionId, clientId);
-
-      return () => {
-        streamingChat.disconnect();
-      };
-    }
-  }, [isStreamingEnabled, currentConversation, selectedAgent, streamingChat]);
 
   // Auto-select agent from URL (only on initial load)
   useEffect(() => {
@@ -679,7 +657,7 @@ export default function ChatClient({
           agentId: selectedAgent.id,
           content: userMessage.content,
           message_type: "text",
-          stream: isStreamingEnabled,
+          stream: false,
           selectedDataSources:
             selectedDataSources.length > 0 ? selectedDataSources : undefined,
         }),
@@ -820,7 +798,6 @@ export default function ChatClient({
     isLoading,
     currentConversation,
     selectedDataSources,
-    isStreamingEnabled,
     trackAIResponse,
     trackSendMessage,
   ]);
@@ -1646,24 +1623,6 @@ export default function ChatClient({
           </div>
         )}
 
-        {/* Streaming Progress */}
-        {isStreamingEnabled && (
-          <StreamingProgress
-            isStreaming={streamingChat.isStreaming}
-            overallProgress={streamingChat.overallProgress}
-            currentMessage={streamingChat.currentMessage}
-            agentStatuses={streamingChat.agentStatuses}
-          />
-        )}
-
-        {/* Streaming Toggle */}
-        <div className="border-t border-gray-700 px-4 py-2">
-          <StreamingChatToggle
-            isStreamingEnabled={isStreamingEnabled}
-            onToggle={setIsStreamingEnabled}
-            disabled={isLoading}
-          />
-        </div>
 
         {/* Message Input */}
         <div className="border-t border-gray-700 p-4">

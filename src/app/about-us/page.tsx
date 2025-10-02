@@ -8,7 +8,7 @@ import { useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
 const AboutUsPage: React.FC = () => {
   const { trackFeatureUsage } = useAnalytics();
   const authContext = useSupabaseAuth();
-  const { user } = authContext || {};
+  const { user: _user } = authContext || {};
 
   // Track page view
   useEffect(() => {
@@ -20,128 +20,64 @@ const AboutUsPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Hero Section */}
-      <div className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 via-transparent to-blue-600/10"></div>
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
-          <div className="text-center">
-            <div className="mb-4">
-              <span className="inline-block px-4 py-2 bg-blue-500/20 text-blue-400 rounded-full text-sm font-medium">
-                A Product of Klair Labs
-              </span>
-            </div>
-            <h1 className="text-4xl md:text-5xl font-bold text-white mb-6">
-              About Insighter
-            </h1>
-            <p className="text-xl text-gray-300 max-w-3xl mx-auto mb-8">
-              Born from Klair Labs&apos; vision to democratize decision-making
-              power through advanced analytics and secure information access.
-            </p>
-            {!user && (
-              <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <a
-                  href="https://klairtech.com"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center justify-center px-6 py-3 text-lg font-medium text-white bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 rounded-lg transition-all duration-200 border border-blue-500/20 hover:border-blue-400/40"
-                  onClick={() => {
-                    trackFeatureUsage("klairtech_redirect_clicked", {
-                      page: "about_us",
-                      source: "hero_section",
-                    });
-                  }}
-                >
-                  <svg
-                    className="w-5 h-5 mr-2"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2"
-                      d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                    />
-                  </svg>
-                  Learn More About Klair Labs
-                </a>
-                <Link
-                  href="/register"
-                  className="inline-flex items-center justify-center px-6 py-3 text-lg font-medium text-white bg-white/10 hover:bg-white/20 rounded-lg transition-all duration-200 border border-white/20 hover:border-white/40"
-                >
-                  Get Started with Insighter
-                </Link>
-              </div>
-            )}
-          </div>
+      {/* About Section with Stats */}
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
+        <div className="text-center mb-16">
+          <h1 className="text-5xl font-bold text-foreground mb-6">Our Story</h1>
+          <p className="text-xl text-foreground-muted max-w-3xl mx-auto">
+            Transforming how organizations interact with their data through
+            intelligent AI-powered analytics.
+          </p>
         </div>
-      </div>
 
-      {/* Our Story Section */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+        <div className="grid lg:grid-cols-2 gap-16 items-center">
+          {/* Left Column - Story */}
           <div>
-            <h2 className="text-3xl font-bold text-white mb-6">Our Story</h2>
-            <p className="text-lg text-gray-300 mb-6">
-              Insighter emerged from{" "}
-              <strong className="text-blue-400">Klair Labs</strong>, an
-              innovative initiative by Klair Technology Solutions where we
-              experiment with multiple AI and data use cases. Through our
-              extensive research and development, we identified a critical gap
-              in the market.
+            <p className="text-xl text-foreground-muted mb-8 leading-relaxed">
+              Born from the innovative minds at{" "}
+              <span className="text-primary-400 font-semibold">Klair Labs</span>
+              , Insighter represents a revolutionary approach to data analytics.
+              We discovered a critical gap: decision makers need information and
+              data for decisions, but technical experts take days to generate
+              responses and provide insights. This delay was costing
+              organizations opportunities and competitive advantage.
             </p>
-            <p className="text-lg text-gray-300 mb-6">
-              While organizations had access to vast amounts of data, the power
-              to make informed decisions remained concentrated among those with
-              technical expertise. We envisioned a world where every stakeholder
-              could harness the full potential of their data.
+            <p className="text-lg text-foreground-muted mb-8 leading-relaxed">
+              We set out to bridge this gap and reduce the time from request to
+              decision from{" "}
+              <span className="text-primary-400 font-semibold">
+                days to minutes, if not seconds
+              </span>
+              . Through extensive research and development in AI and natural
+              language processing, we created a platform that transforms complex
+              data queries into simple conversations. Our AI understands
+              business context and provides relevant, actionable insights
+              instantly.
             </p>
-            <p className="text-lg text-gray-300">
-              Today, Insighter stands as a testament to our commitment to
-              democratizing decision-making power through secure, accessible,
-              and intelligent analytics.
+            <p className="text-lg text-foreground-muted leading-relaxed">
+              <strong className="text-foreground">Our Vision:</strong> To create
+              a world where every organization, regardless of size or technical
+              expertise, can harness the full power of their data to make
+              informed decisions that drive meaningful impact. We envision a
+              future where data analytics becomes as intuitive as having a
+              conversation.
             </p>
-          </div>
-          <div className="klair-card p-8">
-            <div className="grid grid-cols-2 gap-6">
-              <div className="text-center">
-                <div className="text-3xl font-bold klair-gradient-text mb-2">
-                  50+
-                </div>
-                <div className="text-sm text-gray-400">Data Sources</div>
-              </div>
-              <div className="text-center">
-                <div className="text-3xl font-bold klair-gradient-text mb-2">
-                  Enterprise
-                </div>
-                <div className="text-sm text-gray-400">Security</div>
-              </div>
-              <div className="text-center">
-                <div className="text-3xl font-bold klair-gradient-text mb-2">
-                  99.9%
-                </div>
-                <div className="text-sm text-gray-400">Uptime</div>
-              </div>
-              <div className="text-center">
-                <div className="text-3xl font-bold klair-gradient-text mb-2">
-                  &lt;2min
-                </div>
-                <div className="text-sm text-gray-400">Setup Time</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
 
-      {/* Mission & Vision Section */}
-      <div className="bg-gradient-to-br from-blue-500/5 to-blue-600/5">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-            <div className="text-center lg:text-left">
-              <div className="klair-icon-container w-16 h-16 mx-auto lg:mx-0 mb-6">
+            <div className="mt-8 flex flex-col sm:flex-row gap-4">
+              <a
+                href="https://klairtech.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center px-6 py-3 text-sm font-medium text-white bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-700 hover:to-primary-800 rounded-lg transition-all duration-200 border border-primary-500/20 hover:border-primary-400/40"
+                onClick={() => {
+                  trackFeatureUsage("klairtech_redirect_clicked", {
+                    page: "about_us",
+                    source: "story_section",
+                  });
+                }}
+              >
                 <svg
-                  className="w-8 h-8 text-white"
+                  className="w-4 h-4 mr-2"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -150,27 +86,173 @@ const AboutUsPage: React.FC = () => {
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     strokeWidth="2"
-                    d="M13 10V3L4 14h7v7l9-11h-7z"
+                    d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
                   />
                 </svg>
-              </div>
-              <h2 className="text-3xl font-bold text-white mb-6">
-                Our Mission
-              </h2>
-              <p className="text-lg text-gray-300 mb-4">
-                To democratize decision-making power by providing secure,
-                accessible, and intelligent analytics that empower every
-                stakeholder to make data-driven decisions with confidence.
-              </p>
-              <p className="text-lg text-gray-300">
-                We believe that advanced analytics should not be a privilege of
-                the few, but a fundamental right for every organization seeking
-                to thrive in the data-driven economy.
-              </p>
+                Learn More About Klair Labs
+              </a>
+              <Link
+                href="/register"
+                className="inline-flex items-center justify-center px-6 py-3 text-sm font-medium text-foreground bg-background-alt hover:bg-background-alt/80 rounded-lg transition-all duration-200 border border-border hover:border-border-hover"
+              >
+                Get Started with Insighter
+              </Link>
             </div>
+          </div>
 
-            <div className="text-center lg:text-left">
-              <div className="klair-icon-container w-16 h-16 mx-auto lg:mx-0 mb-6">
+          {/* Right Column - Stats */}
+          <div className="relative">
+            <div className="bg-background/50 backdrop-blur-sm border border-border rounded-2xl p-8 shadow-2xl">
+              <div className="text-center mb-8">
+                <h3 className="text-2xl font-bold text-foreground mb-2">
+                  Trusted by Organizations Worldwide
+                </h3>
+                <p className="text-foreground-muted">
+                  Our platform delivers enterprise-grade performance and
+                  reliability
+                </p>
+              </div>
+
+              <div className="space-y-6">
+                {/* 50+ Data Sources */}
+                <div className="flex items-center space-x-4">
+                  <div className="w-12 h-12 bg-gradient-to-br from-blue-400 to-cyan-500 rounded-xl flex items-center justify-center">
+                    <svg
+                      className="w-6 h-6 text-white"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"
+                      />
+                    </svg>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-foreground">
+                      50+
+                    </div>
+                    <div className="text-foreground-muted">Data Sources</div>
+                    <div className="text-xs text-blue-400 flex items-center mt-1">
+                      <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse mr-2"></div>
+                      Universal Connectivity
+                    </div>
+                  </div>
+                </div>
+
+                {/* Enterprise Security */}
+                <div className="flex items-center space-x-4">
+                  <div className="w-12 h-12 bg-gradient-to-br from-green-400 to-emerald-500 rounded-xl flex items-center justify-center">
+                    <svg
+                      className="w-6 h-6 text-white"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
+                      />
+                    </svg>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-foreground">
+                      Enterprise
+                    </div>
+                    <div className="text-foreground-muted">Security</div>
+                    <div className="text-xs text-green-400 flex items-center mt-1">
+                      <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse mr-2"></div>
+                      Military-Grade
+                    </div>
+                  </div>
+                </div>
+
+                {/* 99.9% Uptime */}
+                <div className="flex items-center space-x-4">
+                  <div className="w-12 h-12 bg-gradient-to-br from-purple-400 to-pink-500 rounded-xl flex items-center justify-center">
+                    <svg
+                      className="w-6 h-6 text-white"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M13 10V3L4 14h7v7l9-11h-7z"
+                      />
+                    </svg>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-foreground">
+                      99.9%
+                    </div>
+                    <div className="text-foreground-muted">Uptime</div>
+                    <div className="text-xs text-purple-400 flex items-center mt-1">
+                      <div className="w-2 h-2 bg-purple-400 rounded-full animate-pulse mr-2"></div>
+                      Always Available
+                    </div>
+                  </div>
+                </div>
+
+                {/* <2min Setup Time */}
+                <div className="flex items-center space-x-4">
+                  <div className="w-12 h-12 bg-gradient-to-br from-orange-400 to-red-500 rounded-xl flex items-center justify-center">
+                    <svg
+                      className="w-6 h-6 text-white"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-foreground">
+                      &lt;2min
+                    </div>
+                    <div className="text-foreground-muted">Setup Time</div>
+                    <div className="text-xs text-orange-400 flex items-center mt-1">
+                      <div className="w-2 h-2 bg-orange-400 rounded-full animate-pulse mr-2"></div>
+                      Instant Start
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Values Section */}
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
+        <div className="text-center mb-16">
+          <h2 className="text-4xl font-bold text-foreground mb-6">
+            Our Core Values
+          </h2>
+          <p className="text-xl text-foreground-muted max-w-3xl mx-auto">
+            These principles guide everything we do, from product development to
+            client relationships.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+          {/* Clarity */}
+          <div className="group relative">
+            <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-cyan-500/10 rounded-2xl blur-xl group-hover:blur-2xl transition-all duration-500"></div>
+            <div className="relative bg-background/50 backdrop-blur-sm border border-border rounded-2xl p-8 hover:border-blue-500/50 transition-all duration-500 group-hover:scale-105">
+              <div className="w-16 h-16 bg-gradient-to-br from-blue-400 to-cyan-500 rounded-2xl flex items-center justify-center mb-6 group-hover:rotate-12 transition-transform duration-500">
                 <svg
                   className="w-8 h-8 text-white"
                   fill="none"
@@ -191,148 +273,22 @@ const AboutUsPage: React.FC = () => {
                   />
                 </svg>
               </div>
-              <h2 className="text-3xl font-bold text-white mb-6">Our Vision</h2>
-              <p className="text-lg text-gray-300 mb-4">
-                To create a world where every organization, regardless of size
-                or technical expertise, can harness the full power of their data
-                to make informed decisions that drive meaningful impact.
-              </p>
-              <p className="text-lg text-gray-300">
-                We envision a future where data analytics becomes as intuitive
-                as having a conversation, where insights are delivered securely
-                and instantly, and where every decision is backed by
-                comprehensive, real-time intelligence.
+              <h3 className="text-2xl font-bold text-foreground mb-4">
+                Clarity
+              </h3>
+              <p className="text-foreground-muted leading-relaxed">
+                We believe in simplifying the complex. Our mission is to make
+                advanced AI and data insights accessible to everyone, regardless
+                of technical background.
               </p>
             </div>
           </div>
-        </div>
-      </div>
 
-      {/* Values Section */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
-        <div className="text-center mb-12">
-          <h2 className="text-3xl font-bold text-white mb-4">Our Values</h2>
-          <p className="text-lg text-gray-300">
-            The principles that guide everything we do at Klair Labs
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-          <div className="text-center">
-            <div className="klair-icon-container w-16 h-16 mx-auto mb-4">
-              <svg
-                className="w-8 h-8 text-white"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"
-                />
-              </svg>
-            </div>
-            <h3 className="text-lg font-semibold text-white mb-2">
-              Democratization
-            </h3>
-            <p className="text-gray-400">
-              Making advanced analytics accessible to everyone, regardless of
-              technical background or organizational size.
-            </p>
-          </div>
-
-          <div className="text-center">
-            <div className="klair-icon-container w-16 h-16 mx-auto mb-4">
-              <svg
-                className="w-8 h-8 text-white"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
-                />
-              </svg>
-            </div>
-            <h3 className="text-lg font-semibold text-white mb-2">Security</h3>
-            <p className="text-gray-400">
-              Enterprise-grade security and privacy protection for all data and
-              insights, ensuring complete trust and compliance.
-            </p>
-          </div>
-
-          <div className="text-center">
-            <div className="klair-icon-container w-16 h-16 mx-auto mb-4">
-              <svg
-                className="w-8 h-8 text-white"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M13 10V3L4 14h7v7l9-11h-7z"
-                />
-              </svg>
-            </div>
-            <h3 className="text-lg font-semibold text-white mb-2">
-              Innovation
-            </h3>
-            <p className="text-gray-400">
-              Continuously pushing the boundaries of AI and data analytics
-              through cutting-edge research and development.
-            </p>
-          </div>
-
-          <div className="text-center">
-            <div className="klair-icon-container w-16 h-16 mx-auto mb-4">
-              <svg
-                className="w-8 h-8 text-white"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-                />
-              </svg>
-            </div>
-            <h3 className="text-lg font-semibold text-white mb-2">Impact</h3>
-            <p className="text-gray-400">
-              Delivering measurable results that drive meaningful business
-              outcomes and create lasting value for our users.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Klair Labs Section */}
-      <div className="bg-gradient-to-r from-blue-500/10 to-blue-600/10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold text-white mb-4">
-              Powered by Klair Labs
-            </h2>
-            <p className="text-lg text-gray-300 max-w-3xl mx-auto">
-              Insighter is just one of many innovative solutions emerging from
-              our experimental lab, where we explore the intersection of AI,
-              data, and real-world applications.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
-            <div className="text-center">
-              <div className="klair-icon-container w-16 h-16 mx-auto mb-4">
+          {/* Trust */}
+          <div className="group relative">
+            <div className="absolute inset-0 bg-gradient-to-r from-green-500/10 to-emerald-500/10 rounded-2xl blur-xl group-hover:blur-2xl transition-all duration-500"></div>
+            <div className="relative bg-background/50 backdrop-blur-sm border border-border rounded-2xl p-8 hover:border-green-500/50 transition-all duration-500 group-hover:scale-105">
+              <div className="w-16 h-16 bg-gradient-to-br from-green-400 to-emerald-500 rounded-2xl flex items-center justify-center mb-6 group-hover:rotate-12 transition-transform duration-500">
                 <svg
                   className="w-8 h-8 text-white"
                   fill="none"
@@ -343,21 +299,24 @@ const AboutUsPage: React.FC = () => {
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     strokeWidth="2"
-                    d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
+                    d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
                   />
                 </svg>
               </div>
-              <h3 className="text-lg font-semibold text-white mb-2">
-                Research & Development
-              </h3>
-              <p className="text-gray-400">
-                Continuous experimentation with cutting-edge AI and data
-                technologies to solve real-world challenges.
+              <h3 className="text-2xl font-bold text-foreground mb-4">Trust</h3>
+              <p className="text-foreground-muted leading-relaxed">
+                Security, compliance, and ethics are at the core of everything
+                we build. We maintain the highest standards of data protection
+                and responsible AI practices.
               </p>
             </div>
+          </div>
 
-            <div className="text-center">
-              <div className="klair-icon-container w-16 h-16 mx-auto mb-4">
+          {/* Innovation */}
+          <div className="group relative">
+            <div className="absolute inset-0 bg-gradient-to-r from-purple-500/10 to-pink-500/10 rounded-2xl blur-xl group-hover:blur-2xl transition-all duration-500"></div>
+            <div className="relative bg-background/50 backdrop-blur-sm border border-border rounded-2xl p-8 hover:border-purple-500/50 transition-all duration-500 group-hover:scale-105">
+              <div className="w-16 h-16 bg-gradient-to-br from-purple-400 to-pink-500 rounded-2xl flex items-center justify-center mb-6 group-hover:rotate-12 transition-transform duration-500">
                 <svg
                   className="w-8 h-8 text-white"
                   fill="none"
@@ -372,19 +331,116 @@ const AboutUsPage: React.FC = () => {
                   />
                 </svg>
               </div>
-              <h3 className="text-lg font-semibold text-white mb-2">
-                Innovation Pipeline
+              <h3 className="text-2xl font-bold text-foreground mb-4">
+                Innovation
               </h3>
-              <p className="text-gray-400">
-                Multiple use cases and applications in development, with
-                Insighter leading the way in democratizing analytics.
+              <p className="text-foreground-muted leading-relaxed">
+                We continuously push the boundaries of what&apos;s possible with
+                AI and data science, staying ahead of the curve in technology
+                and methodology.
+              </p>
+            </div>
+          </div>
+
+          {/* Impact */}
+          <div className="group relative">
+            <div className="absolute inset-0 bg-gradient-to-r from-orange-500/10 to-red-500/10 rounded-2xl blur-xl group-hover:blur-2xl transition-all duration-500"></div>
+            <div className="relative bg-background/50 backdrop-blur-sm border border-border rounded-2xl p-8 hover:border-orange-500/50 transition-all duration-500 group-hover:scale-105">
+              <div className="w-16 h-16 bg-gradient-to-br from-orange-400 to-red-500 rounded-2xl flex items-center justify-center mb-6 group-hover:rotate-12 transition-transform duration-500">
+                <svg
+                  className="w-8 h-8 text-white"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+                  />
+                </svg>
+              </div>
+              <h3 className="text-2xl font-bold text-foreground mb-4">
+                Impact
+              </h3>
+              <p className="text-foreground-muted leading-relaxed">
+                We measure success not just by technical achievements, but by
+                the real-world impact our solutions create for organizations and
+                communities.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Technology & AI Section */}
+      <div className="bg-gradient-to-r from-primary-500/10 to-primary-600/10">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl font-bold text-foreground mb-6">
+              Powered by Advanced AI & Machine Learning
+            </h2>
+            <p className="text-xl text-foreground-muted max-w-3xl mx-auto">
+              Our AI and ML algorithms continuously learn and adapt to provide
+              increasingly accurate insights and predictions.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-16">
+            <div className="text-center">
+              <div className="w-16 h-16 mx-auto mb-4 bg-primary-500/10 rounded-lg flex items-center justify-center">
+                <svg
+                  className="w-8 h-8 text-primary-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
+                  />
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-foreground mb-2">
+                Natural Language Processing
+              </h3>
+              <p className="text-foreground-muted">
+                Understands business context and translates queries into
+                insights.
               </p>
             </div>
 
             <div className="text-center">
-              <div className="klair-icon-container w-16 h-16 mx-auto mb-4">
+              <div className="w-16 h-16 mx-auto mb-4 bg-primary-500/10 rounded-lg flex items-center justify-center">
                 <svg
-                  className="w-8 h-8 text-white"
+                  className="w-8 h-8 text-primary-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M13 10V3L4 14h7v7l9-11h-7z"
+                  />
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-foreground mb-2">
+                Real-time Analytics
+              </h3>
+              <p className="text-foreground-muted">
+                Lightning-fast processing that delivers insights in seconds.
+              </p>
+            </div>
+
+            <div className="text-center">
+              <div className="w-16 h-16 mx-auto mb-4 bg-primary-500/10 rounded-lg flex items-center justify-center">
+                <svg
+                  className="w-8 h-8 text-primary-400"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -397,66 +453,61 @@ const AboutUsPage: React.FC = () => {
                   />
                 </svg>
               </div>
-              <h3 className="text-lg font-semibold text-white mb-2">
-                Community Impact
+              <h3 className="text-lg font-semibold text-foreground mb-2">
+                Enterprise Security
               </h3>
-              <p className="text-gray-400">
-                Building solutions that create meaningful impact across
-                industries and empower organizations worldwide.
+              <p className="text-foreground-muted">
+                Military-grade encryption and zero-knowledge architecture.
+              </p>
+            </div>
+
+            <div className="text-center">
+              <div className="w-16 h-16 mx-auto mb-4 bg-primary-500/10 rounded-lg flex items-center justify-center">
+                <svg
+                  className="w-8 h-8 text-primary-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
+                  />
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-foreground mb-2">
+                Adaptive Learning
+              </h3>
+              <p className="text-foreground-muted">
+                ML models continuously learn from user interactions and data
+                patterns.
               </p>
             </div>
           </div>
 
           <div className="text-center">
-            <h3 className="text-2xl font-bold text-white mb-4">
-              Ready to Experience the Future of Analytics?
+            <h3 className="text-3xl font-bold text-foreground mb-6">
+              Ready to Get Started?
             </h3>
-            <p className="text-xl text-gray-300 mb-8">
-              Join organizations already making data-driven decisions with
-              Insighter, powered by Klair Labs innovation.
+            <p className="text-xl text-foreground-muted mb-12 max-w-2xl mx-auto">
+              Join organizations making data-driven decisions with AI-powered
+              analytics.
             </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <div className="flex flex-col sm:flex-row gap-6 justify-center">
               <Link
                 href="/register"
-                className="klair-button-primary text-lg px-8 py-4"
+                className="inline-flex items-center justify-center px-8 py-4 text-lg font-medium text-white bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-700 hover:to-primary-800 rounded-lg transition-all duration-200 border border-primary-500/20 hover:border-primary-400/40"
               >
                 Start Free Trial
               </Link>
               <Link
                 href="/contact-us"
-                className="klair-button-secondary text-lg px-8 py-4"
+                className="inline-flex items-center justify-center px-8 py-4 text-lg font-medium text-foreground bg-background-alt hover:bg-background-alt/80 rounded-lg transition-all duration-200 border border-border hover:border-border-hover"
               >
                 Contact Sales
               </Link>
-              {!user && (
-                <a
-                  href="https://klairtech.com"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center justify-center px-8 py-4 text-lg font-medium text-white bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 rounded-lg transition-all duration-200 border border-blue-500/20 hover:border-blue-400/40"
-                  onClick={() => {
-                    trackFeatureUsage("klairtech_redirect_clicked", {
-                      page: "about_us",
-                      source: "cta_section",
-                    });
-                  }}
-                >
-                  <svg
-                    className="w-5 h-5 mr-2"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2"
-                      d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                    />
-                  </svg>
-                  Visit Klairtech.com
-                </a>
-              )}
             </div>
           </div>
         </div>

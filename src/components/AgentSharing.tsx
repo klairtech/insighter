@@ -32,7 +32,8 @@ const AgentSharing: React.FC<AgentSharingProps> = ({
   userRole,
   onClose,
 }) => {
-  const { user, session } = useSupabaseAuth();
+  const authContext = useSupabaseAuth();
+  const { user, session } = authContext || { user: null, session: null };
   const [accessList, setAccessList] = useState<AgentAccess[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");

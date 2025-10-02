@@ -75,7 +75,7 @@ const LoginPage: React.FC = () => {
       } else {
         router.push("/organizations");
       }
-    } catch (_err) {
+    } catch {
       setError("An error occurred. Please try again.");
     } finally {
       setIsLoading(false);
@@ -91,7 +91,7 @@ const LoginPage: React.FC = () => {
       if (error) {
         setError(error.message || "Failed to sign in with Google");
       }
-    } catch (_err) {
+    } catch {
       setError("An error occurred. Please try again.");
     } finally {
       setIsLoading(false);

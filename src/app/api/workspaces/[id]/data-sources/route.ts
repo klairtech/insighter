@@ -6,6 +6,13 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    if (!supabaseServer) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      );
+    }
+
     const { id: workspaceId } = await params;
     console.log('🔍 Data Sources API: Fetching data sources for workspace:', workspaceId);
     

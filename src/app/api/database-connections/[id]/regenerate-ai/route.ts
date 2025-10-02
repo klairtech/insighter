@@ -20,6 +20,13 @@ export async function POST(
 
     const { id: connectionId } = await params
 
+    if (!supabaseServer) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      )
+    }
+
     // Get database connection with encrypted config
     const { data: connection, error } = await supabaseServer
       .from('database_connections')

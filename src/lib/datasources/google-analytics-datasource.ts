@@ -41,7 +41,7 @@ export class GoogleAnalyticsDataSource implements DataSourceAgent {
     ]
   };
 
-  async testConnection(config: ExternalDataSourceConfig): Promise<DataSourceTestResult> {
+  async testConnection(config: Record<string, unknown>): Promise<DataSourceTestResult> {
     const startTime = Date.now();
     
     try {
@@ -53,7 +53,7 @@ export class GoogleAnalyticsDataSource implements DataSourceAgent {
       }
       
       // Test with real Google Analytics API
-      const connector = new GoogleAnalyticsConnector(config.oauth_token, config.refresh_token);
+      const connector = new GoogleAnalyticsConnector(config.oauth_token as string, config.refresh_token as string);
       
       const connectionTime = Date.now() - startTime;
       
@@ -96,7 +96,7 @@ export class GoogleAnalyticsDataSource implements DataSourceAgent {
     }
   }
 
-  async connect(config: ExternalDataSourceConfig): Promise<DataSourceConnection> {
+  async connect(config: Record<string, unknown>): Promise<DataSourceConnection> {
     try {
       console.log('🔌 Connecting to Google Analytics...');
       
@@ -105,7 +105,7 @@ export class GoogleAnalyticsDataSource implements DataSourceAgent {
       const connection: DataSourceConnection = {
         id: `ganalytics_${Date.now()}`,
         data_source_id: 'google-analytics',
-        connection_string: config.api_url || 'https://analyticsreporting.googleapis.com/v4/reports:batchGet',
+        connection_string: (config.api_url as string) || 'https://analyticsreporting.googleapis.com/v4/reports:batchGet',
         additional_config: {
           api_key: config.api_key,
           oauth_token: config.oauth_token,
@@ -113,7 +113,7 @@ export class GoogleAnalyticsDataSource implements DataSourceAgent {
           rate_limit: config.rate_limit || 100,
           timeout: config.timeout || 30000,
           retry_attempts: config.retry_attempts || 3,
-          view_id: config.additional_config?.view_id
+          view_id: (config.additional_config as Record<string, unknown>)?.view_id
         }
       };
       
@@ -125,7 +125,7 @@ export class GoogleAnalyticsDataSource implements DataSourceAgent {
     }
   }
 
-  async disconnect(connection: DataSourceConnection): Promise<void> {
+  async disconnect(_connection: DataSourceConnection): Promise<void> {
     try {
       console.log('🔌 Disconnecting from Google Analytics...');
       // This would close the API connection
@@ -235,7 +235,7 @@ export class GoogleAnalyticsDataSource implements DataSourceAgent {
     }
   }
 
-  async executeQuery(connection: DataSourceConnection, query: string, params?: any[]): Promise<DataSourceQueryResult> {
+  async executeQuery(connection: DataSourceConnection, query: string, _params?: unknown[]): Promise<DataSourceQueryResult> {
     const startTime = Date.now();
     
     try {
@@ -249,12 +249,12 @@ export class GoogleAnalyticsDataSource implements DataSourceAgent {
       
       // Use real Google Analytics connector
       const connector = new GoogleAnalyticsConnector(
-        connection.additional_config?.oauth_token,
-        connection.additional_config?.refresh_token
+        connection.additional_config?.oauth_token as string,
+        connection.additional_config?.refresh_token as string
       );
       
       // Parse query to extract metrics and dimensions
-      const analyticsConfig = this.parseAnalyticsQuery(query, propertyId);
+      const analyticsConfig = this.parseAnalyticsQuery(query, propertyId as string);
       
       // Fetch analytics data
       const analyticsData = await connector.fetchAnalyticsData(analyticsConfig);
@@ -286,7 +286,7 @@ export class GoogleAnalyticsDataSource implements DataSourceAgent {
     }
   }
 
-  async executeQueryWithLimit(connection: DataSourceConnection, query: string, limit: number, params?: any[]): Promise<DataSourceQueryResult> {
+  async executeQueryWithLimit(connection: DataSourceConnection, query: string, limit: number, params?: unknown[]): Promise<DataSourceQueryResult> {
     // For Google Analytics, we'll limit the number of rows returned
     const result = await this.executeQuery(connection, query, params);
     
@@ -313,7 +313,7 @@ export class GoogleAnalyticsDataSource implements DataSourceAgent {
     }
   }
 
-  async getDatabaseInfo(connection: DataSourceConnection): Promise<Record<string, any>> {
+  async getDatabaseInfo(connection: DataSourceConnection): Promise<Record<string, unknown>> {
     try {
       // This would get information about the Google Analytics account
       return {
@@ -333,7 +333,7 @@ export class GoogleAnalyticsDataSource implements DataSourceAgent {
     }
   }
 
-  async getTableList(connection: DataSourceConnection): Promise<string[]> {
+  async getTableList(_connection: DataSourceConnection): Promise<string[]> {
     try {
       // This would call the Google Analytics API to get all report names
       // For now, we'll return a mock list
@@ -449,8 +449,8 @@ export class GoogleAnalyticsDataSource implements DataSourceAgent {
   /**
    * Convert Google Analytics data to standardized format
    */
-  private convertToStandardFormat(analyticsData: GoogleAnalyticsData, query: string): any[][] {
-    const rows: any[][] = [];
+  private convertToStandardFormat(analyticsData: GoogleAnalyticsData, _query: string): unknown[][] {
+    const rows: unknown[][] = [];
     
     analyticsData.reports.forEach(report => {
       report.data.forEach(dataPoint => {

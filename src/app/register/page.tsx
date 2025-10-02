@@ -14,12 +14,18 @@ const RegisterPage: React.FC = () => {
   });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const authContext = useSupabaseAuth();
   const {
     signUp,
     signInWithGoogle,
     user,
     isLoading: authLoading,
-  } = useSupabaseAuth();
+  } = authContext || {
+    signUp: async () => ({ error: { message: "Not authenticated" } }),
+    signInWithGoogle: async () => ({ error: { message: "Not authenticated" } }),
+    user: null,
+    isLoading: false,
+  };
   const router = useRouter();
   const pathname = usePathname();
 

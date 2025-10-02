@@ -42,7 +42,7 @@ export class PostgreSQLDataSource implements DataSourceAgent {
     ]
   };
 
-  async testConnection(config: DatabaseDataSourceConfig): Promise<DataSourceTestResult> {
+  async testConnection(config: Record<string, unknown>): Promise<DataSourceTestResult> {
     const startTime = Date.now();
     
     try {
@@ -83,7 +83,7 @@ export class PostgreSQLDataSource implements DataSourceAgent {
     }
   }
 
-  async connect(config: DatabaseDataSourceConfig): Promise<DataSourceConnection> {
+  async connect(config: Record<string, unknown>): Promise<DataSourceConnection> {
     try {
       console.log('🔌 Connecting to PostgreSQL database...');
       
@@ -92,14 +92,14 @@ export class PostgreSQLDataSource implements DataSourceAgent {
       const connection: DataSourceConnection = {
         id: `pg_${Date.now()}`,
         data_source_id: 'postgresql',
-        host: config.host,
-        port: config.port,
-        database_name: config.database_name,
-        username: config.username,
-        connection_timeout: config.connection_timeout || 30000,
-        query_timeout: config.query_timeout || 60000,
-        max_connections: config.max_connections || 10,
-        additional_config: config.additional_config
+        host: config.host as string,
+        port: (config.port as number) || 5432, // Default PostgreSQL port
+        database_name: config.database_name as string,
+        username: config.username as string,
+        connection_timeout: (config.connection_timeout as number) || 30000,
+        query_timeout: (config.query_timeout as number) || 60000,
+        max_connections: (config.max_connections as number) || 10,
+        additional_config: config.additional_config as Record<string, unknown>
       };
       
       console.log('✅ PostgreSQL connection established');

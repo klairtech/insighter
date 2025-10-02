@@ -5,8 +5,15 @@ import Link from "next/link";
 import { useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
 
 const ClientHome: React.FC = () => {
-  const { user } = useSupabaseAuth();
+  const authContext = useSupabaseAuth();
+  const { user } = authContext || { user: null };
+  const [isClient, setIsClient] = useState(false);
   const isAuthenticated = !!user;
+
+  // Handle hydration
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   // Live analytics demo state
   const [currentInsight, setCurrentInsight] = useState(0);
@@ -150,7 +157,28 @@ const ClientHome: React.FC = () => {
               </p>
 
               <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
-                {isAuthenticated ? (
+                {!isClient ? (
+                  // Show default content during SSR to prevent hydration mismatch
+                  <Link
+                    href="/register"
+                    className="inline-flex items-center px-8 py-4 bg-gradient-to-r from-blue-500 to-purple-500 text-white font-semibold rounded-lg hover:from-blue-600 hover:to-purple-600 transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-blue-500/25"
+                  >
+                    Start Free Trial
+                    <svg
+                      className="ml-2 w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M13 7l5 5m0 0l-5 5m5-5H6"
+                      />
+                    </svg>
+                  </Link>
+                ) : isAuthenticated ? (
                   <Link
                     href="/organizations"
                     className="inline-flex items-center px-8 py-4 bg-gradient-to-r from-blue-500 to-purple-500 text-white font-semibold rounded-lg hover:from-blue-600 hover:to-purple-600 transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-blue-500/25"

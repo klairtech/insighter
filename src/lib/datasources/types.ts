@@ -12,8 +12,8 @@ export interface BaseDataSource {
   is_active: boolean;
   created_at: string;
   updated_at: string;
-  connection_config: Record<string, any>;
-  metadata?: Record<string, any>;
+  connection_config: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
 }
 
 export type DataSourceType = 
@@ -46,7 +46,7 @@ export interface DataSourceConnection {
   connection_timeout?: number;
   query_timeout?: number;
   max_connections?: number;
-  additional_config?: Record<string, any>;
+  additional_config?: Record<string, unknown>;
 }
 
 export interface DataSourceSchema {
@@ -76,14 +76,14 @@ export interface DataSourceTable {
   size_bytes?: number;
   created_at?: string;
   updated_at?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface DataSourceColumn {
   name: string;
   type: string;
   nullable: boolean;
-  default_value?: any;
+  default_value?: unknown;
   is_primary_key: boolean;
   is_foreign_key: boolean;
   is_unique: boolean;
@@ -91,9 +91,9 @@ export interface DataSourceColumn {
   max_length?: number;
   precision?: number;
   scale?: number;
-  sample_values?: any[];
+  sample_values?: unknown[];
   description?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface DataSourceForeignKey {
@@ -111,7 +111,7 @@ export interface DataSourceIndex {
   is_unique: boolean;
   is_primary: boolean;
   type?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface DataSourceFunction {
@@ -121,7 +121,7 @@ export interface DataSourceFunction {
   return_type: string;
   language?: string;
   definition?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface DataSourceProcedure {
@@ -130,23 +130,23 @@ export interface DataSourceProcedure {
   parameters: DataSourceParameter[];
   language?: string;
   definition?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface DataSourceParameter {
   name: string;
   type: string;
   direction: 'IN' | 'OUT' | 'INOUT';
-  default_value?: any;
+  default_value?: unknown;
 }
 
 export interface DataSourceQueryResult {
   columns: string[];
-  rows: any[][];
+  rows: unknown[][];
   row_count: number;
   execution_time_ms: number;
   query: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface DataSourceTestResult {
@@ -154,7 +154,7 @@ export interface DataSourceTestResult {
   connection_time_ms: number;
   query_time_ms: number;
   error_message?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface DataSourceCapabilities {
@@ -178,8 +178,8 @@ export interface DataSourceAgent {
   capabilities: DataSourceCapabilities;
   
   // Connection management
-  testConnection(config: Record<string, any>): Promise<DataSourceTestResult>;
-  connect(config: Record<string, any>): Promise<DataSourceConnection>;
+  testConnection(config: Record<string, unknown>): Promise<DataSourceTestResult>;
+  connect(config: Record<string, unknown>): Promise<DataSourceConnection>;
   disconnect(connection: DataSourceConnection): Promise<void>;
   
   // Schema operations
@@ -188,15 +188,15 @@ export interface DataSourceAgent {
   getColumnInfo(connection: DataSourceConnection, tableName: string, columnName: string): Promise<DataSourceColumn>;
   
   // Query operations
-  executeQuery(connection: DataSourceConnection, query: string, params?: any[]): Promise<DataSourceQueryResult>;
-  executeQueryWithLimit(connection: DataSourceConnection, query: string, limit: number, params?: any[]): Promise<DataSourceQueryResult>;
+  executeQuery(connection: DataSourceConnection, query: string, params?: unknown[]): Promise<DataSourceQueryResult>;
+  executeQueryWithLimit(connection: DataSourceConnection, query: string, limit: number, params?: unknown[]): Promise<DataSourceQueryResult>;
   
   // Data operations
   getSampleData(connection: DataSourceConnection, tableName: string, limit?: number): Promise<DataSourceQueryResult>;
   getTableRowCount(connection: DataSourceConnection, tableName: string): Promise<number>;
   
   // Metadata operations
-  getDatabaseInfo(connection: DataSourceConnection): Promise<Record<string, any>>;
+  getDatabaseInfo(connection: DataSourceConnection): Promise<Record<string, unknown>>;
   getTableList(connection: DataSourceConnection): Promise<string[]>;
   getColumnList(connection: DataSourceConnection, tableName: string): Promise<string[]>;
   
@@ -216,7 +216,7 @@ export interface FileDataSourceConfig {
   has_header?: boolean; // For CSV files
   sheet_name?: string; // For Excel files
   page_range?: string; // For PDF files
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface DatabaseDataSourceConfig {
@@ -230,7 +230,7 @@ export interface DatabaseDataSourceConfig {
   query_timeout?: number;
   max_connections?: number;
   schema_name?: string;
-  additional_config?: Record<string, any>;
+  additional_config?: Record<string, unknown>;
 }
 
 export interface ExternalDataSourceConfig {
@@ -242,7 +242,7 @@ export interface ExternalDataSourceConfig {
   rate_limit?: number;
   timeout?: number;
   retry_attempts?: number;
-  additional_config?: Record<string, any>;
+  additional_config?: Record<string, unknown>;
 }
 
 export interface DataSourceRegistry {

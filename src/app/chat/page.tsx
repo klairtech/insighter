@@ -257,7 +257,7 @@ async function getChatData(userId: string): Promise<{
       conversations: transformedConversations,
       userCredits: currentCredits,
     };
-  } catch (_error) {
+  } catch {
     return { agents: [], conversations: [], userCredits: 0 };
   }
 }

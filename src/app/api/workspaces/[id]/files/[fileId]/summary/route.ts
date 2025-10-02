@@ -13,6 +13,13 @@ export async function PUT(
   { params }: { params: Promise<{ id: string; fileId: string }> }
 ) {
   try {
+    if (!supabaseServer) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      )
+    }
+
     // Verify user session
     const session = await verifyUserSession(request)
     if (!session) {

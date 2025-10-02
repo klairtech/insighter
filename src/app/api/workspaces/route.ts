@@ -72,6 +72,10 @@ async function createWorkspaceAgent(workspaceId: string, userId: string, workspa
 
 // Helper function to verify user session
 async function verifyUserSession(request: NextRequest) {
+  if (!supabaseServer) {
+    return null
+  }
+
   const authHeader = request.headers.get('authorization')
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return null

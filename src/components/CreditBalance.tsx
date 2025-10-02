@@ -11,7 +11,8 @@ interface CreditBalanceProps {
 const CreditBalance: React.FC<CreditBalanceProps> = ({ className = "" }) => {
   const [balance, setBalance] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const { user, session } = useSupabaseAuth();
+  const authContext = useSupabaseAuth();
+  const { user, session } = authContext || { user: null, session: null };
 
   const fetchCreditBalance = useCallback(async () => {
     try {
@@ -31,7 +32,7 @@ const CreditBalance: React.FC<CreditBalanceProps> = ({ className = "" }) => {
         setBalance(data.balance);
       } else {
       }
-    } catch (_error) {
+    } catch {
     } finally {
       setIsLoading(false);
     }

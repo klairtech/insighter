@@ -11,6 +11,13 @@ export async function POST(request: NextRequest) {
     
     console.log(`📝 Creating manual summary for file: ${fileId}`)
     
+    if (!supabaseServer) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      )
+    }
+    
     // Get file information
     const { data: file, error: fileError } = await supabaseServer
       .from('file_uploads')

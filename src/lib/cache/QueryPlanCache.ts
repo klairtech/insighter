@@ -31,7 +31,7 @@ export class QueryPlanCache {
    */
   async getExecutionPlan(
     query: string, 
-    sources: any[], 
+    sources: Record<string, unknown>[], 
     userId?: string
   ): Promise<ExecutionPlan | null> {
     const key = this.cache.generatePlanKey(query, sources, userId);
@@ -50,7 +50,7 @@ export class QueryPlanCache {
    */
   async setExecutionPlan(
     query: string,
-    sources: any[],
+    sources: Record<string, unknown>[],
     executionPlan: ExecutionPlan,
     queryAnalysis: QueryAnalysis,
     userId?: string
@@ -132,7 +132,7 @@ export class QueryPlanCache {
   /**
    * Get cache statistics
    */
-  getCacheStats(): any {
+  getCacheStats(): Record<string, unknown> {
     const stats = this.cache.getStats();
     return {
       ...stats,

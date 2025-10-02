@@ -41,7 +41,7 @@ export class WebURLDataSource implements DataSourceAgent {
     ]
   };
 
-  async testConnection(config: ExternalDataSourceConfig): Promise<DataSourceTestResult> {
+  async testConnection(config: Record<string, unknown>): Promise<DataSourceTestResult> {
     const startTime = Date.now();
     
     try {
@@ -54,14 +54,14 @@ export class WebURLDataSource implements DataSourceAgent {
       
       // Validate URL format
       try {
-        new URL(config.api_url);
+        new URL(config.api_url as string);
       } catch {
         throw new Error('Invalid URL format');
       }
       
       // Test with real web scraper
       const scraper = new WebScraperConnector({
-        url: config.api_url,
+        url: config.api_url as string,
         maxContentLength: 1000, // Small test
         timeout: 10000
       });
@@ -100,7 +100,7 @@ export class WebURLDataSource implements DataSourceAgent {
     }
   }
 
-  async connect(config: ExternalDataSourceConfig): Promise<DataSourceConnection> {
+  async connect(config: Record<string, unknown>): Promise<DataSourceConnection> {
     try {
       console.log('🔌 Connecting to web URL...');
       
@@ -109,13 +109,13 @@ export class WebURLDataSource implements DataSourceAgent {
       const connection: DataSourceConnection = {
         id: `weburl_${Date.now()}`,
         data_source_id: 'web-url',
-        connection_string: config.api_url,
+        connection_string: config.api_url as string,
         additional_config: {
-          url: config.api_url,
-          timeout: config.timeout || 30000,
+          url: config.api_url as string,
+          timeout: (config.timeout as number) || 30000,
           retry_attempts: config.retry_attempts || 3,
           user_agent: 'InsighterBot/1.0',
-          headers: config.additional_config?.headers || {},
+          headers: (config.additional_config as Record<string, unknown>)?.headers || {},
           rate_limit: config.rate_limit || 10
         }
       };
@@ -148,7 +148,7 @@ export class WebURLDataSource implements DataSourceAgent {
       const schema: DataSourceSchema = {
         tables: [],
         metadata: {
-          database_name: connection.additional_config?.url || 'web_page',
+          database_name: (connection.additional_config?.url as string) || 'web_page',
           database_version: 'HTTP/1.1',
           schema_version: '1.0',
           last_updated: new Date().toISOString(),
@@ -252,7 +252,7 @@ export class WebURLDataSource implements DataSourceAgent {
       
       // Use real web scraper
       const scraper = new WebScraperConnector({
-        url,
+        url: url as string,
         maxContentLength: 50000,
         includeImages: false,
         includeLinks: true,

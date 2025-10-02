@@ -15,7 +15,7 @@ export class AgentUtils {
     startTime: number,
     tokensUsed: number = 0,
     confidence: number = 1.0,
-    additionalMetadata: Record<string, any> = {}
+    additionalMetadata: Record<string, unknown> = {}
   ): AgentResponse<T> {
     return {
       success: true,
@@ -113,7 +113,7 @@ export class AgentUtils {
   /**
    * Generate follow-up suggestions based on query type
    */
-  static generateFollowUpSuggestions(queryType: string, _dataSummary?: any): string[] {
+  static generateFollowUpSuggestions(queryType: string, _dataSummary?: unknown): string[] {
     const suggestions: Record<string, string[]> = {
       'data_query': [
         'Show me more detailed breakdown',
@@ -226,8 +226,8 @@ export class AgentUtils {
   /**
    * Create default fallback data for common agent types
    */
-  static getDefaultFallbackData(agentType: string): any {
-    const fallbacks: Record<string, any> = {
+  static getDefaultFallbackData(agentType: string): Record<string, unknown> {
+    const fallbacks: Record<string, Record<string, unknown>> = {
       'ValidationAgent': {
         is_valid: true,
         query_type: 'data_query',

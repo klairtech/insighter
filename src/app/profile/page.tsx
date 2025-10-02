@@ -11,7 +11,8 @@ import PremiumMembershipStatus from "@/components/PremiumMembershipStatus";
 import { usePremiumMembership } from "@/hooks/usePremiumMembership";
 
 const ProfilePage: React.FC = () => {
-  const { user, session } = useSupabaseAuth();
+  const authContext = useSupabaseAuth();
+  const { user, session } = authContext || { user: null, session: null };
   const [profile, setProfile] = useState({
     name: "",
     email: "",

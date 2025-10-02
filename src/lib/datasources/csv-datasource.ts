@@ -39,19 +39,21 @@ export class CSVDataSource implements DataSourceAgent {
     ]
   };
 
-  async testConnection(config: FileDataSourceConfig): Promise<DataSourceTestResult> {
+  async testConnection(config: Record<string, unknown>): Promise<DataSourceTestResult> {
     const startTime = Date.now();
     
     try {
       console.log('🔍 Testing CSV file connection...');
       
       // Validate file exists and is readable
-      if (!config.file_path || !config.file_name) {
+      const filePath = config.file_path as string;
+      const fileName = config.file_name as string;
+      if (!filePath || !fileName) {
         throw new Error('File path and name are required');
       }
       
       // Check file extension
-      if (!config.file_name.toLowerCase().endsWith('.csv')) {
+      if (!fileName.toLowerCase().endsWith('.csv')) {
         throw new Error('File must be a CSV file (.csv)');
       }
       
@@ -92,7 +94,7 @@ export class CSVDataSource implements DataSourceAgent {
     }
   }
 
-  async connect(config: FileDataSourceConfig): Promise<DataSourceConnection> {
+  async connect(config: Record<string, unknown>): Promise<DataSourceConnection> {
     try {
       console.log('🔌 Connecting to CSV file...');
       
@@ -101,10 +103,10 @@ export class CSVDataSource implements DataSourceAgent {
       const connection: DataSourceConnection = {
         id: `csv_${Date.now()}`,
         data_source_id: 'csv',
-        connection_string: config.file_path,
+        connection_string: config.file_path as string,
         additional_config: {
-          file_name: config.file_name,
-          file_type: config.file_type,
+          file_name: config.file_name as string,
+          file_type: config.file_type as string,
           file_size: config.file_size,
           encoding: config.encoding || 'utf-8',
           delimiter: config.delimiter || ',',
@@ -120,7 +122,7 @@ export class CSVDataSource implements DataSourceAgent {
     }
   }
 
-  async disconnect(connection: DataSourceConnection): Promise<void> {
+  async disconnect(_connection: DataSourceConnection): Promise<void> {
     try {
       console.log('🔌 Disconnecting from CSV file...');
       // This would close the file handle
@@ -140,7 +142,7 @@ export class CSVDataSource implements DataSourceAgent {
       const schema: DataSourceSchema = {
         tables: [],
         metadata: {
-          database_name: connection.additional_config?.file_name || 'csv_file',
+          database_name: (connection.additional_config?.file_name as string) || 'csv_file',
           database_version: 'CSV 1.0',
           schema_version: '1.0',
           last_updated: new Date().toISOString(),
@@ -230,7 +232,7 @@ export class CSVDataSource implements DataSourceAgent {
     }
   }
 
-  async executeQuery(connection: DataSourceConnection, query: string, params?: any[]): Promise<DataSourceQueryResult> {
+  async executeQuery(connection: DataSourceConnection, query: string, params?: unknown[]): Promise<DataSourceQueryResult> {
     const startTime = Date.now();
     
     try {
@@ -264,7 +266,7 @@ export class CSVDataSource implements DataSourceAgent {
     }
   }
 
-  async executeQueryWithLimit(connection: DataSourceConnection, query: string, limit: number, params?: any[]): Promise<DataSourceQueryResult> {
+  async executeQueryWithLimit(connection: DataSourceConnection, query: string, limit: number, params?: unknown[]): Promise<DataSourceQueryResult> {
     // For CSV, we'll limit the number of rows returned
     const result = await this.executeQuery(connection, query, params);
     
@@ -291,7 +293,7 @@ export class CSVDataSource implements DataSourceAgent {
     }
   }
 
-  async getDatabaseInfo(connection: DataSourceConnection): Promise<Record<string, any>> {
+  async getDatabaseInfo(connection: DataSourceConnection): Promise<Record<string, unknown>> {
     try {
       // This would get information about the CSV file
       return {

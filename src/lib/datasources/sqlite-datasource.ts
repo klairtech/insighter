@@ -41,7 +41,7 @@ export class SQLiteDataSource implements DataSourceAgent {
     ]
   };
 
-  async testConnection(config: FileDataSourceConfig): Promise<DataSourceTestResult> {
+  async testConnection(config: Record<string, unknown>): Promise<DataSourceTestResult> {
     const startTime = Date.now();
     
     try {
@@ -53,9 +53,10 @@ export class SQLiteDataSource implements DataSourceAgent {
       }
       
       // Check file extension
-      if (!config.file_name.toLowerCase().endsWith('.db') && 
-          !config.file_name.toLowerCase().endsWith('.sqlite') &&
-          !config.file_name.toLowerCase().endsWith('.sqlite3')) {
+      const fileName = config.file_name as string;
+      if (!fileName.toLowerCase().endsWith('.db') && 
+          !fileName.toLowerCase().endsWith('.sqlite') &&
+          !fileName.toLowerCase().endsWith('.sqlite3')) {
         throw new Error('File must be a SQLite database file (.db, .sqlite, or .sqlite3)');
       }
       
@@ -93,7 +94,7 @@ export class SQLiteDataSource implements DataSourceAgent {
     }
   }
 
-  async connect(config: FileDataSourceConfig): Promise<DataSourceConnection> {
+  async connect(config: Record<string, unknown>): Promise<DataSourceConnection> {
     try {
       console.log('🔌 Connecting to SQLite database...');
       
@@ -102,10 +103,10 @@ export class SQLiteDataSource implements DataSourceAgent {
       const connection: DataSourceConnection = {
         id: `sqlite_${Date.now()}`,
         data_source_id: 'sqlite',
-        connection_string: config.file_path,
+        connection_string: config.file_path as string,
         additional_config: {
-          file_name: config.file_name,
-          file_type: config.file_type,
+          file_name: config.file_name as string,
+          file_type: config.file_type as string,
           file_size: config.file_size,
           encoding: config.encoding || 'utf-8',
           is_readonly: false
@@ -143,7 +144,7 @@ export class SQLiteDataSource implements DataSourceAgent {
         functions: [],
         procedures: [],
         metadata: {
-          database_name: connection.additional_config?.file_name || 'sqlite_db',
+          database_name: (connection.additional_config?.file_name as string) || 'sqlite_db',
           database_version: 'SQLite 3.45',
           schema_version: '1.0',
           last_updated: new Date().toISOString(),

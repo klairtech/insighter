@@ -15,6 +15,13 @@ export async function GET(
 
     const { id: connectionId } = await params
 
+    if (!supabaseServer) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      )
+    }
+
     // Fetch database connection with workspace access check
     const { data: connection, error: connectionError } = await supabaseServer
       .from('database_connections')
@@ -75,6 +82,13 @@ export async function PUT(
     const { id: connectionId } = await params
     const body = await request.json()
     const { name, host, port, database, username, password, schema_name } = body
+
+    if (!supabaseServer) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      )
+    }
 
     // Verify user has access to this connection
     const { data: connection, error: connectionError } = await supabaseServer
@@ -149,6 +163,13 @@ export async function DELETE(
     }
 
     const { id: connectionId } = await params
+
+    if (!supabaseServer) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      )
+    }
 
     // First, get the database connection
     const { data: connection, error: connectionError } = await supabaseServer

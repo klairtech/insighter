@@ -56,7 +56,7 @@ export class SourceCredibilityAgent implements BaseAgent {
   name = 'Source Credibility Assessment Agent';
   description = 'Assesses the credibility and reliability of data sources based on multiple quality metrics';
 
-  async execute(context: AgentContext & { sourceResults: any[] }): Promise<AgentResponse<SourceCredibilityAgentResponse>> {
+  async execute(context: AgentContext & { sourceResults: Record<string, unknown>[] }): Promise<AgentResponse<SourceCredibilityAgentResponse>> {
     const startTime = Date.now();
     
     try {
@@ -147,7 +147,7 @@ export class SourceCredibilityAgent implements BaseAgent {
     }
   }
 
-  private async assessSourceCredibility(sourceResults: any[], workspaceId: string): Promise<SourceCredibilityMetrics[]> {
+  private async assessSourceCredibility(sourceResults: Record<string, unknown>[], workspaceId: string): Promise<SourceCredibilityMetrics[]> {
     const metrics: SourceCredibilityMetrics[] = [];
     
     for (const result of sourceResults) {
@@ -158,7 +158,7 @@ export class SourceCredibilityAgent implements BaseAgent {
         console.warn(`Failed to assess credibility for source ${result.source_id}:`, error);
         // Add default low-credibility metrics
         metrics.push({
-          source_id: result.source_id || 'unknown',
+          source_id: (result.source_id as string) || 'unknown',
           credibility_score: 0.2,
           data_freshness_score: 0.2,
           completeness_score: 0.2,
@@ -186,8 +186,8 @@ export class SourceCredibilityAgent implements BaseAgent {
     return metrics;
   }
 
-  private async assessIndividualSource(sourceResult: any, workspaceId: string): Promise<SourceCredibilityMetrics> {
-    const sourceId = sourceResult.source_id || 'unknown';
+  private async assessIndividualSource(sourceResult: Record<string, unknown>, workspaceId: string): Promise<SourceCredibilityMetrics> {
+    const sourceId = (sourceResult.source_id as string) || 'unknown';
     
     // Get historical performance data (this would come from your database)
     const historicalPerformance = await this.getHistoricalPerformance(sourceId, workspaceId);
@@ -226,7 +226,7 @@ export class SourceCredibilityAgent implements BaseAgent {
       completeness_score: completenessScore,
       reliability_score: reliabilityScore,
       usage_frequency_score: usageFrequencyScore,
-      last_updated: sourceResult.last_updated || new Date().toISOString(),
+      last_updated: (sourceResult.last_updated as string) || new Date().toISOString(),
       update_frequency: this.determineUpdateFrequency(sourceResult),
       data_quality_indicators: dataQuality,
       historical_performance: historicalPerformance,
@@ -234,7 +234,7 @@ export class SourceCredibilityAgent implements BaseAgent {
     };
   }
 
-  private async getHistoricalPerformance(sourceId: string, workspaceId: string): Promise<{
+  private async getHistoricalPerformance(_sourceId: string, _workspaceId: string): Promise<{
     success_rate: number;
     error_rate: number;
     average_response_time: number;
@@ -260,7 +260,7 @@ export class SourceCredibilityAgent implements BaseAgent {
     }
   }
 
-  private async assessDataQuality(sourceResult: any): Promise<{
+  private async assessDataQuality(sourceResult: Record<string, unknown>): Promise<{
     has_missing_values: boolean;
     has_duplicates: boolean;
     has_outliers: boolean;
@@ -323,7 +323,7 @@ export class SourceCredibilityAgent implements BaseAgent {
     }
   }
 
-  private detectOutliers(data: any[]): boolean {
+  private detectOutliers(data: Record<string, unknown>[]): boolean {
     // Simplified outlier detection
     // In a real implementation, this would use statistical methods
     try {
@@ -333,7 +333,7 @@ export class SourceCredibilityAgent implements BaseAgent {
       const numericColumns = this.getNumericColumns(data);
       
       for (const column of numericColumns) {
-        const values = data.map(row => parseFloat(row[column])).filter(v => !isNaN(v));
+        const values = data.map(row => parseFloat(row[column] as string)).filter(v => !isNaN(v));
         if (values.length < 3) continue;
         
         const sorted = values.sort((a, b) => a - b);
@@ -350,27 +350,27 @@ export class SourceCredibilityAgent implements BaseAgent {
       }
       
       return false;
-    } catch (error) {
+    } catch {
       return false;
     }
   }
 
-  private getNumericColumns(data: any[]): string[] {
+  private getNumericColumns(data: Record<string, unknown>[]): string[] {
     if (data.length === 0) return [];
     
     const firstRow = data[0];
     return Object.keys(firstRow).filter(key => {
       const value = firstRow[key];
-      return typeof value === 'number' || !isNaN(parseFloat(value));
+      return typeof value === 'number' || !isNaN(parseFloat(value as string));
     });
   }
 
-  private calculateDataFreshnessScore(sourceResult: any): number {
+  private calculateDataFreshnessScore(sourceResult: Record<string, unknown>): number {
     try {
       const lastUpdated = sourceResult.last_updated;
       if (!lastUpdated) return 0.5;
       
-      const updateDate = new Date(lastUpdated);
+      const updateDate = new Date(lastUpdated as string);
       const now = new Date();
       const daysSinceUpdate = (now.getTime() - updateDate.getTime()) / (1000 * 60 * 60 * 24);
       
@@ -380,12 +380,12 @@ export class SourceCredibilityAgent implements BaseAgent {
       if (daysSinceUpdate <= 30) return 0.6;
       if (daysSinceUpdate <= 90) return 0.4;
       return 0.2;
-    } catch (error) {
+    } catch {
       return 0.3;
     }
   }
 
-  private calculateCompletenessScore(sourceResult: any): number {
+  private calculateCompletenessScore(sourceResult: Record<string, unknown>): number {
     try {
       if (!sourceResult.data) return 0.0;
       
@@ -416,16 +416,16 @@ export class SourceCredibilityAgent implements BaseAgent {
       
       if (totalFields === 0) return 0.0;
       return 1.0 - (missingFields / totalFields);
-    } catch (error) {
+    } catch {
       return 0.3;
     }
   }
 
-  private calculateReliabilityScore(historicalPerformance: any): number {
+  private calculateReliabilityScore(historicalPerformance: Record<string, unknown>): number {
     try {
-      const successRate = historicalPerformance.success_rate || 0.5;
-      const errorRate = historicalPerformance.error_rate || 0.5;
-      const responseTime = historicalPerformance.average_response_time || 5000;
+      const successRate = (historicalPerformance.success_rate as number) || 0.5;
+      const errorRate = (historicalPerformance.error_rate as number) || 0.5;
+      const responseTime = (historicalPerformance.average_response_time as number) || 5000;
       
       // Score based on success rate and response time
       let score = successRate;
@@ -439,70 +439,70 @@ export class SourceCredibilityAgent implements BaseAgent {
       if (responseTime > 30000) score *= 0.6;
       
       return Math.min(score, 1.0);
-    } catch (error) {
+    } catch {
       return 0.3;
     }
   }
 
-  private calculateUsageFrequencyScore(sourceId: string, workspaceId: string): number {
+  private calculateUsageFrequencyScore(_sourceId: string, _workspaceId: string): number {
     try {
       // This would query your database for usage frequency
       // For now, return a mock score
       return 0.7;
-    } catch (error) {
+    } catch {
       return 0.3;
     }
   }
 
-  private determineUpdateFrequency(sourceResult: any): 'high' | 'medium' | 'low' | 'unknown' {
+  private determineUpdateFrequency(sourceResult: Record<string, unknown>): 'high' | 'medium' | 'low' | 'unknown' {
     try {
       const lastUpdated = sourceResult.last_updated;
       if (!lastUpdated) return 'unknown';
       
-      const updateDate = new Date(lastUpdated);
+      const updateDate = new Date(lastUpdated as string);
       const now = new Date();
       const daysSinceUpdate = (now.getTime() - updateDate.getTime()) / (1000 * 60 * 60 * 24);
       
       if (daysSinceUpdate <= 1) return 'high';
       if (daysSinceUpdate <= 7) return 'medium';
       return 'low';
-    } catch (error) {
+    } catch {
       return 'unknown';
     }
   }
 
-  private generateSourceRecommendations(metrics: any): string[] {
+  private generateSourceRecommendations(metrics: Record<string, unknown>): string[] {
     const recommendations: string[] = [];
     
-    if (metrics.credibilityScore < 0.5) {
+    if ((metrics.credibilityScore as number) < 0.5) {
       recommendations.push('⚠️ Low credibility score - consider additional verification');
     }
     
-    if (metrics.dataFreshnessScore < 0.5) {
+    if ((metrics.dataFreshnessScore as number) < 0.5) {
       recommendations.push('📅 Data appears stale - check for more recent updates');
     }
     
-    if (metrics.completenessScore < 0.7) {
+    if ((metrics.completenessScore as number) < 0.7) {
       recommendations.push('📊 Data completeness issues detected - review missing values');
     }
     
-    if (metrics.reliabilityScore < 0.6) {
+    if ((metrics.reliabilityScore as number) < 0.6) {
       recommendations.push('🔧 Reliability concerns - check historical performance');
     }
     
-    if (metrics.dataQuality.has_missing_values) {
+    if ((metrics.dataQuality as Record<string, unknown>).has_missing_values) {
       recommendations.push('❓ Missing values detected - consider data cleaning');
     }
     
-    if (metrics.dataQuality.has_duplicates) {
+    if ((metrics.dataQuality as Record<string, unknown>).has_duplicates) {
       recommendations.push('🔄 Duplicate records found - consider deduplication');
     }
     
-    if (metrics.dataQuality.has_outliers) {
+    if ((metrics.dataQuality as Record<string, unknown>).has_outliers) {
       recommendations.push('📈 Outliers detected - verify data accuracy');
     }
     
-    if (!metrics.dataQuality.schema_consistency) {
+    if (!(metrics.dataQuality as Record<string, unknown>).schema_consistency) {
       recommendations.push('🏗️ Schema inconsistency - review data structure');
     }
     

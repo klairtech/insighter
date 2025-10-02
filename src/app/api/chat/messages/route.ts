@@ -2,24 +2,32 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerSupabaseClient, supabaseServer } from '@/lib/server-utils'
 import { processWithEnhancedAgent, getConversationContext } from '@/lib/ai-agents'
 import { encryptText, encryptObject, hashForIndex } from '@/lib/encryption'
+// import { EnhancedAgentResponse } from '@/lib/agents/types'
 
 export async function POST(request: NextRequest) {
   try {
+    if (!supabaseServer) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      )
+    }
+
     console.log('🔍 Unified Chat API: Starting message processing')
     
     // Verify user session using server-side Supabase client with cookies
     const supabase = await createServerSupabaseClient()
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+    const { data: { user }, error: userError } = await supabase.auth.getUser()
     
-    if (sessionError || !session?.user) {
-      console.log('❌ Unified Chat API: Unauthorized - no session:', sessionError)
+    if (userError || !user) {
+      console.log('❌ Unified Chat API: Unauthorized - no user:', userError)
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       )
     }
     
-    console.log('✅ Unified Chat API: User authenticated:', session.user.id)
+    console.log('✅ Unified Chat API: User authenticated:', user.id)
 
     const body = await request.json()
     const { 
@@ -68,7 +76,7 @@ export async function POST(request: NextRequest) {
       const { data: access } = await supabaseServer
         .from('agent_access')
         .select('access_level')
-        .eq('user_id', session.user.id)
+        .eq('user_id', user.id)
         .eq('agent_id', finalAgentId)
         .single()
       
@@ -80,7 +88,7 @@ export async function POST(request: NextRequest) {
         
         const { data: orgAccess, error: orgAccessError } = await supabaseServer
           .rpc('user_has_agent_access', {
-            p_user_id: session.user.id,
+            p_user_id: user.id,
             p_agent_id: finalAgentId,
             p_required_access: 'read'
           })
@@ -100,7 +108,7 @@ export async function POST(request: NextRequest) {
       const { data: existingConversation, error: convError } = await supabaseServer
         .from('conversations')
         .select('id, agent_id, title, status')
-        .eq('user_id', session.user.id)
+        .eq('user_id', user.id)
         .eq('agent_id', finalAgentId)
         .eq('conversation_type', 'chat')
         .eq('status', 'active')
@@ -130,7 +138,7 @@ export async function POST(request: NextRequest) {
         const { data: newConversation, error: createError } = await supabaseServer
           .from('conversations')
           .insert({
-            user_id: session.user.id,
+            user_id: user.id,
             agent_id: finalAgentId,
             conversation_type: 'chat',
             title: conversationTitle,
@@ -186,7 +194,7 @@ export async function POST(request: NextRequest) {
         )
       `)
       .eq('id', finalConversationId)
-      .eq('user_id', session.user.id)
+      .eq('user_id', user.id)
       .eq('conversation_type', 'chat')
       .single()
 
@@ -205,7 +213,7 @@ export async function POST(request: NextRequest) {
     const { estimateTokenCount } = await import('@/lib/token-utils')
     
     // First check if user has minimum credits (10 credits minimum)
-    const minimumCreditsCheck = await checkUserCredits(session.user.id, 10)
+    const minimumCreditsCheck = await checkUserCredits(user.id, 10)
     
     if (!minimumCreditsCheck.hasCredits) {
       console.log(`❌ Unified Chat API: User has insufficient credits for chat. User has ${minimumCreditsCheck.currentCredits}, needs minimum 10 credits`)
@@ -226,7 +234,7 @@ export async function POST(request: NextRequest) {
     const totalEstimatedTokens = userInputTokens + estimatedResponseTokens
     const estimatedCredits = Math.ceil(tokensToCredits(totalEstimatedTokens))
     
-    const creditCheck = await checkUserCredits(session.user.id, estimatedCredits)
+    const creditCheck = await checkUserCredits(user.id, estimatedCredits)
     
     if (!creditCheck.hasCredits) {
       console.log(`❌ Unified Chat API: Insufficient credits. User has ${creditCheck.currentCredits}, needs ${estimatedCredits}`)
@@ -291,35 +299,13 @@ export async function POST(request: NextRequest) {
     // Process with enhanced AI agent (with fallback to standard agent)
     let agentResponse;
     
-    if (stream) {
-      // Use streaming multi-agent flow for real-time updates
-      console.log('🔄 Unified Chat API: Using streaming multi-agent flow')
-      const { StreamingMultiAgentFlow } = await import('@/lib/streaming/StreamingMultiAgentFlow');
-      const streamingFlow = new StreamingMultiAgentFlow();
-      
-      const _sessionId = `chat-${finalConversationId}-${Date.now()}`;
-      const _clientId = `client-${session.user.id}-${Date.now()}`;
-      
-      // Get workspace ID from agent
-      const agent = Array.isArray(conversation.ai_agents) ? conversation.ai_agents[0] : conversation.ai_agents;
-      const workspaceId = (agent?.workspaces as any)?.[0]?.id || (agent?.workspaces as any)?.id;
-      
-      agentResponse = await streamingFlow.processQueryWithStreaming(
-        content.trim(),
-        workspaceId || 'default',
-        conversationContext.messages,
-        session.user.id,
-        selectedDataSources
-      );
-    } else {
-      // Use standard multi-agent flow
-      agentResponse = await processWithEnhancedAgent(
-        conversationContext, 
-        content.trim(), 
-        session.user.id,
-        selectedDataSources
-      );
-    }
+    // Use standard multi-agent flow
+    agentResponse = await processWithEnhancedAgent(
+      conversationContext, 
+      content.trim(), 
+      user.id,
+      selectedDataSources
+    );
     
     console.log('✅ Unified Chat API: Enhanced AI agent response received')
 
@@ -332,37 +318,37 @@ export async function POST(request: NextRequest) {
       // Basic response data
       tokens_used: agentResponse.tokens_used,
       processing_time_ms: agentResponse.processing_time_ms,
-      confidence_score: (agentResponse.metadata as any)?.confidence_score,
-      files_referenced: (agentResponse.metadata as any)?.files_referenced,
+      confidence_score: (agentResponse.metadata as any)?.confidence_score as number,
+      files_referenced: (agentResponse.metadata as any)?.files_referenced as string[],
       
       // SQL and visualization data
-      sql_queries: (agentResponse as any).sql_queries,
-      graph_data: (agentResponse as any).graph_data,
+      sql_queries: agentResponse.sql_queries,
+      graph_data: agentResponse.graph_data,
       
       // XAI data
-      xai_metrics: (agentResponse as any).xai_metrics,
-      agent_thinking_notes: (agentResponse as any).agent_thinking_notes,
-      reasoning_explanation: (agentResponse as any).reasoning_explanation,
+      xai_metrics: agentResponse.xai_metrics,
+      agent_thinking_notes: agentResponse.agent_thinking_notes,
+      reasoning_explanation: agentResponse.reasoning_explanation,
       
       // Token tracking
-      token_tracking: (agentResponse as any).token_tracking,
-      user_input_tokens: (agentResponse as any).token_tracking?.userInputTokens || 0,
-      system_prompt_tokens: (agentResponse as any).token_tracking?.systemPromptTokens || 0,
-      context_tokens: (agentResponse as any).token_tracking?.contextTokens || 0,
-      router_agent_tokens: (agentResponse as any).token_tracking?.routerAgentTokens || 0,
-      qa_agent_tokens: (agentResponse as any).token_tracking?.qaAgentTokens || 0,
-      file_content_tokens: (agentResponse as any).token_tracking?.fileContentTokens || 0,
-      conversation_history_tokens: (agentResponse as any).token_tracking?.conversationHistoryTokens || 0,
-      total_input_tokens: (agentResponse as any).token_tracking?.totalInputTokens || 0,
-      total_processing_tokens: (agentResponse as any).token_tracking?.totalProcessingTokens || 0,
-      total_output_tokens: (agentResponse as any).token_tracking?.totalOutputTokens || 0
+      token_tracking: agentResponse.token_tracking,
+      user_input_tokens: agentResponse.token_tracking?.userInputTokens || 0,
+      system_prompt_tokens: agentResponse.token_tracking?.systemPromptTokens || 0,
+      context_tokens: agentResponse.token_tracking?.contextTokens || 0,
+      router_agent_tokens: agentResponse.token_tracking?.routerAgentTokens || 0,
+      qa_agent_tokens: agentResponse.token_tracking?.qaAgentTokens || 0,
+      file_content_tokens: agentResponse.token_tracking?.fileContentTokens || 0,
+      conversation_history_tokens: agentResponse.token_tracking?.conversationHistoryTokens || 0,
+      total_input_tokens: agentResponse.token_tracking?.totalInputTokens || 0,
+      total_processing_tokens: agentResponse.token_tracking?.totalProcessingTokens || 0,
+      total_output_tokens: agentResponse.token_tracking?.totalOutputTokens || 0
     }
     
     console.log('🔍 Saving to database:', {
-      hasSqlQueries: !!(agentResponse as any).sql_queries,
-      hasGraphData: !!(agentResponse as any).graph_data,
-      sqlQueriesValue: (agentResponse as any).sql_queries,
-      graphDataValue: (agentResponse as any).graph_data,
+      hasSqlQueries: !!agentResponse.sql_queries,
+      hasGraphData: !!agentResponse.graph_data,
+      sqlQueriesValue: agentResponse.sql_queries,
+      graphDataValue: agentResponse.graph_data,
       metadataKeys: Object.keys(comprehensiveMetadata)
     })
 
@@ -378,11 +364,11 @@ export async function POST(request: NextRequest) {
         p_tokens_used: agentResponse.tokens_used || 0,
         p_processing_time_ms: agentResponse.processing_time_ms || 0,
         p_encryption_version: 'v1',
-        p_confidence_score: (agentResponse as any).xai_metrics?.confidence_score || (agentResponse.metadata as any)?.confidence_score,
-        p_analysis_depth: (agentResponse as any).analysis_depth,
-        p_data_quality_score: (agentResponse as any).data_quality_score,
-        p_response_completeness_score: (agentResponse as any).response_completeness_score,
-        p_user_satisfaction_prediction: (agentResponse as any).user_satisfaction_prediction
+        p_confidence_score: (agentResponse.xai_metrics as any)?.confidence_score as number || (agentResponse.metadata as any)?.confidence_score as number,
+        p_analysis_depth: agentResponse.analysis_depth,
+        p_data_quality_score: agentResponse.data_quality_score,
+        p_response_completeness_score: agentResponse.response_completeness_score,
+        p_user_satisfaction_prediction: agentResponse.user_satisfaction_prediction
       })
 
     if (agentMsgError) {
@@ -417,7 +403,7 @@ export async function POST(request: NextRequest) {
       console.log(`💳 Deducting ${creditsUsed} credits for ${tokensUsed} tokens used`)
       
       const creditResult = await deductCredits(
-        session.user.id, 
+        user.id, 
         creditsUsed, 
         `AI Agent Usage - ${conversation.ai_agents?.[0]?.name || 'Unknown Agent'}`
       )
@@ -429,24 +415,31 @@ export async function POST(request: NextRequest) {
         console.log(`✅ Successfully deducted ${creditsUsed} credits. Remaining: ${creditResult.remainingCredits}`)
         
         // Log credit usage for analytics with model information
-        const modelUsage = ('model_usage' in agentResponse ? agentResponse.model_usage : undefined) as any;
+        const modelUsage = 'model_usage' in agentResponse ? (agentResponse as Record<string, unknown>).model_usage : undefined;
         const modelInfo = modelUsage ? {
-          model_used: modelUsage.primary_model,
-          model_provider: modelUsage.primary_provider,
-          model_version: modelUsage.primary_model,
-          fallback_used: modelUsage.fallback_used,
-          input_tokens: modelUsage.model_breakdown?.reduce((sum: number, usage: any) => sum + (usage.tokens_used * 0.7), 0) || 0, // Estimate input tokens
-          output_tokens: modelUsage.model_breakdown?.reduce((sum: number, usage: any) => sum + (usage.tokens_used * 0.3), 0) || 0 // Estimate output tokens
+          model_used: (modelUsage as Record<string, unknown>).primary_model,
+          model_provider: (modelUsage as Record<string, unknown>).primary_provider,
+          model_version: (modelUsage as Record<string, unknown>).primary_model,
+          fallback_used: (modelUsage as Record<string, unknown>).fallback_used,
+          input_tokens: ((modelUsage as Record<string, unknown>).model_breakdown as Array<Record<string, unknown>>)?.reduce((sum: number, usage: Record<string, unknown>) => sum + ((usage.tokens_used as number) * 0.7), 0) || 0, // Estimate input tokens
+          output_tokens: ((modelUsage as Record<string, unknown>).model_breakdown as Array<Record<string, unknown>>)?.reduce((sum: number, usage: Record<string, unknown>) => sum + ((usage.tokens_used as number) * 0.3), 0) || 0 // Estimate output tokens
         } : undefined
         
         await logCreditUsage(
-          session.user.id,
+          user.id,
           conversation.agent_id,
           finalConversationId,
           agentResponse.tokens_used || 0,
           creditsUsed,
           `AI Agent Usage - ${conversation.ai_agents?.[0]?.name || 'Unknown Agent'}`,
-          modelInfo
+          {
+            model_used: (modelInfo?.model_used as string) || 'unknown',
+            model_provider: (modelInfo?.model_provider as string) || 'unknown',
+            model_version: (modelInfo?.model_version as string) || 'unknown',
+            fallback_used: (modelInfo?.fallback_used as boolean) || false,
+            input_tokens: modelInfo?.input_tokens || 0,
+            output_tokens: modelInfo?.output_tokens || 0
+          }
         )
       }
     } else {

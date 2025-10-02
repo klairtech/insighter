@@ -39,7 +39,7 @@ export class APIDataSource implements DataSourceAgent {
     ]
   };
 
-  async testConnection(config: ExternalDataSourceConfig): Promise<DataSourceTestResult> {
+  async testConnection(config: Record<string, unknown>): Promise<DataSourceTestResult> {
     const startTime = Date.now();
     
     try {
@@ -52,7 +52,7 @@ export class APIDataSource implements DataSourceAgent {
       
       // Validate URL format
       try {
-        new URL(config.api_url);
+        new URL(config.api_url as string);
       } catch {
         throw new Error('Invalid API URL format');
       }
@@ -93,7 +93,7 @@ export class APIDataSource implements DataSourceAgent {
     }
   }
 
-  async connect(config: ExternalDataSourceConfig): Promise<DataSourceConnection> {
+  async connect(config: Record<string, unknown>): Promise<DataSourceConnection> {
     try {
       console.log('🔌 Connecting to API...');
       
@@ -102,16 +102,16 @@ export class APIDataSource implements DataSourceAgent {
       const connection: DataSourceConnection = {
         id: `api_${Date.now()}`,
         data_source_id: 'api',
-        connection_string: config.api_url,
+        connection_string: config.api_url as string,
         additional_config: {
-          api_url: config.api_url,
-          api_key: config.api_key,
+          api_url: config.api_url as string,
+          api_key: config.api_key as string,
           oauth_token: config.oauth_token,
           refresh_token: config.refresh_token,
           rate_limit: config.rate_limit || 100,
           timeout: config.timeout || 30000,
           retry_attempts: config.retry_attempts || 3,
-          headers: config.additional_config?.headers || {},
+          headers: (config.additional_config as Record<string, unknown>)?.headers || {},
           auth_type: config.api_key ? 'API_KEY' : config.oauth_token ? 'OAUTH' : 'NONE'
         }
       };
@@ -124,7 +124,7 @@ export class APIDataSource implements DataSourceAgent {
     }
   }
 
-  async disconnect(connection: DataSourceConnection): Promise<void> {
+  async disconnect(_connection: DataSourceConnection): Promise<void> {
     try {
       console.log('🔌 Disconnecting from API...');
       // This would close the HTTP connection
@@ -144,7 +144,7 @@ export class APIDataSource implements DataSourceAgent {
       const schema: DataSourceSchema = {
         tables: [],
         metadata: {
-          database_name: connection.additional_config?.api_url || 'api_endpoint',
+          database_name: (connection.additional_config?.api_url as string) || 'api_endpoint',
           database_version: 'REST API',
           schema_version: '1.0',
           last_updated: new Date().toISOString(),
@@ -234,7 +234,7 @@ export class APIDataSource implements DataSourceAgent {
     }
   }
 
-  async executeQuery(connection: DataSourceConnection, query: string, params?: any[]): Promise<DataSourceQueryResult> {
+  async executeQuery(connection: DataSourceConnection, query: string, params?: unknown[]): Promise<DataSourceQueryResult> {
     const startTime = Date.now();
     
     try {
@@ -268,7 +268,7 @@ export class APIDataSource implements DataSourceAgent {
     }
   }
 
-  async executeQueryWithLimit(connection: DataSourceConnection, query: string, limit: number, params?: any[]): Promise<DataSourceQueryResult> {
+  async executeQueryWithLimit(connection: DataSourceConnection, query: string, limit: number, params?: unknown[]): Promise<DataSourceQueryResult> {
     // For APIs, we'll limit the number of rows returned
     const result = await this.executeQuery(connection, query, params);
     
@@ -295,7 +295,7 @@ export class APIDataSource implements DataSourceAgent {
     }
   }
 
-  async getDatabaseInfo(connection: DataSourceConnection): Promise<Record<string, any>> {
+  async getDatabaseInfo(connection: DataSourceConnection): Promise<Record<string, unknown>> {
     try {
       // This would get information about the API
       return {

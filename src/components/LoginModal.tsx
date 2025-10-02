@@ -16,7 +16,11 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
   const [isSignUp, setIsSignUp] = useState(false);
   const [name, setName] = useState("");
 
-  const { signIn, signUp } = useSupabaseAuth();
+  const authContext = useSupabaseAuth();
+  const { signIn, signUp } = authContext || {
+    signIn: async () => ({ error: { message: "Not authenticated" } }),
+    signUp: async () => ({ error: { message: "Not authenticated" } }),
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

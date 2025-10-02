@@ -3,6 +3,13 @@ import { createServerSupabaseClient, supabaseServer } from '@/lib/server-utils'
 
 export async function GET() {
   try {
+    if (!supabaseServer) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      )
+    }
+
     // Verify user session using server-side Supabase client with cookies
     const supabase = await createServerSupabaseClient()
     const { data: { session }, error: sessionError } = await supabase.auth.getSession()
@@ -113,6 +120,13 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    if (!supabaseServer) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      )
+    }
+
     console.log('🔍 Conversation Creation API: Starting request')
     
     // Verify user session using server-side Supabase client with cookies

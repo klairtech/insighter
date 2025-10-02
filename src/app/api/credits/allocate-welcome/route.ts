@@ -3,6 +3,13 @@ import { supabaseServer } from "@/lib/supabase-auth";
 
 export async function POST(request: NextRequest) {
   try {
+    if (!supabaseServer) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      )
+    }
+
     const body = await request.json();
     const { userId } = body;
 

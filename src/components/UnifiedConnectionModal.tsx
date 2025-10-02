@@ -640,7 +640,7 @@ export default function UnifiedConnectionModal({
   });
 
   // Connection testing and creation functions
-  const testDatabaseConnection = async (_config: Record<string, any>) => {
+  const testDatabaseConnection = async (_config: Record<string, unknown>) => {
     // Implementation for testing database connections
     return {
       success: true,
@@ -651,7 +651,7 @@ export default function UnifiedConnectionModal({
     };
   };
 
-  const createDatabaseConnection = async (_config: Record<string, any>) => {
+  const createDatabaseConnection = async (_config: Record<string, unknown>) => {
     // Implementation for creating database connections
     return {
       success: true,
@@ -699,7 +699,7 @@ export default function UnifiedConnectionModal({
     setError(null);
   };
 
-  const handleConfigChange = (key: string, value: any) => {
+  const handleConfigChange = (key: string, value: unknown) => {
     setConfig((prev) => ({
       ...prev,
       [key]: value,

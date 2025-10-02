@@ -14,6 +14,13 @@ export async function GET(
   { params }: { params: Promise<{ workspaceId: string }> }
 ) {
   try {
+    if (!supabaseServer) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      )
+    }
+
     const { workspaceId } = await params
     const { searchParams } = new URL(request.url)
     const metricType = searchParams.get('metric') || 'all'
@@ -42,7 +49,15 @@ export async function GET(
     // Get drift detection result
     const driftResult = await realTimeLearningPipeline.checkForDrift(workspaceId)
 
-    const responseData: any = {
+    const responseData: {
+      learning_metrics: unknown;
+      drift_detection: unknown;
+      workspace_id: string;
+      performance_metrics?: unknown;
+      accuracy_metrics?: unknown;
+      efficiency_metrics?: unknown;
+      drift_metrics?: unknown;
+    } = {
       learning_metrics: learningMetrics,
       drift_detection: driftResult,
       workspace_id: workspaceId

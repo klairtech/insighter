@@ -3,6 +3,10 @@ import { supabaseServer } from '@/lib/server-utils'
 
 // Helper function to verify admin session
 async function verifyAdminSession(request: NextRequest) {
+  if (!supabaseServer) {
+    return null
+  }
+
   const authHeader = request.headers.get('authorization')
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return null
@@ -29,10 +33,17 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    if (!supabaseServer) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      )
+    }
+
     const { id } = await params
 
     // Get FAQ by ID
-    const { data: faq, error } = await supabaseServer
+    const { data: faq, error } = await supabaseServer!
       .from('faqs')
       .select('*')
       .eq('id', id)
@@ -61,6 +72,13 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    if (!supabaseServer) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      )
+    }
+
     const user = await verifyAdminSession(request)
     if (!user) {
       return NextResponse.json(
@@ -133,6 +151,13 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    if (!supabaseServer) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      )
+    }
+
     const user = await verifyAdminSession(request)
     if (!user) {
       return NextResponse.json(

@@ -390,7 +390,8 @@ export default function DatabaseConnectionModal({
     loading: configLoading,
     error: configError,
   } = useDatabaseConfig();
-  const { session } = useSupabaseAuth();
+  const authContext = useSupabaseAuth();
+  const { session } = authContext || { session: null };
   const [selectedDbType, setSelectedDbType] = useState<string>("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
 

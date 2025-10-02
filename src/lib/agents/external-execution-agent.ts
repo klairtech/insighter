@@ -29,7 +29,7 @@ export class ExternalExecutionAgent implements BaseAgent {
   name = 'External Execution Agent';
   description = 'Uses real datasource agents to fetch actual data from external APIs and services (Google Sheets, Google Docs, Web URLs, etc.)';
 
-  async execute(context: AgentContext & { filteredSources: any[]; optimizedQuery: string }): Promise<AgentResponse<ExternalExecutionAgentResponse>> {
+  async execute(context: AgentContext & { filteredSources: Record<string, unknown>[]; optimizedQuery: string }): Promise<AgentResponse<ExternalExecutionAgentResponse>> {
     const startTime = Date.now();
     
     try {
@@ -86,11 +86,11 @@ export class ExternalExecutionAgent implements BaseAgent {
             failedConnections++;
           }
         } catch (error) {
-          console.warn(`Failed to process external connection ${externalSource.id}:`, error);
+          console.warn(`Failed to process external connection ${externalSource.id as string}:`, error);
           executionResults.push({
-            source_id: externalSource.id,
-            source_name: externalSource.name,
-            source_type: externalSource.type,
+            source_id: externalSource.id as string,
+            source_name: externalSource.name as string,
+            source_type: externalSource.type as string,
             success: false,
             error: error instanceof Error ? error.message : 'Unknown error',
             execution_time_ms: 0,
@@ -167,7 +167,7 @@ export class ExternalExecutionAgent implements BaseAgent {
     }
   }
 
-  private async executeExternalConnection(externalSource: any, optimizedQuery: string): Promise<DatabaseExecutionResult> {
+  private async executeExternalConnection(externalSource: Record<string, unknown>, optimizedQuery: string): Promise<DatabaseExecutionResult> {
     const sourceStartTime = Date.now();
     
     try {
@@ -179,16 +179,16 @@ export class ExternalExecutionAgent implements BaseAgent {
         .single();
       
       if (!externalConnection) {
-        throw new Error(`External connection not found for source: ${externalSource.id}`);
+        throw new Error(`External connection not found for source: ${externalSource.id as string}`);
       }
       
       // Execute external API call based on connection type
       const externalData = await this.executeExternalAPICall(externalConnection, optimizedQuery);
       
       return {
-        source_id: externalSource.id,
-        source_name: externalSource.name,
-        source_type: externalSource.type,
+        source_id: externalSource.id as string,
+        source_name: externalSource.name as string,
+        source_type: externalSource.type as string,
         success: true,
         data: externalData,
         query_executed: `External API: ${optimizedQuery}`,
@@ -207,9 +207,9 @@ export class ExternalExecutionAgent implements BaseAgent {
       };
     } catch (error) {
       return {
-        source_id: externalSource.id,
-        source_name: externalSource.name,
-        source_type: externalSource.type,
+        source_id: externalSource.id as string,
+        source_name: externalSource.name as string,
+        source_type: externalSource.type as string,
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
         execution_time_ms: Date.now() - sourceStartTime,
@@ -223,40 +223,40 @@ export class ExternalExecutionAgent implements BaseAgent {
     }
   }
 
-  private async executeExternalAPICall(externalConnection: any, optimizedQuery: string): Promise<any[]> {
+  private async executeExternalAPICall(externalConnection: Record<string, unknown>, optimizedQuery: string): Promise<Record<string, unknown>[]> {
     try {
-      console.log(`🌐 Executing external API call for ${externalConnection.type}...`);
+      console.log(`🌐 Executing external API call for ${externalConnection.type as string}...`);
       
       // Get the appropriate datasource agent
-      const dataSourceAgent = getDataSourceAgent(externalConnection.type);
+      const dataSourceAgent = getDataSourceAgent(externalConnection.type as string);
       
       if (!dataSourceAgent) {
-        throw new Error(`No datasource agent found for type: ${externalConnection.type}`);
+        throw new Error(`No datasource agent found for type: ${externalConnection.type as string}`);
       }
       
       // Get the connection configuration
       const connectionConfig = {
-        id: externalConnection.id,
-        data_source_id: externalConnection.id,
-        connection_string: externalConnection.connection_string,
-        host: externalConnection.host,
-        port: externalConnection.port,
-        database_name: externalConnection.database_name,
-        username: externalConnection.username,
-        password: externalConnection.password,
-        ssl_enabled: externalConnection.ssl_enabled,
-        connection_timeout: externalConnection.connection_timeout,
-        query_timeout: externalConnection.query_timeout,
-        max_connections: externalConnection.max_connections,
-        additional_config: externalConnection.additional_config || {}
+        id: externalConnection.id as string,
+        data_source_id: externalConnection.id as string,
+        connection_string: externalConnection.connection_string as string,
+        host: externalConnection.host as string,
+        port: externalConnection.port as number,
+        database_name: externalConnection.database_name as string,
+        username: externalConnection.username as string,
+        password: externalConnection.password as string,
+        ssl_enabled: externalConnection.ssl_enabled as boolean,
+        connection_timeout: externalConnection.connection_timeout as number,
+        query_timeout: externalConnection.query_timeout as number,
+        max_connections: externalConnection.max_connections as number,
+        additional_config: externalConnection.additional_config as Record<string, unknown> || {}
       };
       
       // Execute the query using the datasource agent
       const queryResult = await dataSourceAgent.executeQuery(connectionConfig, optimizedQuery);
       
       // Convert rows array to objects for consistency with other agents
-      const data = queryResult.rows.map((row: any[], index: number) => {
-        const obj: Record<string, any> = { id: index + 1 };
+      const data = queryResult.rows.map((row: unknown[], index: number) => {
+        const obj: Record<string, unknown> = { id: index + 1 };
         queryResult.columns.forEach((column: string, colIndex: number) => {
           obj[column] = row[colIndex];
         });
@@ -278,7 +278,7 @@ export class ExternalExecutionAgent implements BaseAgent {
   // actual Google Sheets, Google Docs, Web URL, and Google Analytics connectors
   // instead of mock data.
 
-  private extractColumnsFromRows(rows: any[]): Array<{ name: string; type: string }> {
+  private extractColumnsFromRows(rows: Record<string, unknown>[]): Array<{ name: string; type: string }> {
     if (!rows || rows.length === 0) return [];
     
     const firstRow = rows[0];

@@ -41,7 +41,7 @@ export class GoogleDocsDataSource implements DataSourceAgent {
     ]
   };
 
-  async testConnection(config: ExternalDataSourceConfig): Promise<DataSourceTestResult> {
+  async testConnection(config: Record<string, unknown>): Promise<DataSourceTestResult> {
     const startTime = Date.now();
     
     try {
@@ -53,7 +53,7 @@ export class GoogleDocsDataSource implements DataSourceAgent {
       }
       
       // Test with real Google Docs API
-      const connector = new GoogleDocsConnector(config.oauth_token, config.refresh_token);
+      const connector = new GoogleDocsConnector(config.oauth_token as string, config.refresh_token as string);
       
       const connectionTime = Date.now() - startTime;
       
@@ -91,7 +91,7 @@ export class GoogleDocsDataSource implements DataSourceAgent {
     }
   }
 
-  async connect(config: ExternalDataSourceConfig): Promise<DataSourceConnection> {
+  async connect(config: Record<string, unknown>): Promise<DataSourceConnection> {
     try {
       console.log('🔌 Connecting to Google Docs...');
       
@@ -100,7 +100,7 @@ export class GoogleDocsDataSource implements DataSourceAgent {
       const connection: DataSourceConnection = {
         id: `gdocs_${Date.now()}`,
         data_source_id: 'google-docs',
-        connection_string: config.api_url || 'https://docs.googleapis.com/v1/documents',
+        connection_string: (config.api_url as string) || 'https://docs.googleapis.com/v1/documents',
         additional_config: {
           api_key: config.api_key,
           oauth_token: config.oauth_token,
@@ -243,13 +243,13 @@ export class GoogleDocsDataSource implements DataSourceAgent {
       
       // Use real Google Docs connector
       const connector = new GoogleDocsConnector(
-        connection.additional_config?.oauth_token,
-        connection.additional_config?.refresh_token
+        (connection.additional_config as Record<string, unknown>)?.oauth_token as string,
+        (connection.additional_config as Record<string, unknown>)?.refresh_token as string
       );
       
       // Fetch document data
       const docsData = await connector.fetchDocumentData({
-        documentId,
+        documentId: documentId as string,
         includeFormatting: true,
         maxSections: 50
       });

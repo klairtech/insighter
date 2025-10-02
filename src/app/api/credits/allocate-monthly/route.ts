@@ -3,6 +3,13 @@ import { supabaseServer } from "@/lib/supabase-auth";
 
 export async function POST(_request: NextRequest) {
   try {
+    if (!supabaseServer) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      )
+    }
+
     // This endpoint should be called by a cron job or scheduled task
     // For security, you might want to add an API key check here
     

@@ -80,7 +80,7 @@ export class ValidationAgent implements BaseAgent {
       );
       
     } catch (error) {
-      const fallbackData = AgentUtils.getDefaultFallbackData('ValidationAgent');
+      const fallbackData = AgentUtils.getDefaultFallbackData('ValidationAgent') as unknown as ValidationAgentResponse;
       return AgentUtils.createErrorResponse(
         error instanceof Error ? error : new Error(String(error)),
         startTime,
@@ -234,7 +234,7 @@ Respond with JSON:
           const isDataQuery = type === 'data_query';
           return {
             is_valid: isDataQuery || type === 'greeting' || type === 'ambiguous',
-            query_type: type as any,
+            query_type: type as 'greeting' | 'data_query' | 'abusive' | 'irrelevant' | 'ambiguous' | 'closing' | 'continuation' | 'clarification',
             confidence: 0.9,
             intent_analysis: {
               primary_intent: isDataQuery ? 'Data analysis' : type,

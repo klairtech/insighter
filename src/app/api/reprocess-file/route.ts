@@ -5,6 +5,13 @@ import mammoth from 'mammoth'
 
 export async function POST(request: NextRequest) {
   try {
+    if (!supabaseServer) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      )
+    }
+
     const { fileId } = await request.json()
     
     if (!fileId) {

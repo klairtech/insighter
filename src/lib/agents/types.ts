@@ -2,7 +2,30 @@
  * Common types and interfaces for all agents in the multi-agent flow
  */
 
-export interface AgentResponse<T = any> {
+import { XAIMetrics } from '@/types/xai-metrics';
+import { TokenTrackingData } from '@/lib/token-utils';
+
+// Additional interfaces for API responses
+export interface RAGContext {
+  retrieved_chunks: number;
+  similarity_scores: unknown[];
+  source_documents: string[];
+}
+
+export interface Explainability {
+  reasoning_steps: string[];
+  confidence_score: unknown;
+  uncertainty_factors: string[];
+}
+
+export interface DataSource {
+  source_id?: string;
+  source_name?: string;
+  relevance_score: unknown;
+  sections_used?: string[];
+}
+
+export interface AgentResponse<T = unknown> {
   success: boolean;
   data: T;
   error?: string;
@@ -10,7 +33,7 @@ export interface AgentResponse<T = any> {
     processing_time_ms: number;
     tokens_used: number;
     confidence_score?: number;
-    [key: string]: any;
+    [key: string]: unknown;
   };
 }
 
@@ -26,7 +49,7 @@ export interface AgentContext {
   conversationHistory: ConversationMessage[];
   userId?: string;
   selectedDataSources?: string[];
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface BaseAgent {
@@ -67,7 +90,7 @@ export interface DataSourceFilterResponse {
     connection_type: string;
     relevance_score: number;
     ai_summary?: string;
-    schema?: any;
+    schema?: Record<string, unknown>;
   }>;
   filter_metadata: {
     total_sources_analyzed: number;
@@ -83,7 +106,7 @@ export interface DataSourceFilterResponse {
 
 export interface DataSourceRankingResponse {
   ranked_sources: Array<{
-    source: any;
+    source: Record<string, unknown>;
     priority_score: number;
     processing_strategy: 'parallel' | 'sequential' | 'hybrid';
     estimated_complexity: 'low' | 'medium' | 'high';
@@ -144,9 +167,9 @@ export interface VisualAgentResponse {
   visualization_type?: 'chart' | 'table' | 'graph' | 'map' | 'dashboard';
   visualization_config?: {
     chart_type: string;
-    data_mapping: Record<string, any>;
-    styling: Record<string, any>;
-    interactivity: Record<string, any>;
+    data_mapping: Record<string, unknown>;
+    styling: Record<string, unknown>;
+    interactivity: Record<string, unknown>;
   };
   reasoning: string;
   confidence: number;
@@ -271,14 +294,30 @@ export interface EnhancedAgentResponse {
   follow_up_suggestions: string[];
   visualization?: {
     type: string;
-    config: any;
-    data: any;
+    config: Record<string, unknown>;
+    data: Record<string, unknown>;
   };
   metadata: {
     agents_executed: string[];
     fallback_used: boolean;
-    context_analysis: any;
+    context_analysis: Record<string, unknown>;
     processing_strategy: string;
   };
   error?: string;
+  // XAI and detailed metadata fields
+  xai_metrics?: XAIMetrics;
+  agent_thinking_notes?: string[];
+  sql_queries?: string[];
+  all_queries?: string[];
+  graph_data?: Record<string, unknown>;
+  reasoning_explanation?: string;
+  analysis_depth?: string;
+  data_quality_score?: number;
+  response_completeness_score?: number;
+  user_satisfaction_prediction?: number;
+  token_tracking?: TokenTrackingData;
+  rag_context?: RAGContext;
+  explainability?: Explainability;
+  data_sources?: DataSource[];
+  sql_query?: unknown;
 }

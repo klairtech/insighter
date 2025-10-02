@@ -52,6 +52,13 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    if (!supabaseServer) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      )
+    }
+
     // Get user's conversations with agent details
     let query = supabaseServer
       .from('conversations')
@@ -497,6 +504,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
+      )
+    }
+
+    if (!supabaseServer) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
       )
     }
 

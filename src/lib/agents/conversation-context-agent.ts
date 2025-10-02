@@ -298,10 +298,10 @@ export function filterConversationContext(
  * Enhanced data source filtering that respects user selections
  */
 export function applyDataSourceFiltering(
-  availableSources: any[],
+  availableSources: Record<string, unknown>[],
   selectedDataSources?: string[],
   contextAnalysis?: ConversationContextAnalysis
-): any[] {
+): Record<string, unknown>[] {
   
   console.log('🔍 Applying data source filtering...')
   console.log('🔍 Available sources:', availableSources.length)
@@ -312,13 +312,14 @@ export function applyDataSourceFiltering(
     console.log('🔍 User selected specific data sources - restricting to selection only')
     
     const filteredSources = availableSources.filter(source => {
-      const matches = selectedDataSources.includes(source.id) ||
-                     selectedDataSources.includes(`db-${source.id}`) ||
-                     selectedDataSources.includes(`file-${source.id}`) ||
-                     selectedDataSources.includes(`external-${source.id}`) ||
-                     selectedDataSources.includes(`workspace-${source.id}`)
+      const sourceId = source.id as string;
+      const matches = selectedDataSources.includes(sourceId) ||
+                     selectedDataSources.includes(`db-${sourceId}`) ||
+                     selectedDataSources.includes(`file-${sourceId}`) ||
+                     selectedDataSources.includes(`external-${sourceId}`) ||
+                     selectedDataSources.includes(`workspace-${sourceId}`)
       
-      console.log(`🔍 Source ${source.id} (${source.name}) matches selection: ${matches}`)
+      console.log(`🔍 Source ${sourceId} (${source.name}) matches selection: ${matches}`)
       return matches
     })
     

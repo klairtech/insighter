@@ -3,6 +3,13 @@ import { supabaseServer } from '@/lib/server-utils'
 
 export async function GET(request: NextRequest) {
   try {
+    if (!supabaseServer) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      )
+    }
+
     const { searchParams } = new URL(request.url)
     const userId = searchParams.get('user_id')
     const days = parseInt(searchParams.get('days') || '30')

@@ -39,7 +39,7 @@ export class ExcelDataSource implements DataSourceAgent {
     ]
   };
 
-  async testConnection(config: FileDataSourceConfig): Promise<DataSourceTestResult> {
+  async testConnection(config: Record<string, unknown>): Promise<DataSourceTestResult> {
     const startTime = Date.now();
     
     try {
@@ -51,8 +51,9 @@ export class ExcelDataSource implements DataSourceAgent {
       }
       
       // Check file extension
-      if (!config.file_name.toLowerCase().endsWith('.xlsx') && 
-          !config.file_name.toLowerCase().endsWith('.xls')) {
+      const fileName = config.file_name as string;
+      if (!fileName.toLowerCase().endsWith('.xlsx') && 
+          !fileName.toLowerCase().endsWith('.xls')) {
         throw new Error('File must be an Excel file (.xlsx or .xls)');
       }
       
@@ -90,7 +91,7 @@ export class ExcelDataSource implements DataSourceAgent {
     }
   }
 
-  async connect(config: FileDataSourceConfig): Promise<DataSourceConnection> {
+  async connect(config: Record<string, unknown>): Promise<DataSourceConnection> {
     try {
       console.log('🔌 Connecting to Excel file...');
       
@@ -99,10 +100,10 @@ export class ExcelDataSource implements DataSourceAgent {
       const connection: DataSourceConnection = {
         id: `excel_${Date.now()}`,
         data_source_id: 'excel',
-        connection_string: config.file_path,
+        connection_string: config.file_path as string,
         additional_config: {
-          file_name: config.file_name,
-          file_type: config.file_type,
+          file_name: config.file_name as string,
+          file_type: config.file_type as string,
           file_size: config.file_size,
           sheet_name: config.sheet_name,
           encoding: config.encoding || 'utf-8'
@@ -117,7 +118,7 @@ export class ExcelDataSource implements DataSourceAgent {
     }
   }
 
-  async disconnect(connection: DataSourceConnection): Promise<void> {
+  async disconnect(_connection: DataSourceConnection): Promise<void> {
     try {
       console.log('🔌 Disconnecting from Excel file...');
       // This would close the file handle
@@ -137,7 +138,7 @@ export class ExcelDataSource implements DataSourceAgent {
       const schema: DataSourceSchema = {
         tables: [],
         metadata: {
-          database_name: connection.additional_config?.file_name || 'excel_file',
+          database_name: (connection.additional_config?.file_name as string) || 'excel_file',
           database_version: 'Excel 2021',
           schema_version: '1.0',
           last_updated: new Date().toISOString(),
@@ -227,7 +228,7 @@ export class ExcelDataSource implements DataSourceAgent {
     }
   }
 
-  async executeQuery(connection: DataSourceConnection, query: string, params?: any[]): Promise<DataSourceQueryResult> {
+  async executeQuery(connection: DataSourceConnection, query: string, params?: unknown[]): Promise<DataSourceQueryResult> {
     const startTime = Date.now();
     
     try {
@@ -260,7 +261,7 @@ export class ExcelDataSource implements DataSourceAgent {
     }
   }
 
-  async executeQueryWithLimit(connection: DataSourceConnection, query: string, limit: number, params?: any[]): Promise<DataSourceQueryResult> {
+  async executeQueryWithLimit(connection: DataSourceConnection, query: string, limit: number, params?: unknown[]): Promise<DataSourceQueryResult> {
     // For Excel, we'll limit the number of rows returned
     const result = await this.executeQuery(connection, query, params);
     
@@ -287,7 +288,7 @@ export class ExcelDataSource implements DataSourceAgent {
     }
   }
 
-  async getDatabaseInfo(connection: DataSourceConnection): Promise<Record<string, any>> {
+  async getDatabaseInfo(connection: DataSourceConnection): Promise<Record<string, unknown>> {
     try {
       // This would get information about the Excel file
       return {

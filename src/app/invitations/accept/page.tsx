@@ -22,7 +22,8 @@ interface InvitationDetails {
 }
 
 const AcceptInvitationPageContent: React.FC = () => {
-  const { user, session } = useSupabaseAuth();
+  const authContext = useSupabaseAuth();
+  const { user, session } = authContext || { user: null, session: null };
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get("token");

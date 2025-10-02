@@ -3,6 +3,13 @@ import { createServerSupabaseClient, supabaseServer } from "@/lib/server-utils";
 
 export async function POST(request: NextRequest) {
   try {
+    if (!supabaseServer) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      );
+    }
+
     console.log('📸 Avatar upload request received');
     
     const supabase = await createServerSupabaseClient();

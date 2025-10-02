@@ -11,7 +11,13 @@ export const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, s
     persistSession: true,
     detectSessionInUrl: true
   }
-}) : null
+}) : createClient('https://placeholder.supabase.co', 'placeholder-key', {
+  auth: {
+    autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: true
+  }
+})
 
 // Create admin client for server-side operations
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -20,7 +26,12 @@ export const supabaseAdmin = supabaseUrl && supabaseServiceKey ? createClient(su
     autoRefreshToken: false,
     persistSession: false
   }
-}) : null
+}) : createClient('https://placeholder.supabase.co', 'placeholder-key', {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false
+  }
+})
 
 // Note: All database operations should use Supabase directly
 // The old SQLite interface has been removed

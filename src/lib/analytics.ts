@@ -89,7 +89,7 @@ export const trackPageView = (url: string, title?: string) => {
         // If url is just a path, use it as is
         pagePath = url;
       }
-        } catch (_error) {
+        } catch {
       // Fallback to the original url if URL construction fails
       pagePath = url;
     }
@@ -228,7 +228,7 @@ export const analytics = {
   },
 
   // Feature usage
-  useFeature: (featureName: string, context?: Record<string, any>) => {
+  useFeature: (featureName: string, context?: Record<string, unknown>) => {
     trackEvent('feature_usage', {
       feature_name: featureName,
       ...context,

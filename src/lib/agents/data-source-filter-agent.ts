@@ -94,10 +94,10 @@ export class DataSourceFilterAgent implements BaseAgent {
       // Combine semantic similarity with AI analysis
       const finalSources = sourcesWithEmbeddings
         .map(source => {
-          const aiInfo = aiAnalysisResult.filtered_sources?.find((f: any) => f.id === source.id);
+          const aiInfo = (aiAnalysisResult.filtered_sources as any[])?.find((f: any) => f.id === (source as any).id);
           return {
             ...source,
-            relevance_score: (source.relevance_score + (aiInfo?.relevance_score || 0.1)) / 2
+            relevance_score: (source.relevance_score + ((aiInfo?.relevance_score as number) || 0.1)) / 2
           };
         })
         .filter(source => source.relevance_score > 0.3) // Filter out low relevance sources
@@ -107,26 +107,34 @@ export class DataSourceFilterAgent implements BaseAgent {
       const processingTime = Date.now() - startTime;
       const totalTokens = queryEmbedding.tokens_used + 
         sourcesWithEmbeddings.reduce((sum, s) => sum + (s.embedding_tokens || 0), 0) +
-        (aiAnalysisResult.filter_metadata?.tokens_used || 0);
+        ((aiAnalysisResult.filter_metadata as any)?.tokens_used as number || 0);
       
       const result: DataSourceFilterResponse = {
-        filtered_sources: finalSources,
+        filtered_sources: finalSources as unknown as Array<{
+          id: string;
+          name: string;
+          type: string;
+          connection_type: string;
+          relevance_score: number;
+          ai_summary?: string;
+          schema?: Record<string, unknown>;
+        }>,
         filter_metadata: {
           total_sources_analyzed: filteredDataSources.length,
           sources_filtered: finalSources.length,
-          filter_criteria: aiAnalysisResult.filter_criteria || [],
+          filter_criteria: (aiAnalysisResult.filter_criteria as any) || [],
           processing_time_ms: processingTime,
           tokens_used: totalTokens,
           estimated_credits: tokensToCredits(totalTokens),
           user_selected_sources: selectedDataSources?.length || 0
         },
-        confidence_score: aiAnalysisResult.confidence_score || 0.7
+        confidence_score: (aiAnalysisResult.confidence_score as any) || 0.7
       };
       
       console.log('🔍 Data Source Filter Result:', {
         total_sources: filteredDataSources.length,
         filtered_sources: finalSources.length,
-        top_source: finalSources[0]?.name,
+        top_source: (finalSources[0] as any)?.name as string,
         confidence: result.confidence_score
       });
       
@@ -166,7 +174,7 @@ export class DataSourceFilterAgent implements BaseAgent {
     }
   }
 
-  private async getAvailableDataSources(workspaceId: string): Promise<any[]> {
+  private async getAvailableDataSources(workspaceId: string): Promise<Record<string, unknown>[]> {
     // Get database connections
     const { data: databaseConnections } = await supabase
       .from('database_connections')
@@ -182,7 +190,7 @@ export class DataSourceFilterAgent implements BaseAgent {
       .eq('processing_status', 'completed');
     
     // Get file summaries
-    const fileIds = fileUploads?.map((f: any) => f.id) || [];
+    const fileIds = fileUploads?.map((f: Record<string, unknown>) => f.id) || [];
     const { data: fileSummaries } = await supabase
       .from('file_summaries')
       .select('*')
@@ -218,7 +226,7 @@ export class DataSourceFilterAgent implements BaseAgent {
     // Add file sources
     if (fileUploads && fileSummaries) {
       for (const file of fileUploads) {
-        const summary = fileSummaries.find((s: any) => s.file_id === file.id);
+        const summary = fileSummaries.find((s: Record<string, unknown>) => s.file_id === file.id);
         dataSources.push({
           id: file.id,
           name: file.original_name || `File ${file.id}`,
@@ -251,7 +259,7 @@ export class DataSourceFilterAgent implements BaseAgent {
     return dataSources;
   }
 
-  private buildSourceText(source: any): string {
+  private buildSourceText(source: Record<string, unknown>): string {
     let text = `${source.name} (${source.type})`;
     
     // Include AI summary
@@ -271,35 +279,36 @@ export class DataSourceFilterAgent implements BaseAgent {
     
     // Include schema information
     if (source.schema) {
-      if (source.schema.tables) {
-        text += ` - Tables: ${source.schema.tables.map((t: any) => t.name).join(', ')}`;
+      const schema = source.schema as Record<string, unknown>;
+      if (schema.tables) {
+        text += ` - Tables: ${(schema.tables as Array<Record<string, unknown>>).map((t: Record<string, unknown>) => t.name).join(', ')}`;
       }
-      if (source.schema.columns) {
-        text += ` - Columns: ${source.schema.columns.map((c: any) => c.name).join(', ')}`;
+      if (schema.columns) {
+        text += ` - Columns: ${(schema.columns as Array<Record<string, unknown>>).map((c: Record<string, unknown>) => c.name).join(', ')}`;
       }
     }
     
     return text;
   }
 
-  private extractDatabaseSummary(db: any): string {
+  private extractDatabaseSummary(db: Record<string, unknown>): string {
     // Try to get summary from schema_encrypted field first, then fallback to unencrypted
     if (db.schema_encrypted) {
       try {
-        const decrypted = this.decryptSchema(db.schema_encrypted);
-        return decrypted?.ai_summary || decrypted?.summary || '';
+        const decrypted = this.decryptSchema(db.schema_encrypted as string);
+        return (decrypted as any)?.ai_summary as string || (decrypted as any)?.summary as string || '';
       } catch (error) {
         console.warn('Failed to decrypt database summary from schema:', error);
       }
     }
-    return db.ai_summary || '';
+    return (db.ai_summary as string) || '';
   }
 
-  private extractKeyPoints(db: any): string[] {
+  private extractKeyPoints(db: Record<string, unknown>): string[] {
     if (db.schema_encrypted) {
       try {
-        const decrypted = this.decryptSchema(db.schema_encrypted);
-        return decrypted?.key_points || [];
+        const decrypted = this.decryptSchema(db.schema_encrypted as string);
+        return (decrypted as any)?.key_points as string[] || [];
       } catch (error) {
         console.warn('Failed to decrypt database key points from schema:', error);
       }
@@ -307,11 +316,11 @@ export class DataSourceFilterAgent implements BaseAgent {
     return [];
   }
 
-  private extractTags(db: any): string[] {
+  private extractTags(db: Record<string, unknown>): string[] {
     if (db.schema_encrypted) {
       try {
-        const decrypted = this.decryptSchema(db.schema_encrypted);
-        return decrypted?.tags || [];
+        const decrypted = this.decryptSchema(db.schema_encrypted as string);
+        return (decrypted as any)?.tags as string[] || [];
       } catch (error) {
         console.warn('Failed to decrypt database tags from schema:', error);
       }
@@ -319,16 +328,16 @@ export class DataSourceFilterAgent implements BaseAgent {
     return [];
   }
 
-  private extractExternalKeyPoints(ext: any): string[] {
-    if (ext.ai_definitions && ext.ai_definitions.key_entities) {
-      return ext.ai_definitions.key_entities;
+  private extractExternalKeyPoints(ext: Record<string, unknown>): string[] {
+    if (ext.ai_definitions && (ext.ai_definitions as any).key_entities) {
+      return (ext.ai_definitions as any).key_entities as string[];
     }
     return [];
   }
 
-  private extractExternalTags(ext: any): string[] {
-    if (ext.ai_definitions && ext.ai_definitions.common_use_cases) {
-      return ext.ai_definitions.common_use_cases;
+  private extractExternalTags(ext: Record<string, unknown>): string[] {
+    if (ext.ai_definitions && (ext.ai_definitions as any).common_use_cases) {
+      return (ext.ai_definitions as any).common_use_cases as string[];
     }
     return [];
   }
@@ -344,7 +353,7 @@ export class DataSourceFilterAgent implements BaseAgent {
     return documentKeywords.some(keyword => queryLower.includes(keyword));
   }
 
-  private prioritizeFileSources(dataSources: any[]): any[] {
+  private prioritizeFileSources(dataSources: Record<string, unknown>[]): Record<string, unknown>[] {
     // Separate file sources from other sources
     const fileSources = dataSources.filter(source => source.type === 'file');
     const otherSources = dataSources.filter(source => source.type !== 'file');
@@ -353,7 +362,7 @@ export class DataSourceFilterAgent implements BaseAgent {
     return [...fileSources, ...otherSources];
   }
 
-  private async performAIAnalysis(userQuery: string, sources: any[]): Promise<any> {
+  private async performAIAnalysis(userQuery: string, sources: Record<string, unknown>[]): Promise<Record<string, unknown>> {
     const sourceDescriptions = sources.map(s => {
       let description = `${s.id}: ${s.name} (${s.type})`;
       
@@ -374,8 +383,9 @@ export class DataSourceFilterAgent implements BaseAgent {
       
       // Include schema info for databases
       if (s.type === 'database' && s.schema) {
-        if (s.schema.tables) {
-          description += ` - Tables: ${s.schema.tables.map((t: any) => t.name).join(', ')}`;
+        const schema = s.schema as Record<string, unknown>;
+        if (schema.tables) {
+          description += ` - Tables: ${(schema.tables as Array<Record<string, unknown>>).map((t: Record<string, unknown>) => t.name).join(', ')}`;
         }
       }
       
@@ -443,7 +453,7 @@ Respond with JSON:
     }
   }
 
-  private decryptSchema(encryptedSchema: string): any {
+  private decryptSchema(_encryptedSchema: string): Record<string, unknown> | null {
     try {
       // This would use your existing decryption logic
       // For now, return null to avoid errors

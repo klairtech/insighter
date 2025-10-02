@@ -64,7 +64,7 @@ export class VisualAgent implements BaseAgent {
       const result: VisualAgentResponse = {
         should_visualize: shouldVisualize,
         visualization_type: aiAnalysis.visualization_type as 'chart' | 'table' | 'graph' | 'map' | 'dashboard',
-        visualization_config: visualizationConfig as { chart_type: string; data_mapping: Record<string, any>; styling: Record<string, any>; interactivity: Record<string, any>; } | undefined,
+        visualization_config: visualizationConfig as { chart_type: string; data_mapping: Record<string, unknown>; styling: Record<string, unknown>; interactivity: Record<string, unknown>; } | undefined,
         reasoning: this.buildReasoning(visualizationIntent, dataAnalysis, aiAnalysis),
         confidence: Math.min(visualizationIntent.confidence, dataAnalysis.confidence, aiAnalysis.confidence),
         alternative_visualizations: aiAnalysis.alternative_visualizations || []

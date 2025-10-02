@@ -7,6 +7,13 @@ export async function GET(
 ) {
   const startTime = Date.now();
   try {
+    if (!supabaseServer) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      );
+    }
+
     const { id: workspaceId } = await params;
     console.log(`[API] Starting agent-api request for workspace: ${workspaceId}`);
     
