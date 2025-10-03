@@ -13,8 +13,7 @@ import {
   DataSourceColumn, 
   DataSourceQueryResult, 
   DataSourceTestResult, 
-  DataSourceCapabilities,
-  ExternalDataSourceConfig
+  DataSourceCapabilities
 } from './types';
 import { GoogleAnalyticsConnector, GoogleAnalyticsConfig, GoogleAnalyticsData } from './google-analytics';
 

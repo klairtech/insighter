@@ -29,6 +29,31 @@ const RegisterPage: React.FC = () => {
   const router = useRouter();
   const pathname = usePathname();
 
+  // Handle OAuth error messages from URL parameters
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const oauthError = urlParams.get("error");
+    
+    if (oauthError) {
+      switch (oauthError) {
+        case "oauth_cancelled":
+          setError("Google sign-up was cancelled. Please try again.");
+          break;
+        case "session_exchange_failed":
+          setError("Registration failed. Please try signing up again.");
+          break;
+        case "unexpected_error":
+          setError("An unexpected error occurred. Please try again.");
+          break;
+        default:
+          setError("Registration failed. Please try again.");
+      }
+      
+      // Clean up the URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
+
   // Redirect if already authenticated
   useEffect(() => {
     if (!authLoading && user && pathname === "/register") {

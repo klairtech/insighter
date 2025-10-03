@@ -38,13 +38,13 @@ export const metadata: Metadata = {
   icons: {
     icon: [
       {
-        url: "/favicon.svg",
+        url: "/favicon.svg?v=3",
         type: "image/svg+xml",
       },
-      { url: "/favicon.ico", sizes: "any" },
+      { url: "/favicon.ico?v=3", sizes: "any" },
     ],
     apple: {
-      url: "/favicon.svg",
+      url: "/favicon.svg?v=3",
       type: "image/svg+xml",
     },
   },
@@ -80,8 +80,9 @@ export default function RootLayout({
         <link rel="dns-prefetch" href="//fonts.gstatic.com" />
         <link rel="dns-prefetch" href="//www.googletagmanager.com" />
         <link rel="dns-prefetch" href="//www.google-analytics.com" />
-        <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-        <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico" />
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=3" />
+        <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico?v=3" />
+        <link rel="apple-touch-icon" href="/favicon.svg?v=3" />
         <GoogleTagManager />
       </head>
       <body

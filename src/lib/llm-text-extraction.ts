@@ -2,6 +2,7 @@ import OpenAI from 'openai'
 import mammoth from 'mammoth'
 import * as XLSX from 'xlsx'
 import { RTFParser } from 'rtf-parser'
+import * as yauzl from 'yauzl'
 
 // Initialize AI client
 const openai = new OpenAI({
@@ -156,6 +157,19 @@ async function processFileWithLLM(
       } catch (rtfError) {
         console.error(`❌ RTF extraction failed for ${filename}:`, rtfError)
         throw new Error(`Failed to extract text from RTF file: ${rtfError instanceof Error ? rtfError.message : 'Unknown error'}`)
+      }
+    } else if (fileType.includes('application/vnd.openxmlformats-officedocument.presentationml.presentation') ||
+               fileType.includes('application/vnd.ms-powerpoint')) {
+      // PowerPoint files
+      console.log(`📄 Using pptx2json for PowerPoint file: ${filename}`)
+      try {
+        const pptxText = await extractPowerPointText(fileBuffer)
+        extractedText = pptxText
+        extractionMethod = 'pptx2json'
+        console.log(`✅ PowerPoint extracted ${extractedText.length} characters from ${filename}`)
+      } catch (pptxError) {
+        console.error(`❌ PowerPoint extraction failed for ${filename}:`, pptxError)
+        throw new Error(`Failed to extract text from PowerPoint file: ${pptxError instanceof Error ? pptxError.message : 'Unknown error'}`)
       }
     } else if (fileType.startsWith('text/') || fileType === 'application/json' || fileType === 'application/csv') {
       // Text files
@@ -359,6 +373,95 @@ async function extractRTFText(fileBuffer: ArrayBuffer): Promise<string> {
       
       parser.write(buffer)
       parser.end()
+    } catch (error) {
+      reject(error)
+    }
+  })
+}
+
+/**
+ * PowerPoint text extraction using yauzl (server-side compatible)
+ */
+async function extractPowerPointText(fileBuffer: ArrayBuffer): Promise<string> {
+  return new Promise((resolve, reject) => {
+    try {
+      const buffer = Buffer.from(fileBuffer)
+      let extractedText = ''
+      let processedSlides = 0
+      
+      // PPTX files are ZIP archives, so we can extract them
+      yauzl.fromBuffer(buffer, { lazyEntries: true }, (err, zipfile) => {
+        if (err) {
+          reject(new Error(`PowerPoint parsing failed: ${err.message}`))
+          return
+        }
+        
+        if (!zipfile) {
+          reject(new Error('Failed to open PowerPoint file'))
+          return
+        }
+        
+        zipfile.readEntry()
+        
+        zipfile.on('entry', (entry) => {
+          // Look for slide XML files
+          if (entry.fileName.startsWith('ppt/slides/slide') && entry.fileName.endsWith('.xml')) {
+            zipfile.openReadStream(entry, (err, readStream) => {
+              if (err) {
+                console.error(`Error reading slide ${entry.fileName}:`, err)
+                zipfile.readEntry()
+                return
+              }
+              
+              let slideContent = ''
+              readStream.on('data', (chunk) => {
+                slideContent += chunk.toString()
+              })
+              
+              readStream.on('end', () => {
+                // Extract text from XML using regex (simple approach)
+                const textMatches = slideContent.match(/<a:t[^>]*>([^<]*)<\/a:t>/g)
+                if (textMatches) {
+                  for (const match of textMatches) {
+                    const textContent = match.replace(/<[^>]*>/g, '')
+                    if (textContent.trim()) {
+                      extractedText += textContent + ' '
+                    }
+                  }
+                }
+                
+                processedSlides++
+                zipfile.readEntry()
+              })
+              
+              readStream.on('error', (err) => {
+                console.error(`Error reading slide stream:`, err)
+                zipfile.readEntry()
+              })
+            })
+          } else {
+            zipfile.readEntry()
+          }
+        })
+        
+        zipfile.on('end', () => {
+          // Clean up the extracted text
+          const cleanText = extractedText
+            .replace(/\s+/g, ' ') // Normalize whitespace
+            .trim()
+          
+          if (cleanText.length > 0) {
+            console.log(`✅ PowerPoint extracted ${cleanText.length} characters from ${processedSlides} slides`)
+            resolve(cleanText)
+          } else {
+            reject(new Error('No text content found in PowerPoint file'))
+          }
+        })
+        
+        zipfile.on('error', (err) => {
+          reject(new Error(`PowerPoint extraction failed: ${err.message}`))
+        })
+      })
     } catch (error) {
       reject(error)
     }

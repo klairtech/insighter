@@ -149,6 +149,7 @@ export async function POST(
 
     const formData = await request.formData()
     const file = formData.get('file') as File
+    const customName = formData.get('name') as string
     
     if (!file) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 })
@@ -160,19 +161,20 @@ export async function POST(
       return NextResponse.json({ error: 'File size exceeds 50MB limit' }, { status: 400 })
     }
 
-    // Validate file type - only support text, pdf, docx, excel, csv, json, rtf as requested
+    // Validate file type - support text, pdf, docx, excel, csv, json, rtf, and powerpoint files
     const allowedTypes = [
       'text/plain', 'text/csv', 'application/json', 'application/pdf',
       'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
       'application/rtf'
     ]
     
     if (!allowedTypes.includes(file.type)) {
       return NextResponse.json({ 
         error: 'File type not supported', 
-        details: 'Only text, PDF, DOCX, Excel, CSV, JSON, and RTF files are supported',
-        supportedTypes: ['text/plain', 'text/csv', 'application/json', 'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/rtf']
+        details: 'Only text, PDF, DOCX, Excel, CSV, JSON, RTF, and PowerPoint files are supported',
+        supportedTypes: ['text/plain', 'text/csv', 'application/json', 'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation', 'application/rtf']
       }, { status: 400 })
     }
 
@@ -296,7 +298,7 @@ export async function POST(
       .from('file_uploads')
       .insert([{
         id: fileId,
-        filename: file.name,
+        filename: customName || file.name,
         original_name: file.name,
         file_type: file.type,
         file_size: file.size,
@@ -371,7 +373,7 @@ export async function POST(
     
     return NextResponse.json({
       id: fileId,
-      filename: file.name,
+      filename: customName || file.name,
       file_type: file.type,
       file_size: file.size,
       message: 'File uploaded, validated, and analyzed successfully',

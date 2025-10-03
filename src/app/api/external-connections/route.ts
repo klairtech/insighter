@@ -122,6 +122,12 @@ export async function POST(request: NextRequest) {
 
     if (connectionError || !connection) {
       console.error('❌ Error saving external connection:', connectionError)
+      console.error('❌ Connection error details:', {
+        message: connectionError?.message,
+        details: connectionError?.details,
+        hint: connectionError?.hint,
+        code: connectionError?.code
+      })
       return NextResponse.json({ error: 'Failed to save connection' }, { status: 500 })
     }
 

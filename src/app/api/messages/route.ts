@@ -12,9 +12,9 @@ export async function GET(request: NextRequest) {
 
     // Verify user session using server-side Supabase client with cookies
     const supabase = await createServerSupabaseClient()
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+    const { data: { user }, error: sessionError } = await supabase.auth.getUser()
     
-    if (sessionError || !session?.user) {
+    if (sessionError || !user) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
       .from('conversations')
       .select('id, user_id')
       .eq('id', conversationId)
-      .eq('user_id', session.user.id)
+      .eq('user_id', user.id)
       .single()
 
     if (convError || !conversation) {

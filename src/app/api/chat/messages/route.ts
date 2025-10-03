@@ -13,21 +13,21 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log('🔍 Unified Chat API: Starting message processing')
+    // Unified Chat API: Starting message processing
     
     // Verify user session using server-side Supabase client with cookies
     const supabase = await createServerSupabaseClient()
     const { data: { user }, error: userError } = await supabase.auth.getUser()
     
     if (userError || !user) {
-      console.log('❌ Unified Chat API: Unauthorized - no user:', userError)
+      // Unified Chat API: Unauthorized - no user
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       )
     }
     
-    console.log('✅ Unified Chat API: User authenticated:', user.id)
+    // Unified Chat API: User authenticated
 
     const body = await request.json()
     const { 
@@ -39,14 +39,7 @@ export async function POST(request: NextRequest) {
       selectedDataSources
     } = body
 
-    console.log('📝 Unified Chat API: Processing message:', {
-      conversationId,
-      agentId,
-      content: content?.substring(0, 100) + '...',
-      message_type,
-      stream,
-      selectedDataSources: selectedDataSources?.length || 0
-    })
+    // Unified Chat API: Processing message
 
     if (!content || !content.trim()) {
       console.log('❌ Unified Chat API: No content provided')

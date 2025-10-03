@@ -2,10 +2,13 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
 import { createBrowserClient } from "@supabase/ssr";
 import Image from "next/image";
+import { useLoading } from "@/contexts/LoadingContext";
+import LoadingButton from "@/components/ui/LoadingButton";
+import { LoadingLink } from "@/components/ui/LoadingButton";
 import {
   Menu,
   X,
@@ -51,7 +54,9 @@ interface Organization {
 
 const Navigation: React.FC = () => {
   const pathname = usePathname();
+  const router = useRouter();
   const authContext = useSupabaseAuth();
+  const { isLoading: _isLoading } = useLoading();
   const { user, session, profile, signOut } = authContext || {
     user: null,
     session: null,
@@ -62,9 +67,11 @@ const Navigation: React.FC = () => {
   const [isOrgDropdownOpen, setIsOrgDropdownOpen] = useState(false);
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
-  const [, setIsLoading] = useState(false);
+  const [isLoadingOrgs, setIsLoadingOrgs] = useState(false);
+  const [orgsError, setOrgsError] = useState<string | null>(null);
   const [isClient, setIsClient] = useState(false);
   const [pendingInvitations, setPendingInvitations] = useState(0);
+  const [lastLoadTime, setLastLoadTime] = useState<number>(0);
 
   // Premium membership status
   const { isPremium, membership: _membership } = usePremiumMembership();
@@ -85,12 +92,48 @@ const Navigation: React.FC = () => {
   const loadUserData = useCallback(async () => {
     if (!user) {
       setOrganizations([]);
+      setOrgsError(null);
       return;
     }
 
-    setIsLoading(true);
+    // Cache organizations for 30 seconds to avoid unnecessary requests
+    const now = Date.now();
+    if (organizations.length > 0 && now - lastLoadTime < 30000) {
+      return;
+    }
+
+    setIsLoadingOrgs(true);
+    setOrgsError(null);
+
     try {
-      // Try direct Supabase query first
+      // Use the optimized API endpoint first (server-side with service role)
+      if (!session?.access_token) {
+        setOrgsError("No session token available");
+        setOrganizations([]);
+        return;
+      }
+
+      const response = await fetch("/api/user/organizations", {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`API request failed: ${response.status}`);
+      }
+
+      const apiOrgs = await response.json();
+      setOrganizations(apiOrgs);
+      setOrgsError(null);
+      setLastLoadTime(now);
+    } catch (apiError) {
+      console.warn(
+        "API request failed, trying direct Supabase query:",
+        apiError
+      );
+
+      // Fallback to direct Supabase query (slower but more reliable)
       try {
         const { data: memberData, error: memberError } = await supabase
           .from("organization_members")
@@ -99,7 +142,7 @@ const Navigation: React.FC = () => {
           .eq("status", "active");
 
         if (memberError) {
-          throw memberError; // This will trigger the API fallback
+          throw new Error("Direct query failed");
         }
 
         if (!memberData || memberData.length === 0) {
@@ -119,7 +162,7 @@ const Navigation: React.FC = () => {
           .order("created_at", { ascending: false });
 
         if (error) {
-          throw error; // This will trigger the API fallback
+          throw new Error("Organizations query failed");
         }
 
         // Transform the data to match our interface
@@ -149,34 +192,17 @@ const Navigation: React.FC = () => {
         );
 
         setOrganizations(transformedOrgs);
-        return;
-      } catch {
-        // Fallback to API endpoint
-        if (!session?.access_token) {
-          setOrganizations([]);
-          return;
-        }
-
-        const response = await fetch("/api/user/organizations", {
-          headers: {
-            Authorization: `Bearer ${session.access_token}`,
-          },
-        });
-
-        if (!response.ok) {
-          setOrganizations([]);
-          return;
-        }
-
-        const apiOrgs = await response.json();
-        setOrganizations(apiOrgs);
+        setOrgsError(null);
+        setLastLoadTime(now);
+      } catch (directQueryError) {
+        console.error("Both API and direct query failed:", directQueryError);
+        setOrgsError("Failed to load organizations");
+        setOrganizations([]);
       }
-    } catch {
-      setOrganizations([]);
     } finally {
-      setIsLoading(false);
+      setIsLoadingOrgs(false);
     }
-  }, [user, session, supabase]);
+  }, [user, session, supabase, organizations.length, lastLoadTime]);
 
   const loadPendingInvitations = useCallback(async () => {
     if (!user || !session) {
@@ -214,8 +240,25 @@ const Navigation: React.FC = () => {
     if (user && session) {
       loadUserData();
       loadPendingInvitations();
+    } else if (!user) {
+      // Clear data when user logs out
+      setOrganizations([]);
+      setOrgsError(null);
+      setPendingInvitations(0);
     }
   }, [user, session, loadUserData, loadPendingInvitations]);
+
+  // Add retry mechanism for failed organization loads
+  useEffect(() => {
+    if (orgsError && user && session && !isLoadingOrgs) {
+      const retryTimer = setTimeout(() => {
+        console.log("Retrying organization load after error...");
+        loadUserData();
+      }, 3000); // Retry after 3 seconds
+
+      return () => clearTimeout(retryTimer);
+    }
+  }, [orgsError, user, session, isLoadingOrgs, loadUserData]);
 
   const _handleLogout = () => {
     signOut();
@@ -230,18 +273,29 @@ const Navigation: React.FC = () => {
       <div className="w-full px-2 sm:px-4 lg:px-6">
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
-          <Link href="/" className="flex items-center">
+          <LoadingLink
+            href="/"
+            loadingKey="nav-logo"
+            className="flex items-center"
+            router={router}
+          >
             <LogoRobust variant="white" size="2xl" showText={false} />
-          </Link>
+          </LoadingLink>
 
           {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center space-x-8">
-            <Link
+            <LoadingLink
               href="/"
-              className="text-white/80 hover:text-white px-3 py-2 text-sm font-medium transition-colors duration-200"
+              loadingKey="nav-home-desktop"
+              className={`px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 ${
+                isActive("/")
+                  ? "text-blue-400 bg-blue-500/10"
+                  : "text-gray-300 hover:text-white hover:bg-white/10"
+              }`}
+              router={router}
             >
               Home
-            </Link>
+            </LoadingLink>
 
             {isClient && user ? (
               <>
@@ -270,10 +324,12 @@ const Navigation: React.FC = () => {
 
                   {isOrgDropdownOpen && (
                     <div className="absolute right-0 mt-2 w-64 bg-gray-900/95 backdrop-blur-sm border border-gray-700 rounded-lg shadow-lg py-2 z-50">
-                      <Link
+                      <LoadingLink
                         href="/organizations"
+                        loadingKey="nav-organizations"
                         className="block px-4 py-2 text-sm text-blue-300 hover:text-blue-200 hover:bg-white/10 transition-colors border-b border-gray-600"
                         onClick={() => setIsOrgDropdownOpen(false)}
+                        router={router}
                       >
                         <div className="font-medium">
                           View All Organizations
@@ -281,8 +337,40 @@ const Navigation: React.FC = () => {
                         <div className="text-xs text-gray-300">
                           Manage your organizations
                         </div>
-                      </Link>
-                      {organizations.length > 0 ? (
+                      </LoadingLink>
+
+                      {/* Loading State */}
+                      {isLoadingOrgs && (
+                        <div className="px-4 py-3 text-sm text-gray-300">
+                          <div className="flex items-center space-x-2">
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-400"></div>
+                            <span>Loading organizations...</span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Error State */}
+                      {orgsError && !isLoadingOrgs && (
+                        <div className="px-4 py-3 text-sm text-red-300">
+                          <div className="mb-2">
+                            Failed to load organizations
+                          </div>
+                          <div className="text-xs text-gray-400 mb-2">
+                            {orgsError}
+                          </div>
+                          <button
+                            onClick={() => loadUserData()}
+                            className="text-blue-400 hover:text-blue-300 text-xs underline"
+                          >
+                            Retry
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Organizations List */}
+                      {!isLoadingOrgs &&
+                        !orgsError &&
+                        organizations.length > 0 &&
                         organizations.map((org) => (
                           <Link
                             key={org.id}
@@ -297,44 +385,54 @@ const Navigation: React.FC = () => {
                               </div>
                             )}
                           </Link>
-                        ))
-                      ) : (
-                        <div className="px-4 py-2 text-sm text-gray-300">
-                          <div className="mb-2">No organizations found</div>
-                          <Link
-                            href="/organizations"
-                            className="text-blue-400 hover:text-blue-300 text-xs underline"
-                            onClick={() => setIsOrgDropdownOpen(false)}
-                          >
-                            Create your first organization
-                          </Link>
-                        </div>
-                      )}
+                        ))}
+
+                      {/* Empty State */}
+                      {!isLoadingOrgs &&
+                        !orgsError &&
+                        organizations.length === 0 && (
+                          <div className="px-4 py-2 text-sm text-gray-300">
+                            <div className="mb-2">No organizations found</div>
+                            <LoadingLink
+                              href="/organizations"
+                              loadingKey="nav-create-org"
+                              className="text-blue-400 hover:text-blue-300 text-xs underline"
+                              onClick={() => setIsOrgDropdownOpen(false)}
+                              router={router}
+                            >
+                              Create your first organization
+                            </LoadingLink>
+                          </div>
+                        )}
                     </div>
                   )}
                 </div>
 
-                <Link
+                <LoadingLink
                   href="/pricing"
+                  loadingKey="nav-pricing-desktop"
                   className={`px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 ${
                     isActive("/pricing")
                       ? "text-blue-400 bg-blue-500/10"
                       : "text-gray-300 hover:text-white hover:bg-white/10"
                   }`}
+                  router={router}
                 >
                   Pricing
-                </Link>
+                </LoadingLink>
 
-                <Link
+                <LoadingLink
                   href="/chat"
+                  loadingKey="nav-chat-desktop"
                   className={`px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 ${
                     isActive("/chat")
                       ? "text-blue-400 bg-blue-500/10"
                       : "text-gray-300 hover:text-white hover:bg-white/10"
                   }`}
+                  router={router}
                 >
                   Chat
-                </Link>
+                </LoadingLink>
 
                 {/* Credit Balance - only show if authenticated */}
                 {user && session && <CreditBalance className="px-3 py-2" />}
@@ -356,12 +454,25 @@ const Navigation: React.FC = () => {
                             width={32}
                             height={32}
                             className="w-full h-full object-cover"
+                            onError={(e) => {
+                              // Hide the broken image and show fallback
+                              const target = e.target as HTMLImageElement;
+                              target.style.display = "none";
+                              const fallback =
+                                target.nextElementSibling as HTMLElement;
+                              if (fallback) {
+                                fallback.style.display = "flex";
+                              }
+                            }}
                           />
-                        ) : (
-                          <div className="w-full h-full bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center">
-                            <User className="w-4 h-4 text-white" />
-                          </div>
-                        )}
+                        ) : null}
+                        <div
+                          className={`w-full h-full bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center ${
+                            profile?.avatar_path ? "hidden" : "flex"
+                          }`}
+                        >
+                          <User className="w-4 h-4 text-white" />
+                        </div>
                       </div>
                       <div className="flex flex-col items-start">
                         <div className="flex items-center space-x-2">
@@ -398,11 +509,6 @@ const Navigation: React.FC = () => {
                     {isProfileDropdownOpen && (
                       <div className="absolute right-0 mt-2 w-48 bg-black/95 backdrop-blur-md border border-white/10 rounded-lg shadow-xl z-50">
                         <div className="py-2">
-                          <div className="px-4 py-2 border-b border-white/10">
-                            <p className="text-sm text-white/80">
-                              {user?.email}
-                            </p>
-                          </div>
                           <Link
                             href="/profile"
                             className="flex items-center px-4 py-3 text-white/80 hover:text-white hover:bg-white/10 transition-colors"
@@ -442,6 +548,7 @@ const Navigation: React.FC = () => {
                               </span>
                             )}
                           </Link>
+                          <div className="border-t border-white/10 my-1"></div>
                           <button
                             onClick={signOut}
                             className="flex items-center w-full px-4 py-3 text-white/80 hover:text-white hover:bg-white/10 transition-colors"
@@ -534,100 +641,140 @@ const Navigation: React.FC = () => {
         {isMenuOpen && (
           <div className="md:hidden">
             <div className="px-1 pt-2 pb-3 space-y-1 bg-black/95 backdrop-blur-md rounded-lg mt-2 border border-white/10">
-              <Link
+              <LoadingLink
                 href="/"
+                loadingKey="nav-home-mobile"
                 className={`block px-3 py-2 rounded-md text-base font-medium ${
                   isActive("/") || isActive("/home")
                     ? "text-blue-400 bg-blue-500/10"
                     : "text-gray-300 hover:text-white hover:bg-white/10"
                 }`}
                 onClick={() => setIsMenuOpen(false)}
+                router={router}
               >
                 Home
-              </Link>
+              </LoadingLink>
 
               {user && session ? (
                 <>
-                  <Link
+                  <LoadingLink
                     href="/organizations"
+                    loadingKey="nav-organizations-mobile"
                     className={`block px-3 py-2 rounded-md text-base font-medium ${
                       isActive("/organizations")
                         ? "text-blue-400 bg-blue-500/10"
                         : "text-gray-300 hover:text-white hover:bg-white/10"
                     }`}
                     onClick={() => setIsMenuOpen(false)}
+                    router={router}
                   >
                     Organizations
-                  </Link>
-                  <Link
+                  </LoadingLink>
+                  <LoadingLink
                     href="/pricing"
+                    loadingKey="nav-pricing-mobile"
                     className={`block px-3 py-2 rounded-md text-base font-medium ${
                       isActive("/pricing")
                         ? "text-blue-400 bg-blue-500/10"
                         : "text-gray-300 hover:text-white hover:bg-white/10"
                     }`}
                     onClick={() => setIsMenuOpen(false)}
+                    router={router}
                   >
                     Pricing
-                  </Link>
-                  <Link
+                  </LoadingLink>
+                  <LoadingLink
                     href="/chat"
+                    loadingKey="nav-chat-mobile"
                     className={`block px-3 py-2 rounded-md text-base font-medium ${
                       isActive("/chat")
                         ? "text-blue-400 bg-blue-500/10"
                         : "text-gray-300 hover:text-white hover:bg-white/10"
                     }`}
                     onClick={() => setIsMenuOpen(false)}
+                    router={router}
                   >
                     Chat
-                  </Link>
-                  <Link
+                  </LoadingLink>
+                  <LoadingLink
                     href="/profile"
-                    className="block px-3 py-2 rounded-md text-base font-medium text-gray-300 hover:text-white hover:bg-white/10"
+                    loadingKey="nav-profile-mobile"
+                    className={`block px-3 py-2 rounded-md text-base font-medium ${
+                      isActive("/profile")
+                        ? "text-blue-400 bg-blue-500/10"
+                        : "text-gray-300 hover:text-white hover:bg-white/10"
+                    }`}
                     onClick={() => setIsMenuOpen(false)}
+                    router={router}
                   >
                     Profile
-                  </Link>
-                  <button
+                  </LoadingLink>
+                  <LoadingButton
                     onClick={signOut}
+                    loadingKey="nav-signout-mobile"
+                    variant="ghost"
                     className="block w-full text-left px-3 py-2 rounded-md text-base font-medium text-gray-300 hover:text-white hover:bg-white/10"
                   >
                     Sign Out
-                  </button>
+                  </LoadingButton>
                 </>
               ) : (
                 <>
-                  <Link
+                  <LoadingLink
                     href="/about-us"
-                    className="block px-3 py-2 rounded-md text-base font-medium text-gray-300 hover:text-white hover:bg-white/10"
+                    loadingKey="nav-about-mobile"
+                    className={`block px-3 py-2 rounded-md text-base font-medium ${
+                      isActive("/about-us")
+                        ? "text-blue-400 bg-blue-500/10"
+                        : "text-gray-300 hover:text-white hover:bg-white/10"
+                    }`}
                     onClick={() => setIsMenuOpen(false)}
+                    router={router}
                   >
                     About Us
-                  </Link>
-                  <Link
+                  </LoadingLink>
+                  <LoadingLink
                     href="/pricing"
-                    className="block px-3 py-2 rounded-md text-base font-medium text-gray-300 hover:text-white hover:bg-white/10"
+                    loadingKey="nav-pricing-mobile-guest"
+                    className={`block px-3 py-2 rounded-md text-base font-medium ${
+                      isActive("/pricing")
+                        ? "text-blue-400 bg-blue-500/10"
+                        : "text-gray-300 hover:text-white hover:bg-white/10"
+                    }`}
                     onClick={() => setIsMenuOpen(false)}
+                    router={router}
                   >
                     Pricing
-                  </Link>
+                  </LoadingLink>
                   <Link
                     href="/contact-us"
-                    className="block px-3 py-2 rounded-md text-base font-medium text-gray-300 hover:text-white hover:bg-white/10"
+                    className={`block px-3 py-2 rounded-md text-base font-medium ${
+                      isActive("/contact-us")
+                        ? "text-blue-400 bg-blue-500/10"
+                        : "text-gray-300 hover:text-white hover:bg-white/10"
+                    }`}
                     onClick={() => setIsMenuOpen(false)}
                   >
                     Contact
                   </Link>
                   <Link
                     href="/login"
-                    className="block px-3 py-2 rounded-md text-base font-medium text-gray-300 hover:text-white hover:bg-white/10"
+                    className={`block px-3 py-2 rounded-md text-base font-medium ${
+                      isActive("/login")
+                        ? "text-blue-400 bg-blue-500/10"
+                        : "text-gray-300 hover:text-white hover:bg-white/10"
+                    }`}
                     onClick={() => setIsMenuOpen(false)}
                   >
                     Sign In
                   </Link>
                   <Link
                     href="/register"
-                    className="block px-3 py-2 rounded-md text-base font-medium text-white bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
+                    className={`block px-3 py-2 rounded-md text-base font-medium ${
+                      isActive("/register")
+                        ? "text-white bg-gradient-to-r from-blue-600 to-blue-700"
+                        : "text-white bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
+                    }`}
                     onClick={() => setIsMenuOpen(false)}
                   >
                     Get Started

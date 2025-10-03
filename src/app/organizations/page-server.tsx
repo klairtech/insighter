@@ -90,21 +90,21 @@ async function getOrganizations(userId: string): Promise<Organization[]> {
 export default async function OrganizationsPage() {
   // Get user session on server side
   const {
-    data: { session },
+    data: { user },
     error,
-  } = await supabaseServer.auth.getSession();
+  } = await supabaseServer.auth.getUser();
 
-  if (error || !session?.user) {
+  if (error || !user) {
     redirect("/login");
   }
 
   // Fetch organizations data on server side
-  const organizations = await getOrganizations(session.user.id);
+  const organizations = await getOrganizations(user.id);
 
   return (
     <OrganizationsClient
       initialOrganizations={organizations}
-      user={{ id: session.user.id, email: session.user.email || "" }}
+      user={{ id: user.id, email: user.email || "" }}
     />
   );
 }

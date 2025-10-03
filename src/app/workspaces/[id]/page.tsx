@@ -153,7 +153,7 @@ async function getWorkspaceData(
       },
       organization: organization || null,
       agent: agent || null,
-      files: files || [],
+      files: Array.isArray(files) ? files : [],
     };
   } catch (error) {
     console.error("Error in getWorkspaceData:", error);

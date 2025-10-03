@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
+// import { useLoading } from "@/contexts/LoadingContext"; // Removed for performance optimization
 import WorkspaceSharing from "@/components/WorkspaceSharing";
 import AgentSharing from "@/components/AgentSharing";
 import DatabaseConnectionSuccessModal from "@/components/DatabaseConnectionSuccessModal";
@@ -75,12 +76,18 @@ export default function WorkspaceDetailClient({
 
   const { notification, showSuccess, showError, hideNotification } =
     useNotification();
+  // Loading states removed for performance optimization
   const { dataSources } = useDataSourceConfig();
   const { trackStartChat, trackConnectDataSource, trackUploadFile } =
     useAnalytics();
   const [workspace] = useState<Workspace>(initialWorkspace);
   const [agent] = useState<Agent | null>(initialAgent);
-  const [files] = useState<File[]>(initialFiles);
+  const [files, setFiles] = useState<File[]>(
+    Array.isArray(initialFiles) ? initialFiles : []
+  );
+
+  // Files state initialized
+
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showWorkspaceSharing, setShowWorkspaceSharing] = useState(false);
   const [showAgentSharing, setShowAgentSharing] = useState(false);
@@ -204,12 +211,48 @@ export default function WorkspaceDetailClient({
     }
   }, [workspace.id, session?.access_token]);
 
+  // Function to fetch files
+  const fetchFiles = async () => {
+    try {
+      if (!session?.access_token) return;
+
+      // Fetching files for workspace
+      const response = await fetch(`/api/workspaces/${workspace.id}/files`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (response.ok) {
+        const filesData = await response.json();
+        // Files fetched successfully
+        const safeFiles = Array.isArray(filesData) ? filesData : [];
+        // Setting files state
+        setFiles(safeFiles);
+      } else {
+        console.error(
+          "❌ Failed to fetch files:",
+          response.status,
+          response.statusText
+        );
+        setFiles([]); // Ensure files is always an array
+      }
+    } catch (error) {
+      console.error("❌ Error fetching files:", error);
+      setFiles([]); // Ensure files is always an array even on error
+    }
+  };
+
   // Handle unified connection success
   const handleConnectionSuccess = (data: {
     connectionName: string;
     connectionType: string;
     tablesProcessed?: number;
   }) => {
+    // Connection established successfully
+
     // Track data source connection
     trackConnectDataSource(data.connectionType);
 
@@ -297,13 +340,26 @@ export default function WorkspaceDetailClient({
         "External data source connected successfully!"
       );
       setShowConnectionModal(false);
-    } else if (["excel", "csv", "pdf", "word"].includes(data.connectionType)) {
-      // File connection
-      showSuccess(
-        "File uploaded successfully!",
-        "File uploaded and processed successfully!"
+    } else {
+      // Check if this is a file connection by looking up the data source category
+      // This is more scalable than hardcoding file types
+      const dataSource = dataSources.find(
+        (ds) => ds.id === data.connectionType
       );
-      setShowConnectionModal(false);
+
+      if (dataSource && dataSource.category === "file") {
+        // File connection - refresh files and trigger page refresh
+        // File connection success, refreshing files
+        fetchFiles();
+        // Don't show additional success notification - modal already shows success message
+        setShowConnectionModal(false);
+        // Trigger page refresh to ensure all data is up to date
+        window.location.reload();
+      } else {
+        // Non-file connection or unknown connection type - just close modal
+        // Non-file connection, closing modal
+        setShowConnectionModal(false);
+      }
     }
   };
 
@@ -1067,7 +1123,10 @@ export default function WorkspaceDetailClient({
                 </div>
               </div>
               <button
-                onClick={() => setShowConnectionModal(true)}
+                onClick={() => {
+                  // Opening connection modal
+                  setShowConnectionModal(true);
+                }}
                 className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white text-sm font-medium rounded-lg transition-all duration-200 transform hover:scale-[1.02] shadow-lg flex items-center space-x-2"
               >
                 <svg
@@ -1114,7 +1173,10 @@ export default function WorkspaceDetailClient({
                   analyzing your data
                 </p>
                 <button
-                  onClick={() => setShowConnectionModal(true)}
+                  onClick={() => {
+                    // Opening connection modal
+                    setShowConnectionModal(true);
+                  }}
                   className="px-6 py-2.5 bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white text-sm font-medium rounded-lg transition-all duration-200 transform hover:scale-[1.02] shadow-lg"
                 >
                   Connect Your First Source
@@ -1134,21 +1196,60 @@ export default function WorkspaceDetailClient({
                 )}
 
                 {/* Files */}
-                {files.slice(0, 3).map((file) => (
-                  <div
-                    key={file.id}
-                    className="bg-gray-900/50 rounded-lg p-3 border border-gray-700/50 cursor-pointer hover:bg-gray-800/50 hover:border-gray-600/50 transition-all duration-200 group"
-                    onClick={() => {
-                      router.push(
-                        `/workspaces/${workspace.id}/files/${file.id}`
-                      );
-                    }}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-3 flex-1 min-w-0">
-                        <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center flex-shrink-0 shadow-sm">
+                {Array.isArray(files) &&
+                  files.length > 0 &&
+                  files.map((file) => (
+                    <div
+                      key={file.id}
+                      className="bg-gray-900/50 rounded-lg p-3 border border-gray-700/50 cursor-pointer hover:bg-gray-800/50 hover:border-gray-600/50 transition-all duration-200 group"
+                      onClick={() => {
+                        router.push(
+                          `/workspaces/${workspace.id}/files/${file.id}`
+                        );
+                      }}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3 flex-1 min-w-0">
+                          <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center flex-shrink-0 shadow-sm">
+                            <svg
+                              className="w-4 h-4 text-white"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                              />
+                            </svg>
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-white text-sm font-medium truncate">
+                              {file.filename}
+                            </p>
+                            <p className="text-gray-400 text-xs">
+                              File • {(file.file_size / 1024).toFixed(1)} KB
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <span
+                            className={`px-2 py-1 text-xs rounded-full border ${
+                              file.processing_status === "completed"
+                                ? "bg-green-500/20 text-green-400 border-green-500/30"
+                                : file.processing_status === "processing"
+                                ? "bg-yellow-500/20 text-yellow-400 border-yellow-500/30"
+                                : file.processing_status === "failed"
+                                ? "bg-red-500/20 text-red-400 border-red-500/30"
+                                : "bg-gray-500/20 text-gray-400 border-gray-500/30"
+                            }`}
+                          >
+                            {file.processing_status}
+                          </span>
                           <svg
-                            className="w-4 h-4 text-white"
+                            className="w-4 h-4 text-gray-400 group-hover:text-white transition-colors"
                             fill="none"
                             stroke="currentColor"
                             viewBox="0 0 24 24"
@@ -1157,53 +1258,16 @@ export default function WorkspaceDetailClient({
                               strokeLinecap="round"
                               strokeLinejoin="round"
                               strokeWidth={2}
-                              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                              d="M9 5l7 7-7 7"
                             />
                           </svg>
                         </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-white text-sm font-medium truncate">
-                            {file.filename}
-                          </p>
-                          <p className="text-gray-400 text-xs">
-                            File • {(file.file_size / 1024).toFixed(1)} KB
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <span
-                          className={`px-2 py-1 text-xs rounded-full border ${
-                            file.processing_status === "completed"
-                              ? "bg-green-500/20 text-green-400 border-green-500/30"
-                              : file.processing_status === "processing"
-                              ? "bg-yellow-500/20 text-yellow-400 border-yellow-500/30"
-                              : file.processing_status === "failed"
-                              ? "bg-red-500/20 text-red-400 border-red-500/30"
-                              : "bg-gray-500/20 text-gray-400 border-gray-500/30"
-                          }`}
-                        >
-                          {file.processing_status}
-                        </span>
-                        <svg
-                          className="w-4 h-4 text-gray-400 group-hover:text-white transition-colors"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M9 5l7 7-7 7"
-                          />
-                        </svg>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
 
                 {/* Database Connections */}
-                {databaseConnections.slice(0, 5).map((connection) => {
+                {databaseConnections.map((connection) => {
                   const dbType = connection.type.toLowerCase();
 
                   // Find the data source configuration for this database type
@@ -1314,14 +1378,9 @@ export default function WorkspaceDetailClient({
                     </div>
                   );
                 })}
-                {databaseConnections.length > 5 && (
-                  <p className="text-gray-400 text-xs text-center py-2">
-                    +{databaseConnections.length - 5} more database connections
-                  </p>
-                )}
 
                 {/* External Connections */}
-                {externalConnections.slice(0, 5).map((connection) => {
+                {externalConnections.map((connection) => {
                   const connectionType = connection.type.toLowerCase();
 
                   // Get the appropriate icon and color for external connections
@@ -1422,12 +1481,6 @@ export default function WorkspaceDetailClient({
                     </div>
                   );
                 })}
-
-                {externalConnections.length > 5 && (
-                  <p className="text-gray-400 text-xs text-center py-2">
-                    +{externalConnections.length - 5} more external connections
-                  </p>
-                )}
               </div>
             )}
           </div>
@@ -2769,16 +2822,6 @@ Authorization: Bearer ${apiInfo.api_token?.substring(0, 20)}...`}
             agentName={agent.name}
             userRole={workspace.userRole}
             onClose={() => setShowAgentSharing(false)}
-          />
-        )}
-
-        {/* Unified Connection Modal */}
-        {workspace?.id && (
-          <UnifiedConnectionModal
-            isOpen={showConnectionModal}
-            onClose={() => setShowConnectionModal(false)}
-            onConnectionSuccess={handleConnectionSuccess}
-            workspaceId={workspace.id}
           />
         )}
 

@@ -269,7 +269,7 @@ If the file does NOT contain the requested data, respond with:
       const response = await callAIWithOpenAIPrimary([
         {
           role: 'system',
-          content: 'You are a file data extraction expert. Extract ONLY factual data from files based on the provided summary, key points, and tags. For document-based queries (like "feedback points", "findings", "summary", "report"), use the available information to provide relevant data. Do not hallucinate or make up data. If the file contains relevant information, extract it as structured data. Respond with valid JSON array only.'
+          content: 'You are a file data extraction expert. Extract ONLY factual data from files based on the provided summary, key points, and tags. For document-based queries (like "feedback points", "findings", "summary", "report"), use the available information to provide relevant data. Do not hallucinate or make up data. If the file contains relevant information, extract it as structured data. Even if the file has formatting issues or malformed data, work with what is available and extract the best possible information. Respond with valid JSON array only.'
         },
         {
           role: 'user',

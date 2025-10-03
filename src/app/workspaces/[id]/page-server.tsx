@@ -176,18 +176,18 @@ export default async function WorkspaceDetailPage({
 
   // Get user session on server side
   const {
-    data: { session },
+    data: { user },
     error,
-  } = await supabaseServer.auth.getSession();
+  } = await supabaseServer.auth.getUser();
 
-  if (error || !session?.user) {
+  if (error || !user) {
     redirect("/login");
   }
 
   // Fetch workspace data on server side
   const { workspace, agent, files } = await getWorkspaceData(
     workspaceId,
-    session.user.id
+    user.id
   );
 
   if (!workspace) {

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseServer, verifyUserSession } from '@/lib/server-utils'
+import { supabaseServer, createServerSupabaseClient } from '@/lib/server-utils'
 import { encryptObject } from '@/lib/encryption'
 import { GoogleSheetsConnector } from '@/lib/datasources/google-sheets'
 import { GoogleDocsConnector } from '@/lib/datasources/google-docs'
@@ -13,36 +13,29 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const session = await verifyUserSession(request)
-    if (!session) {
+    // Create server-side Supabase client that can read session cookies
+    const supabase = await createServerSupabaseClient()
+    
+    // Get user session from cookies
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     const { searchParams } = new URL(request.url)
-    const connectionId = searchParams.get('connectionId')
-    // const scopes = searchParams.get('scopes') || 'sheets,docs'
+    const workspaceId = searchParams.get('workspaceId')
+    const connectionType = searchParams.get('connectionType') || 'google-docs'
+    const documentId = searchParams.get('documentId')
 
-    if (!connectionId) {
-      return NextResponse.json({ error: 'Connection ID is required' }, { status: 400 })
-    }
-
-    // Verify connection exists and user has access
-    const { data: connection, error: connectionError } = await supabaseServer
-      .from('external_connections')
-      .select('id, workspace_id, type')
-      .eq('id', connectionId)
-      .eq('is_active', true)
-      .single()
-
-    if (connectionError || !connection) {
-      return NextResponse.json({ error: 'Connection not found' }, { status: 404 })
+    if (!workspaceId) {
+      return NextResponse.json({ error: 'Workspace ID is required' }, { status: 400 })
     }
 
     // Check workspace access
     const { data: workspace, error: workspaceError } = await supabaseServer
       .from('workspaces')
       .select('organization_id')
-      .eq('id', connection.workspace_id)
+      .eq('id', workspaceId)
       .single()
 
     if (workspaceError || !workspace) {
@@ -54,7 +47,7 @@ export async function GET(request: NextRequest) {
       .from('organization_members')
       .select('id')
       .eq('organization_id', workspace.organization_id)
-      .eq('user_id', session.userId)
+      .eq('user_id', user.id)
       .single()
 
     if (membershipError || !membership) {
@@ -64,30 +57,34 @@ export async function GET(request: NextRequest) {
     // Generate OAuth URL based on connection type
     let authUrl: string
     
-    if (connection.type === 'google-sheets') {
+    if (connectionType === 'google-sheets') {
       authUrl = GoogleSheetsConnector.getAuthUrl()
-    } else if (connection.type === 'google-docs') {
+    } else if (connectionType === 'google-docs') {
       authUrl = GoogleDocsConnector.getAuthUrl()
-    } else if (connection.type === 'google-analytics') {
+    } else if (connectionType === 'google-analytics') {
       const { GoogleAnalyticsConnector } = await import('@/lib/datasources/google-analytics')
       authUrl = GoogleAnalyticsConnector.getAuthUrl()
     } else {
       return NextResponse.json({ error: 'Unsupported connection type for Google OAuth' }, { status: 400 })
     }
 
-    // Add state parameter with connection ID for security
-    const state = Buffer.from(JSON.stringify({ 
-      connectionId, 
-      userId: session.userId,
-      timestamp: Date.now()
-    })).toString('base64')
+        // Add state parameter with workspace and connection info for security
+        const state = Buffer.from(JSON.stringify({ 
+          workspaceId,
+          connectionType,
+          userId: user.id,
+          timestamp: Date.now(),
+          ...(documentId && { documentId })
+        })).toString('base64')
 
     const urlWithState = `${authUrl}&state=${encodeURIComponent(state)}`
 
-    return NextResponse.json({
-      success: true,
+    // Return the OAuth URL for popup to navigate to
+    return NextResponse.json({ 
+      success: true, 
       authUrl: urlWithState,
-      connectionId
+      workspaceId,
+      connectionType
     })
 
   } catch (error) {
@@ -98,22 +95,27 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await verifyUserSession(request)
-    if (!session) {
+    // Create server-side Supabase client that can read session cookies
+    const supabase = await createServerSupabaseClient()
+    
+    // Get user session from cookies
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { code, state, connectionId } = await request.json()
+    const { code, state, connectionConfig } = await request.json()
 
-    if (!code || !state || !connectionId) {
+    if (!code || !state) {
       return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 })
     }
 
     // Verify state parameter
+    let stateData: any
     try {
-      const stateData = JSON.parse(Buffer.from(state, 'base64').toString())
+      stateData = JSON.parse(Buffer.from(state, 'base64').toString())
       
-      if (stateData.connectionId !== connectionId || stateData.userId !== session.userId) {
+      if (stateData.userId !== user.id) {
         return NextResponse.json({ error: 'Invalid state parameter' }, { status: 400 })
       }
 
@@ -125,23 +127,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid state parameter' }, { status: 400 })
     }
 
-    // Verify connection exists and user has access
-    const { data: connection, error: connectionError } = await supabaseServer
-      .from('external_connections')
-      .select('id, workspace_id, type')
-      .eq('id', connectionId)
-      .eq('is_active', true)
-      .single()
-
-    if (connectionError || !connection) {
-      return NextResponse.json({ error: 'Connection not found' }, { status: 404 })
-    }
+    const { workspaceId, connectionType, documentId } = stateData
 
     // Check workspace access
     const { data: workspace, error: workspaceError } = await supabaseServer
       .from('workspaces')
       .select('organization_id')
-      .eq('id', connection.workspace_id)
+      .eq('id', workspaceId)
       .single()
 
     if (workspaceError || !workspace) {
@@ -153,7 +145,7 @@ export async function POST(request: NextRequest) {
       .from('organization_members')
       .select('id')
       .eq('organization_id', workspace.organization_id)
-      .eq('user_id', session.userId)
+      .eq('user_id', user.id)
       .single()
 
     if (membershipError || !membership) {
@@ -163,15 +155,49 @@ export async function POST(request: NextRequest) {
     // Exchange code for tokens
     let tokens: { access_token: string; refresh_token: string; expires_in: number }
     
-    if (connection.type === 'google-sheets') {
+    if (connectionType === 'google-sheets') {
       tokens = await GoogleSheetsConnector.exchangeCodeForTokens(code)
-    } else if (connection.type === 'google-docs') {
+    } else if (connectionType === 'google-docs') {
       tokens = await GoogleDocsConnector.exchangeCodeForTokens(code)
-    } else if (connection.type === 'google-analytics') {
+    } else if (connectionType === 'google-analytics') {
       const { GoogleAnalyticsConnector } = await import('@/lib/datasources/google-analytics')
       tokens = await GoogleAnalyticsConnector.exchangeCodeForTokens(code)
     } else {
       return NextResponse.json({ error: 'Unsupported connection type for Google OAuth' }, { status: 400 })
+    }
+
+    // Now create the connection with the OAuth tokens
+    const { encryptObject } = await import('@/lib/encryption')
+    const encryptedConfig = encryptObject({
+      ...(connectionConfig || {}),
+      ...(documentId && { documentId })
+    })
+
+    // Create external connection
+    const { data: connection, error: connectionError } = await supabaseServer
+      .from('external_connections')
+      .insert([{
+        workspace_id: workspaceId,
+        name: connectionConfig?.name || `${connectionType} Connection`,
+        type: connectionType,
+        url: connectionConfig?.url || '',
+        content_type: connectionType === 'google-docs' ? 'document' : 'api',
+        config_encrypted: encryptedConfig,
+        oauth_provider: 'google',
+        oauth_scopes: connectionType === 'google-sheets' ? 
+          ['https://www.googleapis.com/auth/spreadsheets.readonly', 'https://www.googleapis.com/auth/drive.readonly'] :
+          connectionType === 'google-docs' ?
+          ['https://www.googleapis.com/auth/documents.readonly', 'https://www.googleapis.com/auth/drive.readonly'] :
+          ['https://www.googleapis.com/auth/analytics.readonly'],
+        connection_status: 'active',
+        is_active: true
+      }])
+      .select('id, name, type, content_type, created_at, connection_status')
+      .single()
+
+    if (connectionError || !connection) {
+      console.error('❌ Error creating external connection:', connectionError)
+      return NextResponse.json({ error: 'Failed to create connection' }, { status: 500 })
     }
 
     // Encrypt tokens
@@ -184,20 +210,18 @@ export async function POST(request: NextRequest) {
     // Store tokens in database
     const { error: tokenError } = await supabaseServer
       .from('oauth_tokens')
-      .upsert({
-        connection_id: connectionId,
+      .insert({
+        connection_id: connection.id,
         provider: 'google',
         access_token_encrypted: encryptedAccessToken,
         refresh_token_encrypted: encryptedRefreshToken,
         token_type: 'Bearer',
         expires_at: expiresAt,
-        scope: connection.type === 'google-sheets' ? 
+        scope: connectionType === 'google-sheets' ? 
           ['https://www.googleapis.com/auth/spreadsheets.readonly', 'https://www.googleapis.com/auth/drive.readonly'] :
-          connection.type === 'google-docs' ?
+          connectionType === 'google-docs' ?
           ['https://www.googleapis.com/auth/documents.readonly', 'https://www.googleapis.com/auth/drive.readonly'] :
           ['https://www.googleapis.com/auth/analytics.readonly']
-      }, {
-        onConflict: 'connection_id,provider'
       })
 
     if (tokenError) {
@@ -205,21 +229,29 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to store OAuth tokens' }, { status: 500 })
     }
 
-    // Update connection status
-    await supabaseServer
-      .from('external_connections')
-      .update({ 
-        connection_status: 'active',
-        updated_at: new Date().toISOString()
+    // Add to workspace_data_sources so agents can find it
+    const { error: dataSourceError } = await supabaseServer
+      .from('workspace_data_sources')
+      .insert({
+        workspace_id: workspaceId,
+        source_type: connectionType === 'google-docs' ? 'document' : 'api',
+        source_id: connection.id,
+        source_name: connectionConfig?.name || `${connectionType} Connection`,
+        is_active: true,
+        last_accessed_at: new Date().toISOString()
       })
-      .eq('id', connectionId)
 
-    console.log(`✅ OAuth tokens stored for connection ${connectionId}`)
+    if (dataSourceError) {
+      console.error('Error adding to workspace_data_sources:', dataSourceError)
+      // Don't fail the request, just log the error
+    }
+
+    console.log(`✅ OAuth connection created successfully: ${connection.id}`)
 
     return NextResponse.json({
       success: true,
       message: 'OAuth authentication completed successfully',
-      connectionId
+      connectionId: connection.id
     })
 
   } catch (error) {

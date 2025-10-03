@@ -12,9 +12,9 @@ export async function GET() {
 
     // Verify user session using server-side Supabase client with cookies
     const supabase = await createServerSupabaseClient()
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+    const { data: { user }, error: sessionError } = await supabase.auth.getUser()
     
-    if (sessionError || !session?.user) {
+    if (sessionError || !user) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
@@ -50,7 +50,7 @@ export async function GET() {
           )
         )
       `)
-      .eq('user_id', session.user.id)
+      .eq('user_id', user.id)
       .eq('conversation_type', 'chat')
       .eq('status', 'active')
       .order('last_message_at', { ascending: false })
@@ -131,18 +131,17 @@ export async function POST(request: NextRequest) {
     
     // Verify user session using server-side Supabase client with cookies
     const supabase = await createServerSupabaseClient()
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+    const { data: { user }, error: sessionError } = await supabase.auth.getUser()
     
-    console.log('🔍 Conversation Creation API: Session check result:', {
-      hasSession: !!session,
-      hasUser: !!session?.user,
-      userId: session?.user?.id,
-      userEmail: session?.user?.email,
+    console.log('🔍 Conversation Creation API: User check result:', {
+      hasUser: !!user,
+      userId: user?.id,
+      userEmail: user?.email,
       sessionError: sessionError?.message
     })
     
-    if (sessionError || !session?.user) {
-      console.log('❌ Conversation Creation API: Unauthorized - no valid session')
+    if (sessionError || !user) {
+      console.log('❌ Conversation Creation API: Unauthorized - no valid user')
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
@@ -168,7 +167,7 @@ export async function POST(request: NextRequest) {
     // Check if user has access to this agent using hierarchical access control
     const { data: hasAccess, error: accessError } = await supabaseServer
       .rpc('user_has_agent_access', {
-        p_user_id: session.user.id,
+        p_user_id: user.id,
         p_agent_id: agent_id,
         p_required_access: 'read'
       })
@@ -213,7 +212,7 @@ export async function POST(request: NextRequest) {
           )
         )
       `)
-      .eq('user_id', session.user.id)
+      .eq('user_id', user.id)
       .eq('agent_id', agent_id)
       .eq('conversation_type', 'chat')
       .eq('status', 'active')
@@ -266,7 +265,7 @@ export async function POST(request: NextRequest) {
     const { data: newConversation, error: createError } = await supabaseServer
       .from('conversations')
       .insert([{
-        user_id: session.user.id,
+        user_id: user.id,
         agent_id: agent_id,
         conversation_type: 'chat',
         title: 'New Conversation',

@@ -47,21 +47,21 @@ async function getCanvasData(userId: string): Promise<Canvas | null> {
 export default async function CanvasPage() {
   // Get user session on server side
   const {
-    data: { session },
+    data: { user },
     error,
-  } = await supabaseServer.auth.getSession();
+  } = await supabaseServer.auth.getUser();
 
-  if (error || !session?.user) {
+  if (error || !user) {
     redirect("/login");
   }
 
   // Fetch canvas data on server side
-  const canvas = await getCanvasData(session.user.id);
+  const canvas = await getCanvasData(user.id);
 
   return (
     <CanvasClient
       initialCanvas={canvas}
-      user={{ id: session.user.id, email: session.user.email || "" }}
+      user={{ id: user.id, email: user.email || "" }}
     />
   );
 }

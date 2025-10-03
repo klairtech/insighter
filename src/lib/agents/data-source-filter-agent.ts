@@ -21,7 +21,7 @@ export class DataSourceFilterAgent implements BaseAgent {
     const startTime = Date.now();
     
     try {
-      console.log('🔍 Data Source Filter Agent: Starting source filtering...');
+      // Data Source Filter Agent: Starting source filtering
       
       const { userQuery, workspaceId, selectedDataSources } = context;
       
@@ -30,7 +30,7 @@ export class DataSourceFilterAgent implements BaseAgent {
       const cachedResult = await agentCache.get<DataSourceFilterResponse>(cacheKey);
       
       if (cachedResult) {
-        console.log('🎯 Using cached data source filter result');
+        // Using cached data source filter result
         return AgentUtils.createSuccessResponse(
           cachedResult,
           startTime,

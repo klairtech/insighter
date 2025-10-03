@@ -1,64 +1,36 @@
 /**
- * Google Analytics and Google Tag Manager utilities
- * Handles tracking events, page views, and user interactions
+ * Google Tag Manager utilities
+ * Handles tracking events, page views, and user interactions through GTM
+ * GTM can manage GA4, Facebook Pixel, and other tracking tools
  */
 
-// Extend Window interface for gtag
+// Extend Window interface for dataLayer
 declare global {
   interface Window {
-    gtag: (
-      command: 'config' | 'event' | 'js' | 'set',
-      targetId: string | Date,
-      config?: Record<string, unknown>
-    ) => void;
     dataLayer: unknown[];
   }
 }
 
-// Google Analytics Configuration
-export const GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
+// Google Tag Manager Configuration
 export const GTM_ID = process.env.NEXT_PUBLIC_GTM_ID;
 
 // Check if analytics is enabled
 export const isAnalyticsEnabled = () => {
-  return typeof window !== 'undefined' && (GA_MEASUREMENT_ID || GTM_ID);
+  return typeof window !== 'undefined' && !!GTM_ID;
 };
 
-// Initialize Google Analytics
-export const initGA = () => {
-  if (!GA_MEASUREMENT_ID || typeof window === 'undefined') return;
-
-  // Load gtag script
-  const script = document.createElement('script');
-  script.async = true;
-  script.src = `https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`;
-  document.head.appendChild(script);
-
-  // Initialize gtag
-  window.dataLayer = window.dataLayer || [];
-  window.gtag = function(...args: unknown[]) {
-    window.dataLayer.push(args);
-  };
-
-  window.gtag('js', new Date());
-  window.gtag('config', GA_MEASUREMENT_ID, {
-    page_title: document.title,
-    page_location: window.location.href,
-  });
+// Validate GTM ID format
+export const isValidGTMId = (gtmId: string): boolean => {
+  return /^GTM-[A-Z0-9]+$/.test(gtmId);
 };
 
-// Initialize Google Tag Manager
-export const initGTM = () => {
-  if (!GTM_ID || typeof window === 'undefined') return;
-
-  // Load GTM script
-  const script = document.createElement('script');
-  script.async = true;
-  script.src = `https://www.googletagmanager.com/gtm.js?id=${GTM_ID}`;
-  document.head.appendChild(script);
-
-  // Initialize dataLayer
+// Initialize dataLayer
+export const initializeDataLayer = () => {
+  if (typeof window === 'undefined') return;
+  
   window.dataLayer = window.dataLayer || [];
+  
+  // Push initial configuration
   window.dataLayer.push({
     'gtm.start': new Date().getTime(),
     event: 'gtm.js'
@@ -67,40 +39,29 @@ export const initGTM = () => {
 
 // Track page views
 export const trackPageView = (url: string, title?: string) => {
-  if (!isAnalyticsEnabled()) return;
+  if (!isAnalyticsEnabled() || !window.dataLayer) return;
 
-  // GA4 page view
-  if (GA_MEASUREMENT_ID && window.gtag) {
-    window.gtag('config', GA_MEASUREMENT_ID, {
-      page_title: title || document.title,
-      page_location: url,
-    });
-  }
-
-  // GTM page view
-  if (GTM_ID && window.dataLayer) {
-    // Ensure we have a valid URL for pathname extraction
-    let pagePath = url;
-    try {
-      // If url is a full URL, extract pathname
-      if (url.startsWith('http')) {
-        pagePath = new URL(url).pathname;
-      } else {
-        // If url is just a path, use it as is
-        pagePath = url;
-      }
-        } catch {
-      // Fallback to the original url if URL construction fails
+  // Ensure we have a valid URL for pathname extraction
+  let pagePath = url;
+  try {
+    // If url is a full URL, extract pathname
+    if (url.startsWith('http')) {
+      pagePath = new URL(url).pathname;
+    } else {
+      // If url is just a path, use it as is
       pagePath = url;
     }
-
-    window.dataLayer.push({
-      event: 'page_view',
-      page_title: title || document.title,
-      page_location: window.location.href,
-      page_path: pagePath,
-    });
+  } catch {
+    // Fallback to the original url if URL construction fails
+    pagePath = url;
   }
+
+  window.dataLayer.push({
+    event: 'page_view',
+    page_title: title || document.title,
+    page_location: window.location.href,
+    page_path: pagePath,
+  });
 };
 
 // Track custom events
@@ -108,20 +69,12 @@ export const trackEvent = (
   eventName: string,
   parameters?: Record<string, unknown>
 ) => {
-  if (!isAnalyticsEnabled()) return;
+  if (!isAnalyticsEnabled() || !window.dataLayer) return;
 
-  // GA4 event
-  if (GA_MEASUREMENT_ID && window.gtag) {
-    window.gtag('event', eventName, parameters);
-  }
-
-  // GTM event
-  if (GTM_ID && window.dataLayer) {
-    window.dataLayer.push({
-      event: eventName,
-      ...parameters,
-    });
-  }
+  window.dataLayer.push({
+    event: eventName,
+    ...parameters,
+  });
 };
 
 // Predefined event tracking functions
@@ -254,20 +207,12 @@ export const analytics = {
 
 // User properties
 export const setUserProperties = (properties: Record<string, unknown>) => {
-  if (!isAnalyticsEnabled()) return;
+  if (!isAnalyticsEnabled() || !window.dataLayer) return;
 
-  if (GA_MEASUREMENT_ID && window.gtag) {
-    window.gtag('config', GA_MEASUREMENT_ID, {
-      custom_map: properties,
-    });
-  }
-
-  if (GTM_ID && window.dataLayer) {
-    window.dataLayer.push({
-      event: 'user_properties',
-      ...properties,
-    });
-  }
+  window.dataLayer.push({
+    event: 'user_properties',
+    ...properties,
+  });
 };
 
 // E-commerce tracking
@@ -283,41 +228,21 @@ export const trackPurchase = (
     price: number;
   }>
 ) => {
-  if (!isAnalyticsEnabled()) return;
+  if (!isAnalyticsEnabled() || !window.dataLayer) return;
 
-  // GA4 purchase event
-  if (GA_MEASUREMENT_ID && window.gtag) {
-    window.gtag('event', 'purchase', {
-      transaction_id: transactionId,
-      value: value,
-      currency: currency,
-      items: items,
-    });
-  }
-
-  // GTM purchase event
-  if (GTM_ID && window.dataLayer) {
-    window.dataLayer.push({
-      event: 'purchase',
-      transaction_id: transactionId,
-      value: value,
-      currency: currency,
-      items: items,
-    });
-  }
+  window.dataLayer.push({
+    event: 'purchase',
+    transaction_id: transactionId,
+    value: value,
+    currency: currency,
+    items: items,
+  });
 };
 
 // Initialize analytics on client side
 export const initializeAnalytics = () => {
   if (typeof window === 'undefined') return;
 
-  // Initialize GA4
-  if (GA_MEASUREMENT_ID) {
-    initGA();
-  }
-
-  // Initialize GTM
-  if (GTM_ID) {
-    initGTM();
-  }
+  // Initialize dataLayer for GTM
+  initializeDataLayer();
 };

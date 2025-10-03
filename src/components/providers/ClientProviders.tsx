@@ -2,6 +2,7 @@
 
 import { SupabaseAuthProvider } from "@/contexts/SupabaseAuthContext";
 import { PerformanceProvider } from "./PerformanceProvider";
+import { LoadingProvider } from "@/contexts/LoadingContext";
 
 interface ClientProvidersProps {
   children: React.ReactNode;
@@ -10,7 +11,9 @@ interface ClientProvidersProps {
 export function ClientProviders({ children }: ClientProvidersProps) {
   return (
     <PerformanceProvider>
-      <SupabaseAuthProvider>{children}</SupabaseAuthProvider>
+      <SupabaseAuthProvider>
+        <LoadingProvider>{children}</LoadingProvider>
+      </SupabaseAuthProvider>
     </PerformanceProvider>
   );
 }

@@ -98,6 +98,42 @@ export function SupabaseAuthProvider({
           .eq("id", user.id)
           .single();
 
+        // Helper function to resolve avatar with proper priority
+        const resolveAvatarPath = () => {
+          const sources = {
+            userUploaded: dbProfile?.avatar_path,
+            googleAvatarUrl: user.user_metadata?.avatar_url,
+            googlePicture: user.user_metadata?.picture,
+          };
+
+          // Priority order: 1. User uploaded, 2. Google avatar_url, 3. Google picture
+          const avatarPath =
+            sources.userUploaded ||
+            sources.googleAvatarUrl ||
+            sources.googlePicture;
+
+          if (avatarPath) {
+            try {
+              new URL(avatarPath);
+              console.log("✅ Avatar resolved:", {
+                source: sources.userUploaded
+                  ? "user-uploaded"
+                  : sources.googleAvatarUrl
+                  ? "google-avatar_url"
+                  : "google-picture",
+                url: avatarPath,
+              });
+              return avatarPath;
+            } catch (error) {
+              console.warn("❌ Invalid avatar URL:", avatarPath, error);
+              return null;
+            }
+          }
+
+          console.log("ℹ️ No avatar found, using placeholder");
+          return null;
+        };
+
         // Create user profile from Supabase user data and database
         const userProfile: UserProfile = {
           id: user.id,
@@ -107,10 +143,7 @@ export function SupabaseAuthProvider({
             user.user_metadata?.name ||
             user.user_metadata?.full_name ||
             "",
-          avatar_path:
-            dbProfile?.avatar_path ||
-            user.user_metadata?.avatar_url ||
-            user.user_metadata?.picture,
+          avatar_path: resolveAvatarPath(),
           role: user.user_metadata?.role || "user",
           app_metadata: user.app_metadata,
           user_metadata: user.user_metadata,
@@ -127,13 +160,67 @@ export function SupabaseAuthProvider({
           provider: user.app_metadata?.provider || "email",
         });
       } catch {
-        // Fallback to just auth metadata if database fetch fails
+        // Fallback: try to get just the avatar from database, then OAuth metadata
+        let fallbackDbAvatar = null;
+
+        try {
+          // Try to get just the avatar_path from database
+          const { data: avatarData } = await supabase
+            .from("users")
+            .select("avatar_path")
+            .eq("id", user.id)
+            .single();
+
+          fallbackDbAvatar = avatarData?.avatar_path;
+        } catch {
+          // Database fetch failed, will use OAuth metadata
+        }
+
+        // Helper function to resolve avatar with proper priority (same as main case)
+        const resolveFallbackAvatarPath = () => {
+          const sources = {
+            userUploaded: fallbackDbAvatar,
+            googleAvatarUrl: user.user_metadata?.avatar_url,
+            googlePicture: user.user_metadata?.picture,
+          };
+
+          // Priority order: 1. User uploaded, 2. Google avatar_url, 3. Google picture
+          const avatarPath =
+            sources.userUploaded ||
+            sources.googleAvatarUrl ||
+            sources.googlePicture;
+
+          if (avatarPath) {
+            try {
+              new URL(avatarPath);
+              console.log("✅ Fallback avatar resolved:", {
+                source: sources.userUploaded
+                  ? "user-uploaded"
+                  : sources.googleAvatarUrl
+                  ? "google-avatar_url"
+                  : "google-picture",
+                url: avatarPath,
+              });
+              return avatarPath;
+            } catch (error) {
+              console.warn(
+                "❌ Invalid fallback avatar URL:",
+                avatarPath,
+                error
+              );
+              return null;
+            }
+          }
+
+          console.log("ℹ️ No fallback avatar found, using placeholder");
+          return null;
+        };
+
         const userProfile: UserProfile = {
           id: user.id,
           email: user.email || "",
           name: user.user_metadata?.name || user.user_metadata?.full_name || "",
-          avatar_path:
-            user.user_metadata?.avatar_url || user.user_metadata?.picture,
+          avatar_path: resolveFallbackAvatarPath(),
           role: user.user_metadata?.role || "user",
           app_metadata: user.app_metadata,
           user_metadata: user.user_metadata,
@@ -328,6 +415,9 @@ export function SupabaseAuthProvider({
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`,
+        },
       });
 
       if (error) {

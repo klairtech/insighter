@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
+import { useLoading } from "@/contexts/LoadingContext";
 import OrganizationSharingWrapper from "@/components/OrganizationSharingWrapper";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { useAnalytics } from "@/hooks/useAnalytics";
@@ -40,10 +41,11 @@ export default function OrganizationsClient({
 }: OrganizationsClientProps) {
   const router = useRouter();
   const authContext = useSupabaseAuth();
-  const { session, isLoading } = authContext || {
+  const { session, isLoading: authLoading } = authContext || {
     session: null,
     isLoading: false,
   };
+  const { isLoading: loadingState, startLoading, stopLoading } = useLoading();
   const { trackFeatureUsage } = useAnalytics();
   const [organizations, setOrganizations] =
     useState<Organization[]>(initialOrganizations);
@@ -61,26 +63,35 @@ export default function OrganizationsClient({
 
   // Debug session loading
   useEffect(() => {
-
     // Clear any existing error when session loads successfully
     if (
-      !isLoading &&
+      !authLoading &&
       session &&
       error === "Please wait while we load your session..."
     ) {
       setError("");
     }
-  }, [session, isLoading, error]);
+  }, [session, authLoading, error]);
   const [showSharingModal, setShowSharingModal] = useState(false);
   const [selectedOrganization, setSelectedOrganization] =
     useState<Organization | null>(null);
 
   const handleOrganizationClick = (organizationId: string) => {
+    const loadingKey = `organization-navigation-${organizationId}`;
+    startLoading(loadingKey);
+
     // Track organization view
     trackFeatureUsage("organization_viewed", {
       organization_id: organizationId,
     });
+
+    // Navigate to organization detail page
     router.push(`/organizations/${organizationId}`);
+
+    // Stop loading after a short delay to allow navigation to complete
+    setTimeout(() => {
+      stopLoading(loadingKey);
+    }, 1000);
   };
 
   const handleCreateOrganization = async (e: React.FormEvent) => {
@@ -90,13 +101,13 @@ export default function OrganizationsClient({
       return;
     }
 
-    if (isLoading) {
+    if (authLoading) {
       setError("Please wait while we load your session...");
       return;
     }
 
     // If we've been loading for too long, provide a retry option
-    if (!session && !isLoading) {
+    if (!session && !authLoading) {
       setError(
         "Session loading failed. Please refresh the page and try again."
       );
@@ -113,9 +124,9 @@ export default function OrganizationsClient({
       return;
     }
 
-
     setIsCreating(true);
     setError("");
+    startLoading("create-organization");
 
     try {
       const response = await fetch("/api/organizations", {
@@ -185,12 +196,13 @@ export default function OrganizationsClient({
       setError("Failed to create organization");
     } finally {
       setIsCreating(false);
+      stopLoading("create-organization");
     }
   };
 
   const handleShareOrganization = (organization: Organization) => {
     // Don't open modal if auth is still loading
-    if (isLoading) {
+    if (authLoading) {
       setError("Please wait while we load your session...");
       return;
     }
@@ -240,10 +252,10 @@ export default function OrganizationsClient({
           </div>
           <button
             onClick={() => setShowCreateModal(true)}
-            disabled={isLoading}
+            {...(authLoading && { disabled: true })}
             className="mt-4 sm:mt-0 px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-all duration-200 flex items-center space-x-2"
           >
-            {isLoading ? (
+            {authLoading ? (
               <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
             ) : (
               <svg
@@ -260,7 +272,7 @@ export default function OrganizationsClient({
                 />
               </svg>
             )}
-            <span>{isLoading ? "Loading..." : "Create Organization"}</span>
+            <span>{authLoading ? "Loading..." : "Create Organization"}</span>
           </button>
         </div>
 
@@ -298,10 +310,10 @@ export default function OrganizationsClient({
             </p>
             <button
               onClick={() => setShowCreateModal(true)}
-              disabled={isLoading}
+              {...(authLoading && { disabled: true })}
               className="px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-all duration-200 flex items-center justify-center"
             >
-              {isLoading ? (
+              {authLoading ? (
                 <>
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
                   Loading...
@@ -313,101 +325,123 @@ export default function OrganizationsClient({
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {organizations.map((organization) => (
-              <div
-                key={organization.id}
-                className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700 rounded-xl p-6 hover:border-gray-600 transition-all duration-200 cursor-pointer group"
-                onClick={() => handleOrganizationClick(organization.id)}
-              >
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-white group-hover:text-blue-400 transition-colors">
-                      {organization.name}
-                    </h3>
-                    {organization.description && (
-                      <p className="text-gray-400 text-sm mt-1 line-clamp-2">
-                        {organization.description}
-                      </p>
-                    )}
-                  </div>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleShareOrganization(organization);
-                    }}
-                    disabled={isLoading}
-                    className={`p-2 transition-colors ${
-                      isLoading
-                        ? "text-gray-600 cursor-not-allowed"
-                        : "text-gray-400 hover:text-blue-400"
-                    }`}
-                    title={isLoading ? "Loading..." : "Share organization"}
-                  >
-                    <svg
-                      className="w-5 h-5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z"
-                      />
-                    </svg>
-                  </button>
+            {organizations.map((organization) => {
+              const loadingKey = `organization-navigation-${organization.id}`;
+              const isOrgLoading = loadingState(loadingKey);
+
+              return (
+                <div
+                  key={organization.id}
+                  className={`bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700 rounded-xl p-6 hover:border-gray-600 transition-all duration-200 cursor-pointer group ${
+                    isOrgLoading ? "opacity-50 pointer-events-none" : ""
+                  }`}
+                  onClick={() => handleOrganizationClick(organization.id)}
+                >
+                  {isOrgLoading ? (
+                    <div className="flex items-center justify-center py-8">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400"></div>
+                      <span className="ml-3 text-white">Loading...</span>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex-1">
+                          <h3 className="text-lg font-semibold text-white group-hover:text-blue-400 transition-colors">
+                            {organization.name}
+                          </h3>
+                          {organization.description && (
+                            <p className="text-gray-400 text-sm mt-1 line-clamp-2">
+                              {organization.description}
+                            </p>
+                          )}
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleShareOrganization(organization);
+                          }}
+                          {...(authLoading && { disabled: true })}
+                          className={`p-2 transition-colors ${
+                            authLoading
+                              ? "text-gray-600 cursor-not-allowed"
+                              : "text-gray-400 hover:text-blue-400"
+                          }`}
+                          title={
+                            authLoading ? "Loading..." : "Share organization"
+                          }
+                        >
+                          <svg
+                            className="w-5 h-5"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2"
+                              d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z"
+                            />
+                          </svg>
+                        </button>
+                      </div>
+
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-400 text-sm">
+                            Your Role
+                          </span>
+                          <span
+                            className={`px-2 py-1 rounded-full text-xs font-medium ${getRoleColor(
+                              organization.userRole
+                            )}`}
+                          >
+                            {formatRole(organization.userRole)}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-400 text-sm">
+                            Workspaces
+                          </span>
+                          <span className="text-white font-medium">
+                            {organization.workspaces?.length || 0}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-400 text-sm">Created</span>
+                          <span className="text-gray-300 text-sm">
+                            {organization.created_at
+                              ? formatDate(organization.created_at)
+                              : "Unknown"}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 pt-4 border-t border-gray-700">
+                        <div className="flex items-center text-blue-400 text-sm group-hover:text-blue-300 transition-colors">
+                          <span>View Details</span>
+                          <svg
+                            className="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2"
+                              d="M9 5l7 7-7 7"
+                            />
+                          </svg>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
-
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-400 text-sm">Your Role</span>
-                    <span
-                      className={`px-2 py-1 rounded-full text-xs font-medium ${getRoleColor(
-                        organization.userRole
-                      )}`}
-                    >
-                      {formatRole(organization.userRole)}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-400 text-sm">Workspaces</span>
-                    <span className="text-white font-medium">
-                      {organization.workspaces?.length || 0}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-400 text-sm">Created</span>
-                    <span className="text-gray-300 text-sm">
-                      {organization.created_at
-                        ? formatDate(organization.created_at)
-                        : "Unknown"}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="mt-4 pt-4 border-t border-gray-700">
-                  <div className="flex items-center text-blue-400 text-sm group-hover:text-blue-300 transition-colors">
-                    <span>View Details</span>
-                    <svg
-                      className="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        d="M9 5l7 7-7 7"
-                      />
-                    </svg>
-                  </div>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
@@ -567,11 +601,11 @@ export default function OrganizationsClient({
                   <button
                     type="submit"
                     disabled={
-                      isCreating || isLoading || !newOrganization.name.trim()
+                      isCreating || authLoading || !newOrganization.name.trim()
                     }
                     className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors flex items-center justify-center"
                   >
-                    {isLoading ? (
+                    {authLoading ? (
                       <>
                         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
                         Loading Session...

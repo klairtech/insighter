@@ -464,17 +464,25 @@ export default function DatabaseConnectionModal({
 
   // Helper function to get filtered data sources based on selected category
   const getFilteredDataSources = (): DataSource[] => {
-    if (configLoading || configError) {
-      // Fallback to hardcoded data sources if config is loading or has error
+    if (configLoading) {
+      // Return empty array while loading to prevent showing disabled sources
+      return [];
+    }
+
+    if (configError) {
+      // Only show basic database sources as fallback, no file sources
+      const fallbackSources = DATA_SOURCE_TYPES.filter(
+        (source) => source.category === "sql" || source.category === "nosql"
+      );
       if (selectedCategory === "all") {
-        return DATA_SOURCE_TYPES;
+        return fallbackSources;
       }
-      return DATA_SOURCE_TYPES.filter(
+      return fallbackSources.filter(
         (source) => source.category === selectedCategory
       );
     }
 
-    // Use database configuration (already filtered to database types only)
+    // Use database configuration (already filtered to enabled sources only)
     if (selectedCategory === "all") {
       return enabledDataSources;
     }
@@ -1296,8 +1304,8 @@ export default function DatabaseConnectionModal({
                     <div className="flex items-center space-x-2 text-yellow-400">
                       <AlertCircle className="w-4 h-4" />
                       <span className="text-sm">
-                        Using fallback data sources. Some features may not be
-                        available.
+                        Using fallback data sources (database types only). File
+                        sources are disabled when configuration fails.
                       </span>
                     </div>
                   </div>

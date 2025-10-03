@@ -1,16 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Image from "next/image";
-import {
-  AlertCircle,
-  CheckCircle,
-  Database,
-  Globe,
-  Upload,
-  FileText,
-} from "lucide-react";
-import { useDatabaseConfig } from "@/hooks/useDatabaseConfig";
+import { AlertCircle, CheckCircle } from "lucide-react";
+import { useDataSourceConfig } from "@/hooks/useDataSourceConfig";
+import { useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
 
 interface UnifiedConnectionModalProps {
   isOpen: boolean;
@@ -37,6 +31,7 @@ interface ConnectionConfig {
   // External fields
   sheetId?: string;
   documentId?: string;
+  documentUrl?: string;
   url?: string;
   sheetName?: string;
   range?: string;
@@ -79,446 +74,8 @@ interface DataSource {
   }>;
 }
 
-const _DATA_SOURCES: DataSource[] = [
-  // Database Sources
-  {
-    id: "postgresql",
-    name: "PostgreSQL",
-    category: "database",
-    icon: "https://upload.wikimedia.org/wikipedia/commons/2/29/Postgresql_elephant.svg",
-    color: "bg-blue-600",
-    description: "Connect to PostgreSQL database",
-    defaultPort: "5432",
-    fields: [
-      {
-        key: "host",
-        label: "Host",
-        type: "text",
-        required: true,
-        placeholder: "localhost",
-      },
-      {
-        key: "port",
-        label: "Port",
-        type: "number",
-        required: true,
-        placeholder: "5432",
-      },
-      {
-        key: "database",
-        label: "Database",
-        type: "text",
-        required: true,
-        placeholder: "mydb",
-      },
-      {
-        key: "username",
-        label: "Username",
-        type: "text",
-        required: true,
-        placeholder: "user",
-      },
-      {
-        key: "password",
-        label: "Password",
-        type: "password",
-        required: true,
-        placeholder: "password",
-      },
-      { key: "ssl", label: "Use SSL", type: "boolean", required: false },
-    ],
-  },
-  {
-    id: "mysql",
-    name: "MySQL",
-    category: "database",
-    icon: "https://upload.wikimedia.org/wikipedia/commons/0/0a/MySQL_textlogo.svg",
-    color: "bg-orange-500",
-    description: "Connect to MySQL database",
-    defaultPort: "3306",
-    fields: [
-      {
-        key: "host",
-        label: "Host",
-        type: "text",
-        required: true,
-        placeholder: "localhost",
-      },
-      {
-        key: "port",
-        label: "Port",
-        type: "number",
-        required: true,
-        placeholder: "3306",
-      },
-      {
-        key: "database",
-        label: "Database",
-        type: "text",
-        required: true,
-        placeholder: "mydb",
-      },
-      {
-        key: "username",
-        label: "Username",
-        type: "text",
-        required: true,
-        placeholder: "user",
-      },
-      {
-        key: "password",
-        label: "Password",
-        type: "password",
-        required: true,
-        placeholder: "password",
-      },
-      { key: "ssl", label: "Use SSL", type: "boolean", required: false },
-    ],
-  },
-  {
-    id: "redshift",
-    name: "Amazon Redshift",
-    category: "database",
-    icon: "https://upload.wikimedia.org/wikipedia/commons/9/93/Amazon_Web_Services_Logo.svg",
-    color: "bg-red-500",
-    description: "Connect to Amazon Redshift data warehouse",
-    defaultPort: "5439",
-    fields: [
-      {
-        key: "host",
-        label: "Host",
-        type: "text",
-        required: true,
-        placeholder: "your-cluster.redshift.amazonaws.com",
-      },
-      {
-        key: "port",
-        label: "Port",
-        type: "number",
-        required: true,
-        placeholder: "5439",
-      },
-      {
-        key: "database",
-        label: "Database",
-        type: "text",
-        required: true,
-        placeholder: "dev",
-      },
-      {
-        key: "username",
-        label: "Username",
-        type: "text",
-        required: true,
-        placeholder: "awsuser",
-      },
-      {
-        key: "password",
-        label: "Password",
-        type: "password",
-        required: true,
-        placeholder: "password",
-      },
-      { key: "ssl", label: "Use SSL", type: "boolean", required: false },
-    ],
-  },
-  {
-    id: "sqlite",
-    name: "SQLite",
-    category: "database",
-    icon: "https://upload.wikimedia.org/wikipedia/commons/3/38/SQLite370.svg",
-    color: "bg-gray-600",
-    description: "Connect to SQLite database file",
-    fields: [
-      {
-        key: "connectionString",
-        label: "Database File Path",
-        type: "text",
-        required: true,
-        placeholder: "/path/to/database.db",
-      },
-    ],
-  },
-
-  // External Sources
-  {
-    id: "google-sheets",
-    name: "Google Sheets",
-    category: "external",
-    icon: "https://upload.wikimedia.org/wikipedia/commons/3/3c/Google_Sheets_2020_Logo.svg",
-    color: "bg-green-500",
-    description: "Connect to Google Sheets for spreadsheet data",
-    requiresOAuth: true,
-    fields: [
-      {
-        key: "sheetId",
-        label: "Sheet ID",
-        type: "text",
-        required: true,
-        placeholder: "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
-      },
-      {
-        key: "sheetName",
-        label: "Sheet Name",
-        type: "text",
-        required: false,
-        placeholder: "Sheet1",
-      },
-      {
-        key: "range",
-        label: "Range",
-        type: "text",
-        required: false,
-        placeholder: "A1:Z1000",
-      },
-      {
-        key: "includeHeaders",
-        label: "Include Headers",
-        type: "boolean",
-        required: false,
-      },
-      {
-        key: "maxRows",
-        label: "Max Rows",
-        type: "number",
-        required: false,
-        placeholder: "1000",
-      },
-    ],
-  },
-  {
-    id: "google-docs",
-    name: "Google Docs",
-    category: "external",
-    icon: "https://upload.wikimedia.org/wikipedia/commons/0/01/Google_Docs_logo_%282014-2020%29.svg",
-    color: "bg-blue-500",
-    description: "Connect to Google Docs for document content",
-    requiresOAuth: true,
-    fields: [
-      {
-        key: "documentId",
-        label: "Document ID",
-        type: "text",
-        required: true,
-        placeholder: "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
-      },
-      {
-        key: "includeFormatting",
-        label: "Include Formatting",
-        type: "boolean",
-        required: false,
-      },
-      {
-        key: "maxSections",
-        label: "Max Sections",
-        type: "number",
-        required: false,
-        placeholder: "50",
-      },
-    ],
-  },
-  {
-    id: "google-analytics",
-    name: "Google Analytics",
-    category: "external",
-    icon: "https://upload.wikimedia.org/wikipedia/commons/7/77/GAnalytics.svg",
-    color: "bg-orange-500",
-    description: "Connect to Google Analytics for website data",
-    requiresOAuth: true,
-    fields: [
-      {
-        key: "propertyId",
-        label: "Property ID",
-        type: "text",
-        required: true,
-        placeholder: "123456789",
-      },
-      {
-        key: "startDate",
-        label: "Start Date",
-        type: "text",
-        required: false,
-        placeholder: "7daysAgo",
-      },
-      {
-        key: "endDate",
-        label: "End Date",
-        type: "text",
-        required: false,
-        placeholder: "today",
-      },
-      {
-        key: "metrics",
-        label: "Metrics",
-        type: "text",
-        required: false,
-        placeholder: "sessions,users,pageviews",
-      },
-      {
-        key: "dimensions",
-        label: "Dimensions",
-        type: "text",
-        required: false,
-        placeholder: "date,country",
-      },
-    ],
-  },
-  {
-    id: "web-url",
-    name: "Web URL",
-    category: "external",
-    icon: "https://upload.wikimedia.org/wikipedia/commons/6/61/HTML5_logo_and_wordmark.svg",
-    color: "bg-purple-500",
-    description: "Connect to web URLs for content scraping",
-    fields: [
-      {
-        key: "url",
-        label: "URL",
-        type: "text",
-        required: true,
-        placeholder: "https://example.com",
-      },
-      {
-        key: "maxContentLength",
-        label: "Max Content Length",
-        type: "number",
-        required: false,
-        placeholder: "50000",
-      },
-      {
-        key: "includeLinks",
-        label: "Include Links",
-        type: "boolean",
-        required: false,
-      },
-      {
-        key: "respectRobotsTxt",
-        label: "Respect Robots.txt",
-        type: "boolean",
-        required: false,
-      },
-    ],
-  },
-
-  // File Sources
-  {
-    id: "excel",
-    name: "Excel File",
-    category: "file",
-    icon: "https://upload.wikimedia.org/wikipedia/commons/3/34/Microsoft_Office_Excel_%282019%E2%80%93present%29.svg",
-    color: "bg-green-600",
-    description: "Upload Excel files for data analysis",
-    requiresFile: true,
-    fields: [
-      { key: "file", label: "Excel File", type: "file", required: true },
-      {
-        key: "sheetName",
-        label: "Sheet Name",
-        type: "text",
-        required: false,
-        placeholder: "Sheet1",
-      },
-      {
-        key: "includeHeaders",
-        label: "Include Headers",
-        type: "boolean",
-        required: false,
-      },
-    ],
-  },
-  {
-    id: "csv",
-    name: "CSV File",
-    category: "file",
-    icon: "https://upload.wikimedia.org/wikipedia/commons/1/18/CSV_file_icon.svg",
-    color: "bg-blue-600",
-    description: "Upload CSV files for data analysis",
-    requiresFile: true,
-    fields: [
-      { key: "file", label: "CSV File", type: "file", required: true },
-      {
-        key: "delimiter",
-        label: "Delimiter",
-        type: "select",
-        required: false,
-        options: [
-          { value: ",", label: "Comma (,)" },
-          { value: ";", label: "Semicolon (;)" },
-          { value: "\t", label: "Tab" },
-        ],
-      },
-      {
-        key: "includeHeaders",
-        label: "Include Headers",
-        type: "boolean",
-        required: false,
-      },
-    ],
-  },
-  {
-    id: "pdf",
-    name: "PDF File",
-    category: "file",
-    icon: "https://upload.wikimedia.org/wikipedia/commons/8/87/PDF_file_icon.svg",
-    color: "bg-red-600",
-    description: "Upload PDF files for content extraction",
-    requiresFile: true,
-    fields: [
-      { key: "file", label: "PDF File", type: "file", required: true },
-      {
-        key: "extractTables",
-        label: "Extract Tables",
-        type: "boolean",
-        required: false,
-      },
-      {
-        key: "extractImages",
-        label: "Extract Images",
-        type: "boolean",
-        required: false,
-      },
-    ],
-  },
-  {
-    id: "word",
-    name: "Word Document",
-    category: "file",
-    icon: "https://upload.wikimedia.org/wikipedia/commons/f/fd/Microsoft_Office_Word_%282019%E2%80%93present%29.svg",
-    color: "bg-blue-700",
-    description: "Upload Word documents for content extraction",
-    requiresFile: true,
-    fields: [
-      { key: "file", label: "Word File", type: "file", required: true },
-      {
-        key: "extractFormatting",
-        label: "Extract Formatting",
-        type: "boolean",
-        required: false,
-      },
-      {
-        key: "extractImages",
-        label: "Extract Images",
-        type: "boolean",
-        required: false,
-      },
-    ],
-  },
-];
-
 // Note: Data sources are now fetched from the database via useDatabaseConfig hook
-// The hardcoded array above is kept for reference but not used
-
-const CATEGORY_ICONS = {
-  database: Database,
-  external: Globe,
-  file: Upload,
-};
-
-const CATEGORY_COLORS = {
-  database: "bg-blue-500",
-  external: "bg-green-500",
-  file: "bg-purple-500",
-};
+// This ensures that only enabled data sources are displayed to users
 
 export default function UnifiedConnectionModal({
   isOpen,
@@ -526,7 +83,22 @@ export default function UnifiedConnectionModal({
   onConnectionSuccess,
   workspaceId,
 }: UnifiedConnectionModalProps) {
-  const { dataSources = [] } = useDatabaseConfig();
+  const { dataSources = [] } = useDataSourceConfig();
+  const { session } = useSupabaseAuth();
+
+  // Utility function to extract Document ID from Google Docs URL
+  const extractDocumentIdFromUrl = (url: string): string | null => {
+    try {
+      // Handle various Google Docs URL formats:
+      // https://docs.google.com/document/d/DOCUMENT_ID/edit
+      // https://docs.google.com/document/d/DOCUMENT_ID/edit#gid=0
+      // https://docs.google.com/document/d/DOCUMENT_ID
+      const match = url.match(/\/document\/d\/([a-zA-Z0-9-_]+)/);
+      return match ? match[1] : null;
+    } catch {
+      return null;
+    }
+  };
 
   // Transform database sources to include form fields
   const transformedDataSources = dataSources.map((source) => {
@@ -544,20 +116,13 @@ export default function UnifiedConnectionModal({
     const originalCategory = source.category;
 
     if (originalCategory === "file") {
-      // File sources need a file input
+      // File sources need a file input only - connection name will be auto-generated from file name
       fields = [
         {
           key: "file",
           label: `${source.name} File`,
           type: "file",
           required: true,
-        },
-        {
-          key: "name",
-          label: "Connection Name",
-          type: "text",
-          required: true,
-          placeholder: `My ${source.name} Connection`,
         },
       ];
     } else if (originalCategory === "sql" || originalCategory === "nosql") {
@@ -607,6 +172,18 @@ export default function UnifiedConnectionModal({
         },
         { key: "ssl", label: "Use SSL", type: "boolean", required: false },
       ];
+    } else if (source.id === "google-docs") {
+      // Google Docs specific fields
+      fields = [
+        {
+          key: "documentUrl",
+          label: "Google Docs URL",
+          type: "text",
+          required: true,
+          placeholder:
+            "https://docs.google.com/document/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit",
+        },
+      ];
     } else {
       // External sources (analytics, others, etc.) - basic fields
       fields = [
@@ -636,6 +213,10 @@ export default function UnifiedConnectionModal({
       category: uiCategory,
       fields,
       requiresFile: source.category === "file",
+      requiresOAuth:
+        source.id === "google-docs" ||
+        source.id === "google-sheets" ||
+        source.id === "google-analytics",
     };
   });
 
@@ -662,8 +243,6 @@ export default function UnifiedConnectionModal({
     };
   };
 
-  const [selectedCategory, setSelectedCategory] =
-    useState<DataSourceCategory>("database");
   const [selectedDataSource, setSelectedDataSource] =
     useState<DataSource | null>(null);
   const [config, setConfig] = useState<ConnectionConfig>({
@@ -673,31 +252,33 @@ export default function UnifiedConnectionModal({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState<
-    "category" | "source" | "config" | "testing" | "success"
+    | "category"
+    | "source"
+    | "config"
+    | "testing"
+    | "success"
+    | "upload-success"
+    | "syncing"
   >("category");
-  const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
+  const [selectedFilter, setSelectedFilter] = useState<string>("all");
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [_connectionId, setConnectionId] = useState<string>("");
 
-  const filteredDataSources = transformedDataSources.filter(
-    (ds) => ds.category === selectedCategory
+  // Get all available categories
+  const availableCategories = Array.from(
+    new Set(transformedDataSources.map((ds) => ds.category))
   );
 
-  const handleCategorySelect = (category: DataSourceCategory) => {
-    setSelectedCategory(category);
-    setStep("source");
-    setSelectedDataSource(null);
-    setConfig({ type: "", name: "" });
-    setError(null);
-  };
-
-  const handleDataSourceSelect = (dataSource: DataSource) => {
-    setSelectedDataSource(dataSource);
-    setConfig({
-      type: dataSource.id,
-      name: `${dataSource.name} Connection`,
-    });
-    setStep("config");
-    setError(null);
-  };
+  // Filter data sources based on selected filter and search query
+  const filteredDataSources = transformedDataSources.filter((ds) => {
+    const matchesFilter =
+      selectedFilter === "all" || ds.category === selectedFilter;
+    const matchesSearch =
+      searchQuery === "" ||
+      ds.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      ds.description?.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesFilter && matchesSearch;
+  });
 
   const handleConfigChange = (key: string, value: unknown) => {
     setConfig((prev) => ({
@@ -709,7 +290,45 @@ export default function UnifiedConnectionModal({
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file) {
+    if (file && selectedDataSource) {
+      // Define file type mappings for validation
+      const fileTypeMappings: Record<string, string[]> = {
+        excel: [".xlsx", ".xls"],
+        csv: [".csv"],
+        pdf: [".pdf"],
+        word: [".docx", ".doc"],
+        powerpoint: [".pptx", ".ppt"],
+        text: [".txt"],
+        json: [".json"],
+        xml: [".xml"],
+        html: [".html", ".htm"],
+        markdown: [".md", ".markdown"],
+      };
+
+      // Get expected extensions for the selected data source
+      const expectedExtensions = fileTypeMappings[selectedDataSource.id];
+
+      if (expectedExtensions) {
+        // Check if the file extension matches the expected type
+        const fileExtension = file.name
+          .toLowerCase()
+          .substring(file.name.lastIndexOf("."));
+        const isValidExtension = expectedExtensions.includes(fileExtension);
+
+        if (!isValidExtension) {
+          setError(
+            `Invalid file type. Please select a ${
+              selectedDataSource.name
+            } file (${expectedExtensions.join(", ")})`
+          );
+          // Clear the file input
+          event.target.value = "";
+          return;
+        }
+      }
+
+      // Clear any previous errors and set the file
+      setError(null);
       setConfig((prev) => ({
         ...prev,
         file,
@@ -762,18 +381,130 @@ export default function UnifiedConnectionModal({
       } else if (selectedDataSource?.category === "external") {
         // Test external connection (OAuth or API)
         if (selectedDataSource.requiresOAuth) {
-          // Redirect to OAuth flow
-          window.location.href = `/api/oauth/google?connectionId=${config.type}&workspaceId=${workspaceId}`;
-          return;
+          // For OAuth connections, get the OAuth URL directly
+          console.log("Getting OAuth URL for:", config.type);
+
+          // Extract Document ID from URL if it's Google Docs
+          let documentId = null;
+          if (config.type === "google-docs" && config.documentUrl) {
+            documentId = extractDocumentIdFromUrl(config.documentUrl);
+            if (!documentId) {
+              setError(
+                "Invalid Google Docs URL. Please provide a valid Google Docs URL."
+              );
+              setStep("config");
+              return;
+            }
+          }
+
+          const oauthResponse = await fetch(
+            `/api/oauth/google?workspaceId=${workspaceId}&connectionType=${
+              config.type
+            }${documentId ? `&documentId=${documentId}` : ""}`,
+            {
+              method: "GET",
+              headers: {
+                ...(session?.access_token && {
+                  Authorization: `Bearer ${session.access_token}`,
+                }),
+              },
+            }
+          );
+
+          console.log("OAuth response status:", oauthResponse.status);
+
+          if (!oauthResponse.ok) {
+            console.error(
+              "OAuth API error:",
+              oauthResponse.status,
+              oauthResponse.statusText
+            );
+            setError(
+              `Failed to get OAuth URL: ${oauthResponse.status} ${oauthResponse.statusText}`
+            );
+            setStep("config");
+            return;
+          }
+
+          const oauthResult = await oauthResponse.json();
+          console.log("OAuth result:", oauthResult);
+
+          if (oauthResult.success && oauthResult.authUrl) {
+            console.log("Opening OAuth URL:", oauthResult.authUrl);
+            // Open OAuth flow in popup
+            const oauthWindow = window.open(
+              oauthResult.authUrl,
+              "_blank",
+              "width=600,height=700,scrollbars=yes,resizable=yes"
+            );
+
+            // Check if popup was blocked
+            if (
+              !oauthWindow ||
+              oauthWindow.closed ||
+              typeof oauthWindow.closed === "undefined"
+            ) {
+              setError(
+                "Popup was blocked. Please allow popups for this site and try again."
+              );
+              setStep("config");
+              return;
+            }
+
+            // Listen for OAuth messages from popup
+            const handleMessage = (event: MessageEvent) => {
+              if (event.data?.type === "OAUTH_SUCCESS") {
+                window.removeEventListener("message", handleMessage);
+                clearInterval(checkClosed);
+                // Store connection ID and start syncing
+                setConnectionId(event.data.connectionId || "");
+                setStep("syncing");
+                setIsLoading(true);
+                // Start sync process
+                handleSync(event.data.connectionId || "");
+              } else if (event.data?.type === "OAUTH_ERROR") {
+                window.removeEventListener("message", handleMessage);
+                clearInterval(checkClosed);
+                setError(event.data.message || "OAuth authentication failed");
+                setStep("config");
+                setIsLoading(false);
+              }
+            };
+
+            window.addEventListener("message", handleMessage);
+
+            // Fallback: check if window is closed
+            const checkClosed = setInterval(() => {
+              if (oauthWindow?.closed) {
+                clearInterval(checkClosed);
+                window.removeEventListener("message", handleMessage);
+                // Assume success if window is closed (user might have completed OAuth)
+                setStep("success");
+                setIsLoading(false);
+              }
+            }, 1000);
+
+            return;
+          } else {
+            setError(oauthResult.error || "Failed to get OAuth URL");
+            setStep("config");
+            return;
+          }
         } else {
-          // Test API connection
-          const response = await fetch("/api/external-connections/test", {
+          // Test API connection by creating the connection
+          const response = await fetch("/api/external-connections", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+              ...(session?.access_token && {
+                Authorization: `Bearer ${session.access_token}`,
+              }),
+            },
             body: JSON.stringify({
-              type: config.type,
-              config: config,
               workspaceId,
+              connectionType: config.type,
+              connectionConfig: config,
+              contentType: config.type === "google-docs" ? "document" : "api",
             }),
           });
 
@@ -786,8 +517,9 @@ export default function UnifiedConnectionModal({
           }
         }
       } else if (selectedDataSource?.category === "file") {
-        // Test file upload
+        // Test file upload - just validate file selection
         if (config.file) {
+          // For file uploads, just validate that a file is selected
           setStep("success");
         } else {
           setError("Please select a file");
@@ -798,6 +530,39 @@ export default function UnifiedConnectionModal({
       setError(err instanceof Error ? err.message : "Connection test failed");
       setStep("config");
     } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSync = async (connId: string) => {
+    try {
+      const response = await fetch(`/api/external-connections/${connId}/sync`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(session?.access_token && {
+            Authorization: `Bearer ${session.access_token}`,
+          }),
+        },
+        body: JSON.stringify({
+          syncType: "full",
+        }),
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.success) {
+        setStep("success");
+        setIsLoading(false);
+      } else {
+        setError(`Sync failed: ${result.error || "Unknown error"}`);
+        setStep("config");
+        setIsLoading(false);
+      }
+    } catch (error) {
+      console.error("Sync error:", error);
+      setError("Sync failed. Please try again.");
+      setStep("config");
       setIsLoading(false);
     }
   };
@@ -856,27 +621,31 @@ export default function UnifiedConnectionModal({
           setError(result.error || "Failed to create connection");
         }
       } else if (selectedDataSource?.category === "file") {
-        // Upload file
+        // Upload file - use file name as connection name
+        const fileName = config.file?.name || "Unknown File";
+
+        // Show testing step during file upload
+        setStep("testing");
+
         const formData = new FormData();
         formData.append("file", config.file!);
-        formData.append("name", config.name);
+        formData.append("name", fileName);
         formData.append("type", config.type);
         formData.append("workspaceId", workspaceId);
 
-        const response = await fetch("/api/file-uploads", {
+        const response = await fetch(`/api/workspaces/${workspaceId}/files`, {
           method: "POST",
           body: formData,
         });
 
         const result = await response.json();
-        if (result.success) {
-          onConnectionSuccess({
-            connectionName: config.name,
-            connectionType: config.type,
-          });
-          onClose();
+        if (response.ok && result.id) {
+          // Show upload success step with Okay button
+          setStep("upload-success");
+          // Don't call onConnectionSuccess yet - wait for user to click Okay
         } else {
           setError(result.error || "Failed to upload file");
+          setStep("config");
         }
       }
     } catch (err) {
@@ -890,13 +659,31 @@ export default function UnifiedConnectionModal({
 
   const resetModal = () => {
     setStep("category");
-    setSelectedCategory("database");
     setSelectedDataSource(null);
     setConfig({ type: "", name: "" });
     setError(null);
     setIsLoading(false);
-    setFailedImages(new Set());
+    setSelectedFilter("all");
+    setSearchQuery("");
+    setConnectionId("");
   };
+
+  // Reset modal when it opens
+  useEffect(() => {
+    if (isOpen) {
+      resetModal();
+    }
+  }, [isOpen]);
+
+  // Set config.type when selectedDataSource changes
+  useEffect(() => {
+    if (selectedDataSource) {
+      setConfig((prev) => ({
+        ...prev,
+        type: selectedDataSource.id,
+      }));
+    }
+  }, [selectedDataSource]);
 
   const handleClose = () => {
     resetModal();
@@ -906,183 +693,383 @@ export default function UnifiedConnectionModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-900 rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden border border-gray-700">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 rounded-2xl shadow-2xl max-w-5xl w-full max-h-[95vh] overflow-hidden border border-gray-700/50 relative">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-700">
-          <h2 className="text-2xl font-bold text-white">
-            {step === "category" && "Connect Data Source"}
-            {step === "source" && "Select Data Source"}
-            {step === "config" && "Configure Connection"}
-            {step === "testing" && "Testing Connection"}
-            {step === "success" && "Connection Successful"}
-          </h2>
-          <button
-            onClick={handleClose}
-            className="text-gray-400 hover:text-gray-200"
-          >
-            <svg
-              className="w-6 h-6"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+        <div className="relative bg-gradient-to-r from-gray-800/80 to-gray-700/80 backdrop-blur-sm border-b border-gray-700/50">
+          <div className="flex items-center justify-between p-6">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                <svg
+                  className="w-6 h-6 text-white"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M13 10V3L4 14h7v7l9-11h-7z"
+                  />
+                </svg>
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold text-white">
+                  {step === "category" && "Connect Data Source"}
+                  {step === "source" && "Select Data Source"}
+                  {step === "config" && "Configure Connection"}
+                  {step === "testing" && "Testing Connection"}
+                  {step === "syncing" && "Generating AI Summary"}
+                  {step === "success" && "Connection Successful"}
+                  {step === "upload-success" && "Upload Complete"}
+                </h2>
+                <p className="text-sm text-gray-400 mt-1">
+                  {step === "category" &&
+                    "Choose from our supported data sources"}
+                  {step === "source" && "Select your preferred data source"}
+                  {step === "config" && "Enter your connection details"}
+                  {step === "testing" && "Verifying your connection"}
+                  {step === "syncing" &&
+                    "Processing your data and generating AI insights"}
+                  {step === "success" && "Ready to create your connection"}
+                  {step === "upload-success" && "File processed successfully"}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={handleClose}
+              className="p-2 rounded-xl text-gray-400 hover:text-white hover:bg-gray-700/50 transition-all duration-200 group"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
-          </button>
+              <svg
+                className="w-6 h-6 group-hover:rotate-90 transition-transform duration-200"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+          </div>
         </div>
 
         {/* Content */}
-        <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
+        <div className="overflow-y-auto max-h-[calc(90vh-140px)]">
           {step === "category" && (
-            <div className="space-y-6">
-              <p className="text-gray-300">
-                Choose the type of data source you want to connect:
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {(["database", "external", "file"] as DataSourceCategory[]).map(
-                  (category) => {
-                    const Icon = CATEGORY_ICONS[category];
-                    const colorClass = CATEGORY_COLORS[category];
+            <div className="flex h-full">
+              {/* Left Filter Panel */}
+              <div className="w-72 bg-gradient-to-b from-gray-800/30 to-gray-900/50 border-r border-gray-700/50 p-6">
+                <div className="flex items-center space-x-2 mb-6">
+                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500/20 to-purple-500/20 flex items-center justify-center">
+                    <svg
+                      className="w-4 h-4 text-blue-400"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.207A1 1 0 013 6.5V4z"
+                      />
+                    </svg>
+                  </div>
+                  <h4 className="text-lg font-semibold text-white">
+                    Categories
+                  </h4>
+                </div>
+                <div className="space-y-2">
+                  <button
+                    onClick={() => setSelectedFilter("all")}
+                    className={`w-full text-left px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 group ${
+                      selectedFilter === "all"
+                        ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/25"
+                        : "text-gray-300 hover:bg-gray-700/50 hover:text-white hover:shadow-md"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span>All Sources</span>
+                      <span
+                        className={`px-2 py-1 rounded-full text-xs ${
+                          selectedFilter === "all"
+                            ? "bg-white/20 text-white"
+                            : "bg-gray-600 text-gray-300"
+                        }`}
+                      >
+                        {transformedDataSources.length}
+                      </span>
+                    </div>
+                  </button>
+                  {availableCategories.map((category) => {
                     const count = transformedDataSources.filter(
                       (ds) => ds.category === category
                     ).length;
-
+                    const categoryName =
+                      category.charAt(0).toUpperCase() + category.slice(1);
+                    const categoryIcons = {
+                      database:
+                        "M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4",
+                      external:
+                        "M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9v-9m0-9v9",
+                      file: "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z",
+                    };
                     return (
                       <button
                         key={category}
-                        onClick={() => handleCategorySelect(category)}
-                        className={`p-6 rounded-lg border-2 border-gray-600 hover:border-gray-500 transition-colors text-left ${colorClass} text-white`}
+                        onClick={() => setSelectedFilter(category)}
+                        className={`w-full text-left px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 group ${
+                          selectedFilter === category
+                            ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/25"
+                            : "text-gray-300 hover:bg-gray-700/50 hover:text-white hover:shadow-md"
+                        }`}
                       >
-                        <Icon className="w-8 h-8 mb-3" />
-                        <h3 className="text-lg font-semibold capitalize mb-2">
-                          {category}
-                        </h3>
-                        <p className="text-sm opacity-90">
-                          {category === "database" &&
-                            "Connect to databases like PostgreSQL, MySQL, Redshift"}
-                          {category === "external" &&
-                            "Connect to external services like Google Sheets, Analytics"}
-                          {category === "file" &&
-                            "Upload files like Excel, CSV, PDF, Word documents"}
-                        </p>
-                        <p className="text-xs opacity-75 mt-2">
-                          {count} sources available
-                        </p>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-3">
+                            <svg
+                              className="w-4 h-4"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d={
+                                  categoryIcons[
+                                    category as keyof typeof categoryIcons
+                                  ] || categoryIcons.file
+                                }
+                              />
+                            </svg>
+                            <span>{categoryName}</span>
+                          </div>
+                          <span
+                            className={`px-2 py-1 rounded-full text-xs ${
+                              selectedFilter === category
+                                ? "bg-white/20 text-white"
+                                : "bg-gray-600 text-gray-300"
+                            }`}
+                          >
+                            {count}
+                          </span>
+                        </div>
                       </button>
                     );
-                  }
+                  })}
+                </div>
+              </div>
+
+              {/* Main Content Area */}
+              <div className="flex-1 p-8">
+                {/* Header */}
+                <div className="mb-8">
+                  <h3 className="text-3xl font-bold text-white mb-3">
+                    Select your data source
+                  </h3>
+                  <p className="text-gray-300 text-lg leading-relaxed">
+                    Create new data connection. Find your data source type in
+                    the list below.
+                  </p>
+                </div>
+
+                {/* Search Bar */}
+                <div className="mb-8">
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                      <svg
+                        className="w-5 h-5 text-gray-400"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                        />
+                      </svg>
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="Search data sources..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full pl-12 pr-4 py-4 bg-gray-800/50 border border-gray-600/50 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200 backdrop-blur-sm"
+                    />
+                    {searchQuery && (
+                      <button
+                        onClick={() => setSearchQuery("")}
+                        className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-white transition-colors"
+                      >
+                        <svg
+                          className="w-5 h-5"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M6 18L18 6M6 6l12 12"
+                          />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Data Sources Grid */}
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+                  {filteredDataSources.map((dataSource) => (
+                    <button
+                      key={dataSource.id}
+                      onClick={() => {
+                        setSelectedDataSource(dataSource);
+                        setStep("config");
+                      }}
+                      className="group p-6 rounded-2xl border border-gray-700/50 hover:border-blue-500/50 transition-all duration-300 text-center bg-gradient-to-br from-gray-800/30 to-gray-900/50 hover:from-gray-700/40 hover:to-gray-800/60 hover:shadow-xl hover:shadow-blue-500/10 hover:-translate-y-1 backdrop-blur-sm"
+                    >
+                      {/* Icon */}
+                      <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-gray-700 to-gray-800 flex items-center justify-center group-hover:from-blue-500/20 group-hover:to-purple-500/20 transition-all duration-300 group-hover:scale-110">
+                        {dataSource.icon ? (
+                          <Image
+                            src={dataSource.icon}
+                            alt={dataSource.name}
+                            width={40}
+                            height={40}
+                            className="w-10 h-10 object-contain group-hover:scale-110 transition-transform duration-300"
+                          />
+                        ) : null}
+                        <div
+                          className="w-10 h-10 bg-gradient-to-br from-gray-600 to-gray-700 rounded-xl flex items-center justify-center text-white text-lg font-bold group-hover:from-blue-500 group-hover:to-purple-600 transition-all duration-300"
+                          style={{ display: dataSource.icon ? "none" : "flex" }}
+                        >
+                          {dataSource.name.charAt(0).toUpperCase()}
+                        </div>
+                      </div>
+
+                      {/* Name */}
+                      <h4 className="text-base font-semibold text-white mb-2 group-hover:text-blue-400 transition-colors duration-300">
+                        {dataSource.name}
+                      </h4>
+
+                      {/* Category Badge */}
+                      <span className="inline-block px-3 py-1 text-xs font-medium bg-gray-700/50 text-gray-300 rounded-full group-hover:bg-blue-500/20 group-hover:text-blue-300 transition-all duration-300">
+                        {dataSource.category}
+                      </span>
+
+                      {/* Beta Badge */}
+                      {dataSource.isBeta && (
+                        <div className="mt-2">
+                          <span className="inline-block px-2 py-1 text-xs font-medium bg-gradient-to-r from-orange-500/20 to-red-500/20 text-orange-300 rounded-full border border-orange-500/30">
+                            Beta
+                          </span>
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+
+                {/* No Results */}
+                {filteredDataSources.length === 0 && (
+                  <div className="text-center py-12">
+                    <p className="text-gray-400 text-lg">
+                      No data sources found
+                    </p>
+                    <p className="text-gray-500 text-sm mt-2">
+                      Try adjusting your search or filter criteria
+                    </p>
+                  </div>
                 )}
               </div>
             </div>
           )}
 
-          {step === "source" && (
-            <div className="space-y-6">
-              <div className="flex items-center space-x-2">
+          {step === "config" && selectedDataSource && (
+            <div className="p-8">
+              <div className="flex items-center space-x-3 mb-8">
                 <button
                   onClick={() => setStep("category")}
-                  className="text-blue-400 hover:text-blue-300"
+                  className="flex items-center space-x-2 px-4 py-2 text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 rounded-xl transition-all duration-200 group"
                 >
-                  ← Back
-                </button>
-                <span className="text-gray-300">
-                  Select a {selectedCategory} data source:
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {filteredDataSources.map((dataSource) => (
-                  <button
-                    key={dataSource.id}
-                    onClick={() => handleDataSourceSelect(dataSource)}
-                    className="p-4 rounded-lg border border-gray-600 hover:border-gray-500 transition-colors text-left bg-gray-800 hover:bg-gray-750"
+                  <svg
+                    className="w-4 h-4 group-hover:-translate-x-1 transition-transform duration-200"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
                   >
-                    <div className="flex items-center space-x-3">
-                      <div
-                        className={`w-10 h-10 rounded-lg ${dataSource.color} flex items-center justify-center`}
-                      >
-                        {failedImages.has(dataSource.id) ? (
-                          // Fallback icon when image fails to load
-                          <FileText className="w-6 h-6 text-white" />
-                        ) : (
-                          <Image
-                            src={dataSource.icon}
-                            alt={dataSource.name}
-                            width={24}
-                            height={24}
-                            className="w-6 h-6"
-                            onError={() => {
-                              setFailedImages((prev) =>
-                                new Set(prev).add(dataSource.id)
-                              );
-                            }}
-                          />
-                        )}
-                      </div>
-                      <div>
-                        <h3 className="font-semibold text-white">
-                          {dataSource.name}
-                        </h3>
-                        <p className="text-sm text-gray-300">
-                          {dataSource.description}
-                        </p>
-                        {dataSource.isBeta && (
-                          <span className="inline-block px-2 py-1 text-xs bg-yellow-600 text-yellow-100 rounded mt-1">
-                            Beta
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {step === "config" && selectedDataSource && (
-            <div className="space-y-6">
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => setStep("source")}
-                  className="text-blue-400 hover:text-blue-300"
-                >
-                  ← Back
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M15 19l-7-7 7-7"
+                    />
+                  </svg>
+                  <span>Back</span>
                 </button>
-                <span className="text-gray-300">
-                  Configure {selectedDataSource.name}:
-                </span>
+                <div className="h-6 w-px bg-gray-600"></div>
+                <div className="flex items-center space-x-3">
+                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500/20 to-purple-500/20 flex items-center justify-center">
+                    {selectedDataSource.icon ? (
+                      <Image
+                        src={selectedDataSource.icon}
+                        alt={selectedDataSource.name}
+                        width={20}
+                        height={20}
+                        className="w-5 h-5 object-contain"
+                      />
+                    ) : (
+                      <span className="text-blue-400 text-sm font-bold">
+                        {selectedDataSource.name.charAt(0).toUpperCase()}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-gray-300 text-lg">
+                    Configure {selectedDataSource.name}
+                  </span>
+                </div>
               </div>
 
               {error && (
-                <div className="bg-red-900/50 border border-red-600 rounded-lg p-4 flex items-center space-x-2">
-                  <AlertCircle className="w-5 h-5 text-red-400" />
-                  <span className="text-red-300">{error}</span>
+                <div className="bg-red-900/30 border border-red-500/50 rounded-xl p-4 flex items-center space-x-3 mb-6 backdrop-blur-sm">
+                  <div className="w-8 h-8 rounded-full bg-red-500/20 flex items-center justify-center">
+                    <AlertCircle className="w-5 h-5 text-red-400" />
+                  </div>
+                  <span className="text-red-300 font-medium">{error}</span>
                 </div>
               )}
 
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">
-                    Connection Name
-                  </label>
-                  <input
-                    type="text"
-                    value={config.name}
-                    onChange={(e) => handleConfigChange("name", e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-800 text-white placeholder-gray-400"
-                    placeholder="Enter connection name"
-                  />
-                </div>
+              <div className="space-y-6">
+                {/* Only show Connection Name for non-file data sources */}
+                {selectedDataSource.category !== "file" && (
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-200 mb-3">
+                      Connection Name
+                    </label>
+                    <input
+                      type="text"
+                      value={config.name}
+                      onChange={(e) =>
+                        handleConfigChange("name", e.target.value)
+                      }
+                      className="w-full px-4 py-3 border border-gray-600/50 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 bg-gray-800/50 text-white placeholder-gray-400 transition-all duration-200 backdrop-blur-sm"
+                      placeholder="Enter connection name"
+                    />
+                  </div>
+                )}
 
                 {selectedDataSource.fields.map((field) => (
                   <div key={field.key}>
-                    <label className="block text-sm font-medium text-gray-300 mb-1">
+                    <label className="block text-sm font-semibold text-gray-200 mb-3">
                       {field.label}
                       {field.required && (
                         <span className="text-red-400 ml-1">*</span>
@@ -1090,22 +1077,109 @@ export default function UnifiedConnectionModal({
                     </label>
 
                     {field.type === "file" ? (
-                      <input
-                        type="file"
-                        onChange={handleFileUpload}
-                        accept={
-                          selectedDataSource.id === "excel"
-                            ? ".xlsx,.xls"
-                            : selectedDataSource.id === "csv"
-                            ? ".csv"
-                            : selectedDataSource.id === "pdf"
-                            ? ".pdf"
-                            : selectedDataSource.id === "word"
-                            ? ".docx,.doc"
-                            : "*"
-                        }
-                        className="w-full px-3 py-2 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-800 text-white file:bg-gray-700 file:text-white file:border-0 file:rounded-md file:px-3 file:py-1 file:mr-3"
-                      />
+                      <div className="space-y-4">
+                        <div className="relative">
+                          <input
+                            type="file"
+                            onChange={handleFileUpload}
+                            accept={(() => {
+                              // Define file type mappings for specific data sources
+                              const fileTypeMappings: Record<string, string> = {
+                                excel: ".xlsx,.xls",
+                                csv: ".csv",
+                                pdf: ".pdf",
+                                word: ".docx,.doc",
+                                powerpoint: ".pptx,.ppt",
+                                text: ".txt",
+                                json: ".json",
+                                xml: ".xml",
+                                html: ".html,.htm",
+                                markdown: ".md,.markdown",
+                                // Add more mappings as needed
+                              };
+
+                              // Return specific file types for known data sources, or empty string for unknown types
+                              return (
+                                fileTypeMappings[selectedDataSource.id] || ""
+                              );
+                            })()}
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                            id={`file-input-${field.key}`}
+                          />
+                          <label
+                            htmlFor={`file-input-${field.key}`}
+                            className="flex flex-col items-center justify-center w-full px-6 py-6 border-2 border-dashed border-gray-600/50 rounded-xl bg-gray-800/30 text-white hover:bg-gray-700/40 hover:border-blue-500/50 focus:outline-none focus:ring-2 focus:ring-blue-500/50 cursor-pointer transition-all duration-200 backdrop-blur-sm group"
+                          >
+                            <div className="flex items-center space-x-3 mb-2">
+                              <svg
+                                className="w-6 h-6 text-gray-400 group-hover:text-blue-400 transition-colors"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                                />
+                              </svg>
+                              <span className="text-sm font-medium">
+                                {config.file ? "Change file" : "Choose file"}
+                              </span>
+                            </div>
+                            {(() => {
+                              const fileTypeMappings: Record<string, string> = {
+                                excel: ".xlsx, .xls",
+                                csv: ".csv",
+                                pdf: ".pdf",
+                                word: ".docx, .doc",
+                                powerpoint: ".pptx, .ppt",
+                                text: ".txt",
+                                json: ".json",
+                                xml: ".xml",
+                                html: ".html, .htm",
+                                markdown: ".md, .markdown",
+                              };
+
+                              const acceptedTypes =
+                                fileTypeMappings[selectedDataSource.id];
+                              return acceptedTypes ? (
+                                <span className="text-xs text-gray-400">
+                                  Accepted formats: {acceptedTypes}
+                                </span>
+                              ) : null;
+                            })()}
+                          </label>
+                        </div>
+                        {config.file && (
+                          <div className="flex items-center space-x-3 p-4 bg-green-900/20 border border-green-500/30 rounded-xl backdrop-blur-sm">
+                            <div className="w-8 h-8 rounded-full bg-green-500/20 flex items-center justify-center">
+                              <svg
+                                className="w-4 h-4 text-green-400"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M5 13l4 4L19 7"
+                                />
+                              </svg>
+                            </div>
+                            <div>
+                              <span className="text-sm font-medium text-green-300">
+                                Selected: {config.file.name}
+                              </span>
+                              <p className="text-xs text-green-400">
+                                {(config.file.size / 1024 / 1024).toFixed(2)} MB
+                              </p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     ) : field.type === "select" ? (
                       <select
                         value={
@@ -1116,7 +1190,7 @@ export default function UnifiedConnectionModal({
                         onChange={(e) =>
                           handleConfigChange(field.key, e.target.value)
                         }
-                        className="w-full px-3 py-2 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-800 text-white"
+                        className="w-full px-4 py-3 border border-gray-600/50 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 bg-gray-800/50 text-white transition-all duration-200 backdrop-blur-sm"
                       >
                         <option value="">Select {field.label}</option>
                         {field.options?.map((option) => (
@@ -1126,7 +1200,7 @@ export default function UnifiedConnectionModal({
                         ))}
                       </select>
                     ) : field.type === "boolean" ? (
-                      <label className="flex items-center">
+                      <label className="flex items-center space-x-3 p-4 bg-gray-800/30 rounded-xl border border-gray-600/30 hover:bg-gray-700/40 transition-all duration-200 cursor-pointer">
                         <input
                           type="checkbox"
                           checked={
@@ -1137,9 +1211,9 @@ export default function UnifiedConnectionModal({
                           onChange={(e) =>
                             handleConfigChange(field.key, e.target.checked)
                           }
-                          className="mr-2 rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500"
+                          className="w-5 h-5 rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500 focus:ring-2"
                         />
-                        <span className="text-sm text-gray-300">
+                        <span className="text-sm font-medium text-gray-200">
                           {field.label}
                         </span>
                       </label>
@@ -1155,53 +1229,246 @@ export default function UnifiedConnectionModal({
                           handleConfigChange(field.key, e.target.value)
                         }
                         placeholder={field.placeholder}
-                        className="w-full px-3 py-2 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-800 text-white placeholder-gray-400"
+                        className="w-full px-4 py-3 border border-gray-600/50 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 bg-gray-800/50 text-white placeholder-gray-400 transition-all duration-200 backdrop-blur-sm"
                       />
                     )}
                   </div>
                 ))}
               </div>
 
-              <div className="flex justify-end space-x-3">
+              <div className="flex justify-end pt-6">
                 <button
                   onClick={handleTestConnection}
                   disabled={isLoading}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+                  className="px-8 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl hover:from-blue-700 hover:to-blue-800 disabled:opacity-50 disabled:cursor-not-allowed font-semibold transition-all duration-200 shadow-lg hover:shadow-xl hover:shadow-blue-500/25 flex items-center space-x-2"
                 >
-                  {isLoading ? "Testing..." : "Test Connection"}
+                  {isLoading ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                      <span>Testing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg
+                        className="w-4 h-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                        />
+                      </svg>
+                      <span>Test Connection</span>
+                    </>
+                  )}
                 </button>
               </div>
             </div>
           )}
 
           {step === "testing" && (
-            <div className="text-center py-8">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-              <h3 className="text-lg font-semibold text-white mb-2">
-                Testing Connection
+            <div className="text-center py-12 px-8">
+              <div className="relative mb-8">
+                <div className="w-20 h-20 mx-auto rounded-full bg-gradient-to-r from-blue-500/20 to-purple-500/20 flex items-center justify-center">
+                  <div className="animate-spin rounded-full h-12 w-12 border-2 border-transparent border-t-blue-500 border-r-purple-500"></div>
+                </div>
+              </div>
+              <h3 className="text-2xl font-bold text-white mb-3">
+                {selectedDataSource?.category === "file"
+                  ? "Processing File"
+                  : "Testing Connection"}
               </h3>
-              <p className="text-gray-300">
-                Please wait while we test your connection...
+              <p className="text-gray-300 text-lg mb-8">
+                {selectedDataSource?.category === "file"
+                  ? "Please wait while we process your file and extract insights..."
+                  : "Please wait while we test your connection..."}
               </p>
+              {selectedDataSource?.category === "file" && (
+                <div className="max-w-md mx-auto space-y-4">
+                  {[
+                    "Uploading file to secure storage",
+                    "Reading and validating file content",
+                    "Extracting text and analyzing structure",
+                    "Generating file summary and insights",
+                    "Finalizing connection",
+                  ].map((step, index) => (
+                    <div
+                      key={index}
+                      className="flex items-center space-x-3 p-3 bg-gray-800/30 rounded-xl border border-gray-700/50"
+                    >
+                      <div
+                        className={`w-3 h-3 rounded-full ${
+                          index < 4
+                            ? "bg-blue-500 animate-pulse"
+                            : "bg-gray-600"
+                        }`}
+                      ></div>
+                      <span className="text-sm text-gray-300">{step}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {step === "syncing" && (
+            <div className="text-center py-12 px-8">
+              <div className="relative mb-8">
+                <div className="w-20 h-20 mx-auto rounded-full bg-gradient-to-r from-purple-500/20 to-pink-500/20 flex items-center justify-center">
+                  <div className="animate-spin rounded-full h-12 w-12 border-2 border-transparent border-t-purple-500 border-r-pink-500"></div>
+                </div>
+              </div>
+              <h3 className="text-2xl font-bold text-white mb-3">
+                Generating AI Summary
+              </h3>
+              <p className="text-gray-300 text-lg mb-8">
+                Please wait while we process your data and generate AI
+                insights...
+              </p>
+              <div className="max-w-md mx-auto space-y-4">
+                {[
+                  "Fetching document content",
+                  "Processing and analyzing text",
+                  "Generating AI summary",
+                  "Extracting key insights",
+                  "Finalizing connection",
+                ].map((step, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center space-x-3 p-3 bg-gray-800/30 rounded-xl border border-gray-700/50"
+                  >
+                    <div
+                      className={`w-3 h-3 rounded-full ${
+                        index < 4
+                          ? "bg-purple-500 animate-pulse"
+                          : "bg-gray-600"
+                      }`}
+                    ></div>
+                    <span className="text-sm text-gray-300">{step}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
           {step === "success" && (
-            <div className="text-center py-8">
-              <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-white mb-2">
-                Connection Successful!
+            <div className="text-center py-12 px-8">
+              <div className="w-20 h-20 mx-auto rounded-full bg-gradient-to-r from-green-500/20 to-emerald-500/20 flex items-center justify-center mb-6">
+                <CheckCircle className="w-12 h-12 text-green-500" />
+              </div>
+              <h3 className="text-2xl font-bold text-white mb-3">
+                {selectedDataSource?.category === "file"
+                  ? "File Validated Successfully!"
+                  : selectedDataSource?.requiresOAuth
+                  ? "OAuth Connection Successful!"
+                  : "Connection Successful!"}
               </h3>
-              <p className="text-gray-300 mb-6">
-                Your {selectedDataSource?.name} connection has been tested
-                successfully.
+              <p className="text-gray-300 text-lg mb-8 max-w-md mx-auto">
+                {selectedDataSource?.category === "file"
+                  ? `Your file ${
+                      config.file?.name || "file"
+                    } has been validated and is ready for upload and processing.`
+                  : selectedDataSource?.requiresOAuth
+                  ? `Your ${selectedDataSource?.name} connection has been authenticated and AI summary has been generated. You can now ask questions about your data!`
+                  : `Your ${selectedDataSource?.name} connection has been tested successfully.`}
               </p>
               <button
-                onClick={handleCreateConnection}
+                onClick={() => {
+                  if (selectedDataSource?.requiresOAuth) {
+                    // For OAuth connections, just close the modal and refresh
+                    onClose();
+                    window.location.reload();
+                  } else {
+                    // For other connections, use the existing flow
+                    handleCreateConnection();
+                  }
+                }}
                 disabled={isLoading}
-                className="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50"
+                className="px-8 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl hover:from-green-700 hover:to-emerald-700 disabled:opacity-50 font-semibold transition-all duration-200 shadow-lg hover:shadow-xl hover:shadow-green-500/25 flex items-center space-x-2 mx-auto"
               >
-                {isLoading ? "Creating..." : "Create Connection"}
+                {isLoading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                    <span>
+                      {selectedDataSource?.category === "file"
+                        ? "Processing..."
+                        : "Creating..."}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d={
+                          selectedDataSource?.requiresOAuth
+                            ? "M5 13l4 4L19 7"
+                            : "M12 6v6m0 0v6m0-6h6m-6 0H6"
+                        }
+                      />
+                    </svg>
+                    <span>
+                      {selectedDataSource?.category === "file"
+                        ? "Upload and Process"
+                        : selectedDataSource?.requiresOAuth
+                        ? "Done"
+                        : "Create Connection"}
+                    </span>
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+
+          {step === "upload-success" && (
+            <div className="text-center py-12 px-8">
+              <div className="w-20 h-20 mx-auto rounded-full bg-gradient-to-r from-green-500/20 to-emerald-500/20 flex items-center justify-center mb-6">
+                <CheckCircle className="w-12 h-12 text-green-500" />
+              </div>
+              <h3 className="text-2xl font-bold text-white mb-3">
+                File Upload Successful!
+              </h3>
+              <p className="text-gray-300 text-lg mb-8 max-w-md mx-auto">
+                Your file {config.file?.name || "file"} has been uploaded,
+                processed, and file summaries have been generated successfully.
+              </p>
+              <button
+                onClick={() => {
+                  // Call success callback to trigger file refresh
+                  onConnectionSuccess({
+                    connectionName: config.file?.name || "file",
+                    connectionType: config.type,
+                  });
+                  // Close the modal
+                  onClose();
+                }}
+                className="px-8 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl hover:from-green-700 hover:to-emerald-700 font-semibold transition-all duration-200 shadow-lg hover:shadow-xl hover:shadow-green-500/25 flex items-center space-x-2 mx-auto"
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M5 13l4 4L19 7"
+                  />
+                </svg>
+                <span>Okay</span>
               </button>
             </div>
           )}

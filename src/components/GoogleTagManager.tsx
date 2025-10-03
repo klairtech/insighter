@@ -1,14 +1,22 @@
 "use client";
 
 import Script from "next/script";
-import { GTM_ID } from "@/lib/analytics";
+import { GTM_ID, isValidGTMId } from "@/lib/analytics";
 
 /**
  * Google Tag Manager Component
  * Renders GTM scripts in the document head and body
  */
 export default function GoogleTagManager() {
-  if (!GTM_ID) return null;
+  // Validate GTM ID format
+  if (!GTM_ID || !isValidGTMId(GTM_ID)) {
+    if (process.env.NODE_ENV === "development") {
+      console.warn(
+        "GTM_ID is missing or invalid. Please set NEXT_PUBLIC_GTM_ID environment variable."
+      );
+    }
+    return null;
+  }
 
   return (
     <>
@@ -26,6 +34,16 @@ export default function GoogleTagManager() {
           `,
         }}
       />
+      {/* Initialize dataLayer */}
+      <Script
+        id="gtm-init"
+        strategy="afterInteractive"
+        dangerouslySetInnerHTML={{
+          __html: `
+            window.dataLayer = window.dataLayer || [];
+          `,
+        }}
+      />
     </>
   );
 }
@@ -35,7 +53,7 @@ export default function GoogleTagManager() {
  * Renders GTM noscript fallback in the body
  */
 export function GoogleTagManagerNoScript() {
-  if (!GTM_ID) return null;
+  if (!GTM_ID || !isValidGTMId(GTM_ID)) return null;
 
   return (
     <noscript>

@@ -310,7 +310,10 @@ const FileDetailPage: React.FC = () => {
       );
 
       if (!response.ok) {
-        throw new Error("Failed to download file");
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage =
+          errorData.error || errorData.details || "Failed to download file";
+        throw new Error(errorMessage);
       }
 
       const blob = await response.blob();
@@ -325,7 +328,9 @@ const FileDetailPage: React.FC = () => {
       toast.success("File downloaded successfully!");
     } catch (error) {
       console.error("Error downloading file:", error);
-      toast.error("Failed to download file");
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to download file";
+      toast.error(errorMessage);
     }
   };
 

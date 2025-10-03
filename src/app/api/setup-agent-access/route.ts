@@ -12,29 +12,29 @@ export async function POST() {
 
     // Verify user session using server-side Supabase client with cookies
     const supabase = await createServerSupabaseClient()
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+    const { data: { user }, error: sessionError } = await supabase.auth.getUser()
     
-    if (sessionError || !session?.user) {
+    if (sessionError || !user) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       )
     }
 
-    console.log('🔧 Setting up agent access for user:', session.user.email)
+    console.log('🔧 Setting up agent access for user:', user.email)
 
     // Get user's organization memberships with role information
     const { data: orgMemberships, error: orgMembershipError } = await supabaseServer
       .from('organization_members')
       .select('organization_id, role')
-      .eq('user_id', session.user.id)
+      .eq('user_id', user.id)
       .eq('status', 'active')
 
     // Get user's workspace memberships with role information
     const { data: workspaceMemberships, error: workspaceMembershipError } = await supabaseServer
       .from('workspace_members')
       .select('workspace_id, role')
-      .eq('user_id', session.user.id)
+      .eq('user_id', user.id)
       .eq('status', 'active')
 
     if ((orgMembershipError && workspaceMembershipError) || 
@@ -118,7 +118,7 @@ export async function POST() {
     const { data: existingAccess, error: accessError } = await supabaseServer
       .from('agent_access')
       .select('agent_id')
-      .eq('user_id', session.user.id)
+      .eq('user_id', user.id)
       .in('agent_id', agents.map(a => a.id))
 
     if (accessError) {
@@ -140,10 +140,10 @@ export async function POST() {
 
     // Create access records for agents the user doesn't have access to
     const accessRecords = agentsNeedingAccess.map(agent => ({
-      user_id: session.user.id,
+      user_id: user.id,
       agent_id: agent.id,
       access_level: accessLevel, // Use determined access level based on role
-      granted_by: session.user.id,
+      granted_by: user.id,
       granted_at: new Date().toISOString(),
       is_active: true,
       created_at: new Date().toISOString(),

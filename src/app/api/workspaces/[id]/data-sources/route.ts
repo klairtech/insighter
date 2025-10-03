@@ -18,9 +18,9 @@ export async function GET(
     
     // Verify user session
     const supabase = await createServerSupabaseClient();
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    const { data: { user }, error: sessionError } = await supabase.auth.getUser();
     
-    if (sessionError || !session?.user) {
+    if (sessionError || !user) {
       console.log('❌ Data Sources API: Unauthorized - no session:', sessionError);
       return NextResponse.json(
         { error: 'Unauthorized' },
@@ -28,14 +28,14 @@ export async function GET(
       );
     }
     
-    console.log('✅ Data Sources API: User authenticated:', session.user.id);
+    console.log('✅ Data Sources API: User authenticated:', user.id);
 
     // Check if user has access to this workspace
     const { data: workspaceAccess, error: accessError } = await supabaseServer
       .from('workspace_members')
       .select('role')
       .eq('workspace_id', workspaceId)
-      .eq('user_id', session.user.id)
+      .eq('user_id', user.id)
       .single();
 
     if (accessError && accessError.code !== 'PGRST116') {
@@ -63,7 +63,7 @@ export async function GET(
           )
         `)
         .eq('id', workspaceId)
-        .eq('organizations.organization_members.user_id', session.user.id)
+        .eq('organizations.organization_members.user_id', user.id)
         .single();
 
       if (orgAccessError || !orgAccess) {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseServer } from '@/lib/server-utils'
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3'
+import { decryptText } from '@/lib/encryption'
 
 // AWS S3 Configuration
 const isS3Configured = process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY && process.env.AWS_S3_BUCKET
@@ -44,6 +45,10 @@ async function verifyUserSession(request: NextRequest) {
 // Helper function to check file access
 async function checkFileAccess(userId: string, fileId: string) {
   try {
+    if (!supabaseServer) {
+      return { hasAccess: false, file: null }
+    }
+
     // First, get the file with workspace info
     const { data: file, error: fileError } = await supabaseServer
       .from('file_uploads')
@@ -51,20 +56,40 @@ async function checkFileAccess(userId: string, fileId: string) {
         *,
         workspaces (
           id,
-          organization_id,
-          organization_members!inner (
-            user_id,
-            status
-          )
+          organization_id
         )
       `)
       .eq('id', fileId)
-      .eq('workspaces.organization_members.user_id', userId)
-      .eq('workspaces.organization_members.status', 'active')
       .single()
 
     if (fileError || !file) {
+      console.error('File not found:', fileError)
       return { hasAccess: false, file: null }
+    }
+
+    // Check if user uploaded the file (always allow access to own files)
+    if (file.uploaded_by === userId) {
+      return { hasAccess: true, file }
+    }
+
+    // If no workspace, deny access
+    if (!file.workspaces) {
+      console.error('No workspace found for file')
+      return { hasAccess: false, file }
+    }
+
+    // Check organization membership
+    const { data: membership, error: membershipError } = await supabaseServer
+      .from('organization_members')
+      .select('role')
+      .eq('organization_id', file.workspaces.organization_id)
+      .eq('user_id', userId)
+      .eq('status', 'active')
+      .single()
+
+    if (membershipError || !membership) {
+      console.error('User not a member of organization:', membershipError)
+      return { hasAccess: false, file }
     }
 
     return { hasAccess: true, file }
@@ -105,6 +130,16 @@ export async function GET(
       return NextResponse.json({ error: 'File not found in this workspace' }, { status: 404 })
     }
 
+    // Check if file is stored in S3 or locally
+    if (file.s3_key.startsWith('local/')) {
+      // File is stored locally - this shouldn't happen in production
+      // but we'll handle it gracefully
+      return NextResponse.json({ 
+        error: 'File is stored locally and cannot be downloaded via API',
+        details: 'Please contact support for local file access'
+      }, { status: 501 })
+    }
+
     if (!isS3Configured || !s3Client) {
       return NextResponse.json({ error: 'File storage not configured' }, { status: 500 })
     }
@@ -132,15 +167,26 @@ export async function GET(
         chunks.push(value)
       }
 
-      const buffer = Buffer.concat(chunks)
+      const encryptedBuffer = Buffer.concat(chunks)
       
-      // Return the file with appropriate headers
-      return new NextResponse(buffer, {
+      // Decrypt the file content
+      let decryptedBuffer: Buffer
+      try {
+        const encryptedContent = encryptedBuffer.toString('utf8')
+        const decryptedBase64 = decryptText(encryptedContent)
+        decryptedBuffer = Buffer.from(decryptedBase64, 'base64')
+      } catch (decryptError) {
+        console.error('Error decrypting file:', decryptError)
+        return NextResponse.json({ error: 'Failed to decrypt file' }, { status: 500 })
+      }
+      
+      // Return the decrypted file with appropriate headers
+      return new NextResponse(new Uint8Array(decryptedBuffer), {
         status: 200,
         headers: {
           'Content-Type': file.file_type || 'application/octet-stream',
           'Content-Disposition': `attachment; filename="${file.original_name || file.filename}"`,
-          'Content-Length': buffer.length.toString(),
+          'Content-Length': decryptedBuffer.length.toString(),
         },
       })
 

@@ -73,7 +73,6 @@ const nextConfig = {
   // Environment variables
   env: {
     CUSTOM_KEY: process.env.CUSTOM_KEY,
-    NEXT_PUBLIC_GA_MEASUREMENT_ID: process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID,
     NEXT_PUBLIC_GTM_ID: process.env.NEXT_PUBLIC_GTM_ID,
   },
 

@@ -12,9 +12,9 @@ export async function GET(request: NextRequest) {
     }
 
     // Get the current user
-    const { data: { session }, error: sessionError } = await supabaseServer.auth.getSession()
+    const { data: { user }, error: sessionError } = await supabaseServer.auth.getUser()
     
-    if (sessionError || !session?.user) {
+    if (sessionError || !user) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
     const action = searchParams.get('action') as 'chat' | 'canvas_generation' | 'dashboard_creation' | null
 
     // Get token usage statistics
-    const tokenUsage = await getUserTokenUsage(session.user.id, days)
+    const tokenUsage = await getUserTokenUsage(user.id, days)
 
     // Filter by action if specified
     let filteredUsage = tokenUsage
@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      user_id: session.user.id,
+      user_id: user.id,
       period_days: days,
       action_filter: action,
       token_usage: filteredUsage
@@ -66,9 +66,9 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     // Get the current user
-    const { data: { session }, error: sessionError } = await supabaseServer.auth.getSession()
+    const { data: { user }, error: sessionError } = await supabaseServer.auth.getUser()
     
-    if (sessionError || !session?.user) {
+    if (sessionError || !user) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
     const { error: insertError } = await supabaseServer
       .from('token_usage')
       .insert({
-        user_id: session.user.id,
+        user_id: user.id,
         tokens_used: tokens_used,
         action: action
       })

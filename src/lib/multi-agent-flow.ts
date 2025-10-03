@@ -80,24 +80,17 @@ export class MultiAgentFlow {
     const agentCalls: Array<{agent: string, tokens_used: number, call_type: string}> = [];
     
     try {
-      console.log('🚀 Multi-Agent Flow: Starting processing...');
+      // Multi-Agent Flow: Starting processing
       
       // Step 0: Conversation Context Analysis
-      console.log('🧠 Step 0: Conversation Context Analysis');
       const contextAnalysis = await analyzeConversationContext(userQuery, conversationHistory, selectedDataSources);
       const processingStrategy = await determineQueryProcessingStrategy(userQuery, contextAnalysis, selectedDataSources);
       
-      console.log('🧠 Context Analysis Result:', {
-        is_follow_up: contextAnalysis.is_follow_up,
-        is_new_topic: contextAnalysis.is_new_topic,
-        context_relevance: contextAnalysis.context_relevance,
-        should_use_context: processingStrategy.should_use_context,
-        processing_strategy: processingStrategy.processing_strategy
-      });
+      // Context analysis completed
       
       // Filter conversation history based on strategy
       const filteredConversationHistory = filterConversationContext(conversationHistory, processingStrategy);
-      console.log(`🧠 Using ${filteredConversationHistory.length} messages from conversation history`);
+      // Using filtered conversation history
       
       // Create base context
       const baseContext: AgentContext = {
@@ -110,7 +103,7 @@ export class MultiAgentFlow {
       };
       
       // Step 1-3: Parallel Initial Processing (Optimization)
-      console.log('🚀 Steps 1-3: Parallel Initial Processing');
+      // Steps 1-3: Parallel Initial Processing
       const [greetingResult, guardrailsResult, validationResult] = await Promise.all([
         this.greetingAgent.execute(baseContext),
         this.guardrailsAgent.execute(baseContext),

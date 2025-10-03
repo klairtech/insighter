@@ -263,6 +263,18 @@ export default function ChatClient({
     []
   );
 
+  // Memoize the callback to prevent infinite re-renders
+  const handleDataSourcesLoaded = useCallback(
+    (dataSources: string[]) => {
+      setAvailableDataSources(dataSources);
+      // Auto-select all data sources by default if none are selected
+      if (selectedDataSources.length === 0) {
+        setSelectedDataSources(dataSources);
+      }
+    },
+    [selectedDataSources.length]
+  );
+
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollPositionRef = useRef<number>(0);
@@ -1070,13 +1082,7 @@ export default function ChatClient({
                     workspaceId={currentConversation.agent.workspace_id}
                     selectedSources={selectedDataSources}
                     onSelectionChange={setSelectedDataSources}
-                    onDataSourcesLoaded={(dataSources) => {
-                      setAvailableDataSources(dataSources);
-                      // Auto-select all data sources by default if none are selected
-                      if (selectedDataSources.length === 0) {
-                        setSelectedDataSources(dataSources);
-                      }
-                    }}
+                    onDataSourcesLoaded={handleDataSourcesLoaded}
                     className=""
                     userCredits={userCredits}
                   />

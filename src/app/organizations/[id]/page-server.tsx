@@ -94,18 +94,18 @@ export default async function OrganizationDetailPage({
 
   // Get user session on server side
   const {
-    data: { session },
+    data: { user },
     error,
-  } = await supabaseServer.auth.getSession();
+  } = await supabaseServer.auth.getUser();
 
-  if (error || !session?.user) {
+  if (error || !user) {
     redirect("/login");
   }
 
   // Fetch organization data on server side
   const { organization, workspaces } = await getOrganizationData(
     organizationId,
-    session.user.id
+    user.id
   );
 
   if (!organization) {
@@ -116,7 +116,7 @@ export default async function OrganizationDetailPage({
     <OrganizationDetailClient
       initialOrganization={organization}
       initialWorkspaces={workspaces}
-      user={{ id: session.user.id, email: session.user.email || "" }}
+      user={{ id: user.id, email: user.email || "" }}
     />
   );
 }

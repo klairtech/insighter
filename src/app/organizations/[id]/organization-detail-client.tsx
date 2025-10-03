@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
+import { useLoading } from "@/contexts/LoadingContext";
 import OrganizationSharing from "@/components/OrganizationSharing";
 
 interface Organization {
@@ -46,6 +47,7 @@ export default function OrganizationDetailClient({
     session: null,
     isLoading: false,
   };
+  const { startLoading, stopLoading, isLoading: checkLoading } = useLoading();
 
   // All hooks must be called before any conditional returns
   const [organization, setOrganization] =
@@ -188,7 +190,16 @@ export default function OrganizationDetailClient({
   };
 
   const handleWorkspaceClick = (workspaceId: string) => {
+    const loadingKey = `workspace-navigation-${workspaceId}`;
+    startLoading(loadingKey);
+
+    // Navigate to workspace detail page
     router.push(`/workspaces/${workspaceId}`);
+
+    // Stop loading after a short delay to allow navigation to complete
+    setTimeout(() => {
+      stopLoading(loadingKey);
+    }, 1000);
   };
 
   const formatDate = (dateString: string) => {
@@ -449,40 +460,56 @@ export default function OrganizationDetailClient({
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {workspaces.map((workspace) => (
-                <div
-                  key={workspace.id}
-                  className="bg-gray-800/50 border border-gray-700 rounded-lg p-4 hover:border-gray-600 transition-colors cursor-pointer group"
-                  onClick={() => handleWorkspaceClick(workspace.id)}
-                >
-                  <h3 className="text-lg font-semibold text-white group-hover:text-blue-400 transition-colors mb-2">
-                    {workspace.name}
-                  </h3>
-                  {workspace.description && (
-                    <p className="text-gray-400 text-sm mb-3 line-clamp-2">
-                      {workspace.description}
-                    </p>
-                  )}
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-500">
-                      Created {formatDate(workspace.created_at)}
-                    </span>
-                    <svg
-                      className="w-4 h-4 text-gray-400 group-hover:text-blue-400 transition-colors"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        d="M9 5l7 7-7 7"
-                      />
-                    </svg>
+              {workspaces.map((workspace) => {
+                const loadingKey = `workspace-navigation-${workspace.id}`;
+                const isWorkspaceLoading = checkLoading(loadingKey);
+
+                return (
+                  <div
+                    key={workspace.id}
+                    className={`bg-gray-800/50 border border-gray-700 rounded-lg p-4 hover:border-gray-600 transition-colors cursor-pointer group ${
+                      isWorkspaceLoading ? "opacity-50 pointer-events-none" : ""
+                    }`}
+                    onClick={() => handleWorkspaceClick(workspace.id)}
+                  >
+                    {isWorkspaceLoading ? (
+                      <div className="flex items-center justify-center py-8">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400"></div>
+                        <span className="ml-3 text-white">Loading...</span>
+                      </div>
+                    ) : (
+                      <>
+                        <h3 className="text-lg font-semibold text-white group-hover:text-blue-400 transition-colors mb-2">
+                          {workspace.name}
+                        </h3>
+                        {workspace.description && (
+                          <p className="text-gray-400 text-sm mb-3 line-clamp-2">
+                            {workspace.description}
+                          </p>
+                        )}
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-gray-500">
+                            Created {formatDate(workspace.created_at)}
+                          </span>
+                          <svg
+                            className="w-4 h-4 text-gray-400 group-hover:text-blue-400 transition-colors"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2"
+                              d="M9 5l7 7-7 7"
+                            />
+                          </svg>
+                        </div>
+                      </>
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

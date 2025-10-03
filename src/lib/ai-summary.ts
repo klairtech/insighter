@@ -82,7 +82,9 @@ For the file "${filename}" (${fileType}), analyze the content and provide:
    - key_topics: Main themes or subjects covered
    - data_insights: What insights or patterns can be derived from this data
 
-Be specific and practical. Focus on how an AI agent would use this information to help users.`;
+Be specific and practical. Focus on how an AI agent would use this information to help users.
+
+IMPORTANT: If the file contains malformed data, formatting issues, or data quality problems, still provide a useful summary. Note any data quality issues in the key_points and mention them in the data_insights. The goal is to make the data usable despite formatting problems.`;
 
   const userPrompt = `Please analyze this file content and provide the structured response:
 

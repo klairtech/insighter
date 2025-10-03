@@ -61,19 +61,6 @@ function OrganizationSharing({
   const [memberToRemove, setMemberToRemove] = useState<string>("");
   const [isRemoving, setIsRemoving] = useState(false);
 
-  // Check permissions with defensive programming
-  const canInvite = userRole
-    ? checkOrganizationPermission(userRole, "INVITE_MEMBERS").hasPermission
-    : false;
-  const canManageMembers = userRole
-    ? checkOrganizationPermission(userRole, "UPDATE_MEMBER_ROLES").hasPermission
-    : false;
-
-  // Get available roles that the current user can invite
-  const invitableRoles = userRole
-    ? getInvitableOrganizationRoles(userRole)
-    : [];
-
   const loadData = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -144,6 +131,39 @@ function OrganizationSharing({
       setIsLoading(false);
     }
   }, [organizationId, session, loadData]);
+
+  // Check permissions with defensive programming
+  const canInvite = userRole
+    ? checkOrganizationPermission(userRole, "INVITE_MEMBERS").hasPermission
+    : false;
+  const canManageMembers = userRole
+    ? checkOrganizationPermission(userRole, "UPDATE_MEMBER_ROLES").hasPermission
+    : false;
+
+  // Get available roles that the current user can invite
+  const invitableRoles = userRole
+    ? getInvitableOrganizationRoles(userRole)
+    : [];
+
+  // Early return if auth is still loading or functions are not available
+  if (
+    authIsLoading ||
+    !checkOrganizationPermission ||
+    !getInvitableOrganizationRoles ||
+    !formatRole ||
+    !getRoleColor
+  ) {
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="bg-gray-900 rounded-lg p-6 max-w-md w-full mx-4">
+          <div className="flex items-center justify-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400"></div>
+            <span className="ml-3 text-white">Loading...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const handleInviteUser = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -7,18 +7,17 @@ export async function GET(request: NextRequest) {
     
     // Verify user session using server-side Supabase client with cookies
     const supabase = await createServerSupabaseClient()
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+    const { data: { user }, error: sessionError } = await supabase.auth.getUser()
     
-    console.log('🔍 Conversations API: Session check result:', {
-      hasSession: !!session,
-      hasUser: !!session?.user,
-      userId: session?.user?.id,
-      userEmail: session?.user?.email,
+    console.log('🔍 Conversations API: User check result:', {
+      hasUser: !!user,
+      userId: user?.id,
+      userEmail: user?.email,
       sessionError: sessionError?.message
     })
     
-    if (sessionError || !session?.user) {
-      console.log('❌ Conversations API: Unauthorized - no valid session')
+    if (sessionError || !user) {
+      console.log('❌ Conversations API: Unauthorized - no valid user')
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
@@ -91,7 +90,7 @@ export async function GET(request: NextRequest) {
           )
         )
       `)
-      .eq('user_id', session.user.id)
+      .eq('user_id', user.id)
       .eq('conversation_type', conversationType)
       .eq('status', 'active')
 
@@ -107,7 +106,7 @@ export async function GET(request: NextRequest) {
     const { data: allConversations, error: allConversationsError } = await supabaseServer
       .from('conversations')
       .select('id, agent_id, title, conversation_type')
-      .eq('user_id', session.user.id)
+      .eq('user_id', user.id)
       .eq('conversation_type', conversationType)
       .eq('status', 'active')
     
@@ -132,7 +131,7 @@ export async function GET(request: NextRequest) {
       const { data: simpleConversations, error: simpleError } = await supabaseServer
         .from('conversations')
         .select('id, user_id, agent_id, conversation_type, title, status, external_conversation_id, api_metadata, created_at, updated_at, last_message_at')
-        .eq('user_id', session.user.id)
+        .eq('user_id', user.id)
         .eq('conversation_type', conversationType)
         .eq('status', 'active')
         .eq('agent_id', agentId)
@@ -197,7 +196,7 @@ export async function GET(request: NextRequest) {
         query: {
           conversationType,
           agentId,
-          userId: session.user.id
+          userId: user.id
         }
       })
       return NextResponse.json(
@@ -490,17 +489,16 @@ export async function POST(request: NextRequest) {
     
     // Verify user session using server-side Supabase client with cookies
     const supabase = await createServerSupabaseClient()
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+    const { data: { user }, error: sessionError } = await supabase.auth.getUser()
     
-    console.log('🔍 Unified Conversation Creation API: Session check result:', {
-      hasSession: !!session,
-      hasUser: !!session?.user,
-      userId: session?.user?.id,
-      userEmail: session?.user?.email
+    console.log('🔍 Unified Conversation Creation API: User check result:', {
+      hasUser: !!user,
+      userId: user?.id,
+      userEmail: user?.email
     })
     
-    if (sessionError || !session?.user) {
-      console.log('❌ Unified Conversation Creation API: Unauthorized - no session:', sessionError)
+    if (sessionError || !user) {
+      console.log('❌ Unified Conversation Creation API: Unauthorized - no user:', sessionError)
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
@@ -546,7 +544,7 @@ export async function POST(request: NextRequest) {
     // Check if user has access to this agent using hierarchical access control
     const { data: hasAccess, error: accessError } = await supabaseServer
       .rpc('user_has_agent_access', {
-        p_user_id: session.user.id,
+        p_user_id: user.id,
         p_agent_id: agent_id,
         p_required_access: 'read'
       })
@@ -590,7 +588,7 @@ export async function POST(request: NextRequest) {
           )
         )
       `)
-      .eq('user_id', session.user.id)
+      .eq('user_id', user.id)
       .eq('agent_id', agent_id)
       .eq('conversation_type', conversation_type)
       .eq('status', 'active')
@@ -650,7 +648,7 @@ export async function POST(request: NextRequest) {
 
     // Create new conversation
     const conversationData: Record<string, unknown> = {
-      user_id: session.user.id,
+      user_id: user.id,
       agent_id: agent_id,
       conversation_type: conversation_type,
       title: title || 'New Conversation',
